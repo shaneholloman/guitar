@@ -436,6 +436,37 @@ pub fn render_buffer_range(
     lines_buffer
 }
 
+#[allow(dead_code)]
+pub fn render_sha_range(
+    theme: &Theme,
+    oids: &Oids,
+    start: usize,
+    end: usize,
+) -> Vec<Line<'static>> {
+    
+    let mut lines = Vec::new();
+
+    for global_idx in start..end {
+        let alias = oids.get_alias_by_idx(global_idx);
+
+        if alias != NONE {
+            let oid = oids.get_oid_by_alias(alias);
+            
+            lines.push(Line::from(Span::styled(
+                format!("{:.6} ", oid),
+                Style::default().fg(theme.COLOR_GREY_700),
+            )));
+        } else {
+            lines.push(Line::from(Span::styled(
+                "",
+                Style::default().fg(theme.COLOR_GREY_500),
+            )));
+        }
+    }
+
+    lines
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn render_message_range(
     theme: &Theme,

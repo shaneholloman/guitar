@@ -18,6 +18,7 @@ use crate::{
     core::{
         renderers::{
             render_buffer_range,
+            render_sha_range,
             render_graph_range,
             render_message_range
         }
@@ -69,6 +70,12 @@ impl App {
             start,
             end + 1
         );
+        let sha_range = render_sha_range(
+            &self.theme,
+            &self.oids,
+            start,
+            end
+        );
         let graph_range = render_graph_range(
             &self.theme,
             &self.oids,
@@ -115,6 +122,7 @@ impl App {
                 
                 // Assemble the row
                 let mut row = Row::new(vec![
+                    WidgetCell::from(sha_range.get(idx).cloned().unwrap_or_default()),
                     WidgetCell::from(graph_range.get(idx).cloned().unwrap_or_default()),
                     WidgetCell::from(message_range.get(idx).cloned().unwrap_or_default()),
                 ]);
@@ -133,13 +141,14 @@ impl App {
 
         // Setup the table
         let table = Table::new(rows, [
-                ratatui::layout::Constraint::Length(width),
+                ratatui::layout::Constraint::Length(6),
+                ratatui::layout::Constraint::Length(width + 5),
                 ratatui::layout::Constraint::Min(0)])
             .block(Block::default()
                 .borders(Borders::RIGHT | Borders::LEFT)
                 .border_style(Style::default().fg(self.theme.COLOR_BORDER))
                 .border_type(ratatui::widgets::BorderType::Rounded))
-            .column_spacing(5);
+            .column_spacing(1);
 
         // Render the table
         frame.render_widget(table, self.layout.graph);
