@@ -50,14 +50,10 @@ use ratatui::{
         Span
     },
 };
-use crate::core::stashes::Stashes;
+use crate::{core::stashes::Stashes, helpers::keymap::{Command, KeyBinding}};
 #[rustfmt::skip]
 use crate::{
     app::{
-        app_input::{
-            Command,
-            KeyBinding
-        },
         app_layout::{
             Layout
         }

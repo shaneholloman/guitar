@@ -26,15 +26,10 @@ use ratatui::{
         Span
     },
 };
+use crate::helpers::keymap::{Command, KeyBinding};
 #[rustfmt::skip]
 use crate::{
     layers,
-    app::{
-        app_input::{
-            Command,
-            KeyBinding
-        }
-    },
     git::{
         queries::{
             helpers::{

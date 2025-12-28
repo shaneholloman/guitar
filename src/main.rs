@@ -47,6 +47,7 @@ pub mod git {
     }
 }
 pub mod helpers {
+    pub mod keymap;
     pub mod colors;
     pub mod palette;
     pub mod spinner;

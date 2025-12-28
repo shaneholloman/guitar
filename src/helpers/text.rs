@@ -34,9 +34,9 @@ pub fn wrap_chars(content: String, max_width: usize) -> Vec<String> {
         }
 
         let mut start = 0;
-        while start < line.len() {
+        while start < line.chars().count() {
             // Slice line in chunks up to max_width
-            let end = (start + max_width).min(line.len());
+            let end = (start + max_width).min(line.chars().count());
             wrapped_lines.push(line[start..end].to_string());
             start = end;
         }
@@ -77,13 +77,13 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
                 }
 
                 // If spaces overflow line width, start new line
-                if current_width + space.len() > max_width {
+                if current_width + space.chars().count() > max_width {
                     wrapped_lines.push(current_line);
                     current_line = space.clone();
-                    current_width = space.len();
+                    current_width = space.chars().count();
                 } else {
                     current_line.push_str(&space);
-                    current_width += space.len();
+                    current_width += space.chars().count();
                 }
             } else {
                 // Collect a word
@@ -97,7 +97,7 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
                 }
 
                 // Fallback: long word exceeds max_width → wrap by characters
-                if word.len() > max_width {
+                if word.chars().count() > max_width {
                     if !current_line.is_empty() {
                         wrapped_lines.push(current_line);
                         current_line = String::new();
@@ -110,15 +110,15 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
                 }
 
                 // If word doesn't fit, push current line and start new one
-                if current_width + word.len() > max_width {
+                if current_width + word.chars().count() > max_width {
                     if !current_line.is_empty() {
                         wrapped_lines.push(current_line);
                     }
                     current_line = word.clone();
-                    current_width = word.len();
+                    current_width = word.chars().count();
                 } else {
                     current_line.push_str(&word);
-                    current_width += word.len();
+                    current_width += word.chars().count();
                 }
             }
         }
@@ -132,10 +132,10 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
 
 // Center a single line of text within a given width by adding leading spaces
 pub fn center_line(line: &str, width: usize) -> String {
-    if line.len() >= width {
+    if line.chars().count() >= width {
         line.to_string()
     } else {
-        let padding = (width - line.len()) / 2;
+        let padding = (width - line.chars().count()) / 2;
         format!("{}{}", " ".repeat(padding), line)
     }
 }
