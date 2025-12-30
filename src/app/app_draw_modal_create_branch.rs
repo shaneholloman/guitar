@@ -52,7 +52,7 @@ impl App {
             Line::from(""),
             Line::from(""),
             Line::from(vec![
-                Span::styled(if self.create_branch_editor.mode == EditorMode::Normal {"(enter)".to_string()} else { "enter".to_string() }, Style::default().fg(if self.create_branch_editor.mode == EditorMode::Normal { self.theme.COLOR_GREY_500 } else { self.theme.COLOR_GREY_600 })),
+                Span::styled(if self.modal_editor.mode == EditorMode::Normal {"(enter)".to_string()} else { "enter".to_string() }, Style::default().fg(if self.modal_editor.mode == EditorMode::Normal { self.theme.COLOR_GREY_500 } else { self.theme.COLOR_GREY_600 })),
             ]),
         ];
             
@@ -72,7 +72,7 @@ impl App {
         let modal_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(self.theme.COLOR_GREY_600))
-            .title(Span::styled(if self.create_branch_editor.mode == EditorMode::Normal {" (esc) "} else { "─ esc ─" }, Style::default().fg(if self.create_branch_editor.mode == EditorMode::Normal { self.theme.COLOR_GREY_500 } else { self.theme.COLOR_GREY_600 })))
+            .title(Span::styled(if self.modal_editor.mode == EditorMode::Normal {" (esc) "} else { "─ esc ─" }, Style::default().fg(if self.modal_editor.mode == EditorMode::Normal { self.theme.COLOR_GREY_500 } else { self.theme.COLOR_GREY_600 })))
             .title_alignment(Alignment::Right)
             .padding(Padding { left: 3, right: 3, top: 1, bottom: 1})
             .border_type(ratatui::widgets::BorderType::Rounded);
@@ -100,7 +100,7 @@ impl App {
                 .style_line(Style::default().fg(self.theme.COLOR_GREY_800))
                 .align_left(true))
         };
-        let editor_view = EditorView::new(&mut self.create_branch_editor).theme(custom_theme);
+        let editor_view = EditorView::new(&mut self.modal_editor).theme(custom_theme);
         
         let input_area = Rect {
             x: modal_area.x + modal_area.width / 2 - 29,

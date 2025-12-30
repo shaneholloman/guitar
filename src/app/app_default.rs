@@ -163,17 +163,9 @@ impl Default for App {
             // Modal solo
             modal_solo_selected: 0,
 
-            // Modal commit
-            commit_editor: EditorState::default(),
-            commit_editor_event_handler: EditorEventHandler::default(),
-
-            // Modal create branch
-            create_branch_editor: EditorState::default(),
-            create_branch_editor_event_handler: EditorEventHandler::default(),
-
-            // Modal grep
-            grep_editor: EditorState::default(),
-            grep_editor_event_handler: EditorEventHandler::default(),
+            // Modal editor
+            modal_editor: EditorState::default(),
+            modal_editor_event_handler: EditorEventHandler::default(),
 
             // Modal delete branch
             modal_delete_branch_selected: 0,

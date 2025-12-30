@@ -216,17 +216,9 @@ pub struct App {
     // Modal solo
     pub modal_solo_selected: i32,
 
-    // Modal commit
-    pub commit_editor: EditorState,
-    pub commit_editor_event_handler: EditorEventHandler,
-
-    // Modal create branch
-    pub create_branch_editor: EditorState,
-    pub create_branch_editor_event_handler: EditorEventHandler,
-
-    // Modal grep
-    pub grep_editor: EditorState,
-    pub grep_editor_event_handler: EditorEventHandler,
+    // Modal editor
+    pub modal_editor: EditorState,
+    pub modal_editor_event_handler: EditorEventHandler,
 
     // Modal delete a branch
     pub modal_delete_branch_selected: i32,

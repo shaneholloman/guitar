@@ -82,7 +82,7 @@ impl App {
         // Handle text editing
         match self.focus {
             Focus::ModalCommit => {
-                if self.commit_editor.mode == EditorMode::Normal {
+                if self.modal_editor.mode == EditorMode::Normal {
                     match key_event.code {
                         KeyCode::Esc => {
                             self.focus = Focus::Viewport;
@@ -90,39 +90,39 @@ impl App {
                         KeyCode::Enter => {
                             commit_staged(
                                 &self.repo,
-                                &editor_state_to_string(&self.commit_editor),
+                                &editor_state_to_string(&self.modal_editor),
                                 &self.name,
                                 &self.email,
                             )
                             .expect("Error");
-                            self.commit_editor = edtui::EditorState::default();
+                            self.modal_editor = edtui::EditorState::default();
                             self.branches.visible.clear();
                             self.reload();
                             self.focus = Focus::Viewport;
                         }
                         _ => {
-                            self.commit_editor_event_handler
-                                .on_key_event(key_event, &mut self.commit_editor);
+                            self.modal_editor_event_handler
+                                .on_key_event(key_event, &mut self.modal_editor);
                         }
                     }
                 } else {
-                    self.commit_editor_event_handler
-                        .on_key_event(key_event, &mut self.commit_editor);
+                    self.modal_editor_event_handler
+                        .on_key_event(key_event, &mut self.modal_editor);
                 }
                 return;
             }
             Focus::ModalCreateBranch => {
-                if self.create_branch_editor.mode == EditorMode::Normal {
+                if self.modal_editor.mode == EditorMode::Normal {
                     match key_event.code {
                         KeyCode::Esc => {
                             self.focus = Focus::Viewport;
                         }
                         KeyCode::Enter => {
                             let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-                            match create_branch(&self.repo, &editor_state_to_string(&self.create_branch_editor), *oid) {
+                            match create_branch(&self.repo, &editor_state_to_string(&self.modal_editor), *oid) {
                                 Ok(_) => {
                                     self.branches.visible.clear();
-                                    self.create_branch_editor = edtui::EditorState::default();
+                                    self.modal_editor = edtui::EditorState::default();
                                     self.reload();
                                     self.focus = Focus::Viewport;
                                 }
@@ -132,24 +132,24 @@ impl App {
                             }
                         }
                         _ => {
-                            self.create_branch_editor_event_handler
-                                .on_key_event(key_event, &mut self.create_branch_editor);
+                            self.modal_editor_event_handler
+                                .on_key_event(key_event, &mut self.modal_editor);
                         }
                     }
                 } else {
-                    self.create_branch_editor_event_handler
-                        .on_key_event(key_event, &mut self.create_branch_editor);
+                    self.modal_editor_event_handler
+                        .on_key_event(key_event, &mut self.modal_editor);
                 }
                 return;
             }
             Focus::ModalGrep => {
-                if self.grep_editor.mode == EditorMode::Normal {
+                if self.modal_editor.mode == EditorMode::Normal {
                     match key_event.code {
                         KeyCode::Esc => {
                             self.focus = Focus::Viewport;
                         }
                         KeyCode::Enter => {
-                            let sha = editor_state_to_string(&self.grep_editor);
+                            let sha = editor_state_to_string(&self.modal_editor);
 
                             // Reject obviously invalid prefixes early
                             if sha.is_empty() || sha.len() > 40 {
@@ -175,19 +175,19 @@ impl App {
 
                                 // Scroll to line number
                                 self.graph_selected = next;
-                                self.grep_editor = edtui::EditorState::default();
+                                self.modal_editor = edtui::EditorState::default();
                                 self.focus = Focus::Viewport;
                             }
 
                         }
                         _ => {
-                            self.grep_editor_event_handler
-                                .on_key_event(key_event, &mut self.grep_editor);
+                            self.modal_editor_event_handler
+                                .on_key_event(key_event, &mut self.modal_editor);
                         }
                     }
                 } else {
-                    self.grep_editor_event_handler
-                        .on_key_event(key_event, &mut self.grep_editor);
+                    self.modal_editor_event_handler
+                        .on_key_event(key_event, &mut self.modal_editor);
                 }
                 return;
             }
@@ -997,7 +997,7 @@ impl App {
         if self.viewport == Viewport::Graph {
             if self.focus == Focus::Viewport {
                 self.focus = Focus::ModalGrep;
-                self.grep_editor.mode = EditorMode::Insert;
+                self.modal_editor.mode = EditorMode::Insert;
             }
         }
     }
@@ -1109,7 +1109,7 @@ impl App {
             _ => {
                 if self.uncommitted.is_staged {
                     self.focus = Focus::ModalCommit;
-                    self.commit_editor.mode = EditorMode::Insert;
+                    self.modal_editor.mode = EditorMode::Insert;
                 }
             }
         }
@@ -1142,7 +1142,7 @@ impl App {
             _ => {
                 if self.graph_selected != 0 {
                     self.focus = Focus::ModalCreateBranch;
-                    self.create_branch_editor.mode = EditorMode::Insert;
+                    self.modal_editor.mode = EditorMode::Insert;
                 }
             }
         }
