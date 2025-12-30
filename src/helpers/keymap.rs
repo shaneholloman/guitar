@@ -215,19 +215,20 @@ pub fn parse_key(s: &str) -> Result<KeyCode, String> {
         "PrintScreen" => Ok(KeyCode::PrintScreen),
         "Pause" => Ok(KeyCode::Pause),
         s if s.starts_with("F(") && s.ends_with(")") => {
-            let inner = &s[2..s.len()-1];
+            let inner = &s[2..s.chars().count()-1];
             inner.parse::<u8>()
                 .map(KeyCode::F)
                 .map_err(|_| format!("Invalid F-key string: {}", s))
         }
         s if s.starts_with("Char(") && s.ends_with(")") => {
-            let inner = &s[5..s.len()-1];
-            if inner.len() == 1 {
-                Ok(KeyCode::Char(inner.chars().next().unwrap()))
-            } else {
-                Err(format!("Invalid Char key string: {}", s))
-            }
-        }
+            let inner = &s[5..s.chars().count() - 1];
+            let ch = inner
+                .chars()
+                .next()
+                .ok_or_else(|| format!("Empty Char key: {}", s))?;
+        
+            Ok(KeyCode::Char(ch))
+        }      
         _ => Err(format!("Unsupported key string: {}", s)),
     }
 }
@@ -293,7 +294,8 @@ fn save_keymap_to_disk(
 pub fn load_or_init_keymap() -> IndexMap<KeyBinding, Command> {
     
     let mut pathbuf = dirs::config_dir().unwrap();
-    pathbuf.push("guitar.toml");
+    pathbuf.push("guitar");
+    pathbuf.push("keymap.toml");
     let path = pathbuf.as_path();
 
     match load_keymap_from_disk(path) {
