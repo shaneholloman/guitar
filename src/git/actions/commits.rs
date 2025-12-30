@@ -5,7 +5,7 @@ use std::{
         HashMap
     }
 };
-use git2::{StashApplyOptions, StashFlags};
+use git2::{FetchPrune, StashApplyOptions, StashFlags};
 #[rustfmt::skip]
 use git2::{
     Oid,
@@ -230,6 +230,7 @@ pub fn fetch_over_ssh(
 
         let mut fetch_options = FetchOptions::new();
         fetch_options.remote_callbacks(callbacks);
+        fetch_options.prune(FetchPrune::On);
 
         remote.fetch(
             &["refs/heads/*:refs/remotes/origin/*"],
