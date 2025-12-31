@@ -81,8 +81,8 @@ impl App {
         let chunks_pane_right = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
             .constraints([
-                ratatui::layout::Constraint::Percentage(if is_inspector { if !is_status { 100 } else { 35 } } else { 0 }),
-                ratatui::layout::Constraint::Percentage(if is_status { if !is_inspector { 100 } else { 65 } } else { 0 }),
+                ratatui::layout::Constraint::Percentage(if is_inspector { if !is_status { 100 } else { 50 } } else { 0 }),
+                ratatui::layout::Constraint::Percentage(if is_status { if !is_inspector { 100 } else { 50 } } else { 0 }),
             ])
             .split(chunks_horizontal[2]);
 
@@ -114,6 +114,9 @@ impl App {
         let mut tags = chunks_pane_left[1];
         if !self.is_branches {
             tags.y += 1;
+        } else {
+            tags_scrollbar.height += 1;
+            tags_scrollbar.y -= 1;
         }
 
         // Stashes
@@ -122,6 +125,9 @@ impl App {
         let mut stashes = chunks_pane_left[2];
         if !self.is_branches && !self.is_tags {
             stashes.y += 1;
+        } else {
+            stashes_scrollbar.height += 1;
+            stashes_scrollbar.y -= 1;
         }
 
         // Graph
@@ -131,23 +137,19 @@ impl App {
         graph.height = graph.height.saturating_sub(2);
 
         // Inspector
-        let mut inspector_scrollbar = chunks_pane_right[0];
+        let inspector_scrollbar = chunks_pane_right[0];
         let mut inspector = chunks_pane_right[0];
         inspector.y += 1;
-        if self.is_status && self.graph_selected != 0 {
-           inspector.height += 2; 
-           inspector_scrollbar.height += 2; 
-        }
 
         // Status top
         let mut status_top_scrollbar = chunks_status[0];
         if self.is_inspector && self.graph_selected != 0 {
-            status_top_scrollbar.y += 1;
-            status_top_scrollbar.height = status_top_scrollbar.height.saturating_sub(1);
+            status_top_scrollbar.y -= 1;
+            status_top_scrollbar.height += 1;
         }
         let mut status_top = chunks_status[0];
-        status_top.y += 1;
-        status_top.height = if self.is_inspector && self.graph_selected != 0 { status_top.height.saturating_sub(1) } else { status_top.height };
+        status_top.y = if self.is_inspector && self.graph_selected != 0 { status_top.y - 1 } else { status_top.y + 1 };
+        status_top.height = if self.is_inspector && self.graph_selected != 0 { status_top.height + 1 } else { status_top.height };
         status_top.width = status_top.width.saturating_sub(1);
 
         // Status bottom
