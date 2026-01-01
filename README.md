@@ -20,6 +20,11 @@ made with ♡ by @asinglebit
 
 ![2](https://github.com/user-attachments/assets/177dbf13-b9ad-480e-a1be-71a333454a44)
 
+### Demo
+
+Heres a recording of me going through the features of v0.1.12
+[https://studio.youtube.com/video/oERA8MYlHjQ/edit](https://www.youtube.com/watch?v=oERA8MYlHjQ)
+
 ### Disclaimer
 
 I work on `guita╭` in my spare time, and give priority to the features I need in my day-to-day life. Use it with caution, and feel free to report issues or even better - contribute improvements! Im a lazy dude, and since this is a hobby project I just put unwrap() everywhere, such is life.
