@@ -151,6 +151,10 @@ Copy it wherever you want and run with a path to repo you wish to inspect
 guitar ../path/to/your/repo
 ```
 
+Or alternatively, alias the executable and then call it from a repo folder directly.
+
+Running it from a non repo folder will crash the process. I will fix it sometime later...
+
 ### Screenshots
 ![1](https://github.com/user-attachments/assets/37df457b-bbf4-4d51-a965-c300b426cb62)
 ![6](https://github.com/user-attachments/assets/2ed8f14e-193b-4815-b37e-283bd129787f)
