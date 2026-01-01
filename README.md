@@ -23,7 +23,7 @@ made with ♡ by @asinglebit
 ### Demo
 
 Heres a recording of me going through the features of v0.1.12
-[https://studio.youtube.com/video/oERA8MYlHjQ/edit](https://www.youtube.com/watch?v=oERA8MYlHjQ)
+[https://www.youtube.com/watch?v=oERA8MYlHjQ](https://www.youtube.com/watch?v=oERA8MYlHjQ)
 
 ### Disclaimer
 
