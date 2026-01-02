@@ -21,6 +21,7 @@ pub struct Oids {
     pub oids: Vec<Oid>,
     pub aliases: HashMap<Oid, u32>,
     pub sorted_aliases: Vec<u32>,
+    pub stashes: Vec<u32>,
 }
 
 impl Default for Oids {
@@ -30,6 +31,7 @@ impl Default for Oids {
             oids: Vec::new(),
             aliases: HashMap::new(),
             sorted_aliases: vec![NONE],
+            stashes: vec![]
         }
     }
 }

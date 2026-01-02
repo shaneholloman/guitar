@@ -13,6 +13,7 @@ use git2::{
     Oid,
     Repository
 };
+use crate::git::queries::commits::get_stashed_commits;
 #[rustfmt::skip]
 use crate::{
     core::{
@@ -44,7 +45,7 @@ use crate::{
 // Context for walking and rendering commits
 pub struct Walker {
     // General
-    pub repo: Rc<Repository>,
+    pub repo: Rc<RefCell<Repository>>,
     
     // Batcher
     pub batcher: Batcher,
@@ -61,6 +62,8 @@ pub struct Walker {
 
     pub tags_lanes: HashMap<u32, usize>,
     pub tags_local: HashMap<u32, Vec<String>>,
+
+    pub stashes_lanes: HashMap<u32, usize>,
 
     // Batching
     pub amount: usize
@@ -82,6 +85,8 @@ pub struct WalkerOutput {
     pub tags_lanes: HashMap<u32, usize>,
     pub tags_local: HashMap<u32, Vec<String>>,
 
+    pub stashes_lanes: HashMap<u32, usize>,
+
     // Batching
     pub is_again: bool,
     pub is_first: bool
@@ -95,7 +100,7 @@ impl Walker {
         visible: HashMap<u32, Vec<String>>,
     ) -> Result<Self, git2::Error> {
         let path = path.clone();
-        let repo = Rc::new(Repository::open(path).expect("Failed to open repo"));
+        let repo = Rc::new(RefCell::new(Repository::open(path).expect("Failed to open repo")));
         
         // Walker utilities
         let buffer = RefCell::new(Buffer::default());
@@ -103,11 +108,19 @@ impl Walker {
         // Walker data
         let mut oids = Oids::default();
         let branches_lanes = HashMap::new();
-        let (branches_local, branches_remote) = get_tip_oids(&repo, &mut oids);
+        let (branches_local, branches_remote) = get_tip_oids(&repo.borrow(), &mut oids);
 
         let tags_lanes = HashMap::new();
-        let tags_local = get_tag_oids(&repo, &mut oids);
+        let tags_local = get_tag_oids(&repo.borrow(), &mut oids);
+
+        let stashes_lanes = HashMap::new();
         
+        // Get stashed commits and store them in oids
+        {
+            let mut repo_mut = repo.borrow_mut();
+            oids.stashes = get_stashed_commits(&mut repo_mut, &mut oids);
+        }
+
         // Batcher
         let batcher = Batcher::new(repo.clone(), visible, &mut oids).expect("Error");
 
@@ -127,6 +140,7 @@ impl Walker {
             branches_remote,
             tags_lanes,
             tags_local,
+            stashes_lanes,
 
             // Pagination
             amount
@@ -137,7 +151,7 @@ impl Walker {
     pub fn walk(&mut self) -> bool {
 
         // Determine current HEAD oid
-        let head_oid = self.repo.head().unwrap().target().unwrap();
+        let head_oid = self.repo.borrow().head().unwrap().target().unwrap();
 
         // Get the alias
         let head_alias = self.oids.get_alias_by_oid(head_oid);
@@ -157,33 +171,55 @@ impl Walker {
                 .borrow_mut()
                 .update(Chunk::uncommitted(head_alias, NONE));
         }
+        
+        // Get all the stashed commits here
+        let stashes: Vec<u32> = self.oids.stashes.clone();
+
+        // Insert stashes into sorted_batch right after their parent commit
+        for &stash_alias in &stashes {
+            let stash_oid = self.oids.get_oid_by_alias(stash_alias);
+            let repo =  self.repo.borrow();
+            let stash_commit = repo.find_commit(*stash_oid).unwrap();
+
+            if let Some(parent_oid) = stash_commit.parent_ids().next() {
+                let parent_alias = self.oids.get_alias_by_oid(parent_oid);
+
+                // Find the position of the parent in the current sorted batch
+                if let Some(pos) = sorted_batch.iter().position(|&a| a == parent_alias) {
+                    // Insert the stash alias right after the parent
+                    sorted_batch.insert(if pos == 0 { 0 } else { pos - 1 }, stash_alias);
+                }
+            }
+        }
 
         // Go through the commits, inferring the graph
         for &alias in sorted_batch.iter() {
+
             let mut merger_alias: u32 = NONE;
             let oid = self.oids.get_oid_by_alias(alias);
-            let commit = self.repo.find_commit(*oid).unwrap();
+            let repo = self.repo.borrow();
+            let commit = repo.find_commit(*oid).unwrap();
             let parents: Vec<Oid> = commit.parent_ids().collect();
 
-            // Gat parent aliases
-            let parent_a = if let Some(parent) = parents.first() {
-                self.oids.get_alias_by_oid(*parent)
-            } else { NONE };
-            let parent_b = if let Some(parent) = parents.get(1) {
-                self.oids.get_alias_by_oid(*parent)
-            } else { NONE };
+            // Get parent aliases
+            let (parent_a, parent_b) = if stashes.contains(&alias) {(
+                // For stash commits, only the first parent is used
+                parents.first().map(|p| self.oids.get_alias_by_oid(*p)).unwrap_or(NONE),
+                NONE,
+            )} else {(
+                // For normal commits, use both parents if they exist
+                parents.first().map(|p| self.oids.get_alias_by_oid(*p)).unwrap_or(NONE),
+                parents.get(1).map(|p| self.oids.get_alias_by_oid(*p)).unwrap_or(NONE),
+            )};
 
+            // Create commit chunk for the current commit with its parents
             let chunk = Chunk::commit(alias, parent_a, parent_b);
-
-            let mut is_commit_found = false;
-            let mut lane_idx = 0;
 
             // Update
             self.buffer.borrow_mut().update(chunk);
 
-            for chunk in &self.buffer.borrow().curr {
+            for (lane_idx, chunk) in (&self.buffer.borrow().curr).into_iter().enumerate() {
                 if !chunk.is_dummy() && alias == chunk.alias {
-                    is_commit_found = true;
 
                     if self.branches_local.contains_key(&alias) || self.branches_remote.contains_key(&alias) {
                         self.branches_lanes.insert(alias, lane_idx);
@@ -191,6 +227,10 @@ impl Walker {
 
                     if self.tags_local.contains_key(&alias) {
                         self.tags_lanes.insert(alias, lane_idx);
+                    }
+
+                    if stashes.contains(&alias) {
+                        self.stashes_lanes.insert(alias, lane_idx);
                     }
 
                     if chunk.parent_a != NONE && chunk.parent_b != NONE {
@@ -207,16 +247,6 @@ impl Walker {
                             merger_alias = chunk.alias;
                         }
                     }
-                }
-
-                lane_idx += 1;
-            }
-
-            if !is_commit_found {
-                self.branches_lanes.insert(alias, lane_idx);
-
-                if self.tags_local.contains_key(&alias) {
-                    self.tags_lanes.insert(alias, lane_idx);
                 }
             }
 

@@ -40,11 +40,12 @@ impl Buffer {
     pub fn update(&mut self, chunk: Chunk) {
         self.backup();  
 
-        // Erase trailing dummy chunk
-        while self.curr.last().is_some_and(|c| c.is_dummy()) {
+        // Erase all trailing dummy chunks in the end of the buffer, if any
+        while let Some(last_idx) = self.curr.len().checked_sub(1) {
+            if !self.curr[last_idx].is_dummy() { break; }
             self.curr.pop_back();
             self.delta.ops.push_back(DeltaOp::Remove {
-                index: self.curr.len() - 1,
+                index: last_idx,
             });
         }
 
@@ -106,16 +107,12 @@ impl Buffer {
 
                 if parents_changed && inner.parent_a == NONE && inner.parent_b== NONE {
                     *inner = Chunk::dummy();
-                    self.delta.ops.push_back(DeltaOp::Replace {
-                        index: i,
-                        new: inner.clone()
-                    });
-                } else {
-                    self.delta.ops.push_back(DeltaOp::Replace {
-                        index: i,
-                        new: inner.clone()
-                    });
                 }
+
+                self.delta.ops.push_back(DeltaOp::Replace {
+                    index: i,
+                    new: inner.clone()
+                });
             }
         } else {
             self.curr.push_back(chunk.clone());

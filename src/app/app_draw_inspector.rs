@@ -12,7 +12,6 @@ use ratatui::{
         ScrollbarOrientation,
         ScrollbarState,
         List,
-        Padding,
         ListItem
     },
 };
@@ -35,6 +34,9 @@ use crate::{
 impl App {
 
     pub fn draw_inspector(&mut self, frame: &mut Frame) {
+        
+        // Padding
+        let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
         
         // Calculate maximum available width for text
         let available_width = self.layout.inspector.width as usize - 1;
@@ -136,8 +138,7 @@ impl App {
         
         // Setup the list
         let list = List::new(list_items)
-            .block(Block::default()
-                .padding(Padding{ left: 1, right: 1, top: 0, bottom: 0})
+            .block(Block::default().padding(padding)
             );
 
         frame.render_widget(list, self.layout.inspector);

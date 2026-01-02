@@ -50,13 +50,10 @@ use ratatui::{
         Span
     },
 };
+use crate::{core::stashes::Stashes, helpers::{copy::{STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_FIND_SHA}, heatmap::{DAYS, WEEKS}, keymap::{Command, KeyBinding}}};
 #[rustfmt::skip]
 use crate::{
     app::{
-        app_input::{
-            Command,
-            KeyBinding
-        },
         app_layout::{
             Layout
         }
@@ -113,18 +110,23 @@ pub enum Viewport {
     Settings
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Focus {
     Viewport,
     Inspector,
     StatusTop,
     StatusBottom,
     Branches,
+    Tags,
+    Stashes,
     ModalCheckout,
     ModalSolo,
     ModalCommit,
     ModalCreateBranch,
-    ModalDeleteBranch
+    ModalDeleteBranch,
+    ModalGrep,
+    ModalTag,
+    ModalDeleteTag
 }
 
 #[derive(PartialEq, Eq)]
@@ -132,7 +134,6 @@ pub enum Direction {
     Down,
     Up,
 }
-
 pub struct App {
 
     // General
@@ -144,6 +145,7 @@ pub struct App {
     pub keymap: IndexMap<KeyBinding, Command>,
     pub last_input_direction: Option<Direction>,
     pub theme: Theme,
+    pub heatmap: [[usize; WEEKS]; DAYS],
 
     // User
     pub name: String,
@@ -160,6 +162,7 @@ pub struct App {
     pub oids: Oids,
     pub branches: Branches,
     pub tags: Tags,
+    pub stashes: Stashes,
     pub uncommitted: UncommittedChanges,
 
     // Cache
@@ -171,9 +174,12 @@ pub struct App {
     pub layout: Layout,
 
     // Focus
+    pub is_shas: bool,
     pub is_minimal: bool,
     pub is_branches: bool,
     pub is_status: bool,
+    pub is_tags: bool,
+    pub is_stashes: bool,
     pub is_inspector: bool,
     pub viewport: Viewport,
     pub focus: Focus,
@@ -181,6 +187,14 @@ pub struct App {
     // Branches
     pub branches_selected: usize,
     pub branches_scroll: Cell<usize>,
+
+    // Tags
+    pub tags_selected: usize,
+    pub tags_scroll: Cell<usize>,
+
+    // Stashes
+    pub stashes_selected: usize,
+    pub stashes_scroll: Cell<usize>,
 
     // Graph
     pub graph_selected: usize,
@@ -216,16 +230,15 @@ pub struct App {
     // Modal solo
     pub modal_solo_selected: i32,
 
-    // Modal commit
-    pub commit_editor: EditorState,
-    pub commit_editor_event_handler: EditorEventHandler,
-
-    // Modal create branch
-    pub create_branch_editor: EditorState,
-    pub create_branch_editor_event_handler: EditorEventHandler,
+    // Modal editor
+    pub modal_editor: EditorState,
+    pub modal_editor_event_handler: EditorEventHandler,
 
     // Modal delete a branch
     pub modal_delete_branch_selected: i32,
+
+    // Modal delete a tag
+    pub modal_delete_tag_selected: i32,
 
     // Exit
     pub is_exit: bool,
@@ -235,6 +248,7 @@ impl App  {
     
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
 
+        self.load_layout();
         self.load_keymap();
         self.reload();
 
@@ -256,22 +270,25 @@ impl App  {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
+        
+        let minimal_horizontal_space = if (self.is_branches || self.is_tags || self.is_stashes) && (self.is_inspector || self.is_status) { 100 } else { 50 };
+        let is_zen = frame.area().width < minimal_horizontal_space;
 
         // Compute the layout
         self.layout(frame);
-
-        let is_splash = self.viewport == Viewport::Splash;
+        
+        let is_splash = self.viewport == Viewport::Splash || is_zen;
 
         frame.render_widget( Block::default()
             .borders(if is_splash { Borders::NONE } else { Borders::ALL })
             .border_style(Style::default().fg(self.theme.COLOR_BORDER))
             .border_type(ratatui::widgets::BorderType::Rounded), self.layout.app);
-                
-        // Main layout
-        if !is_splash {
-            self.draw_title(frame);
-        }
 
+        if is_zen {
+            self.draw_splash(frame);
+            return;
+        }
+        
         // Viewport
         match self.viewport {
             Viewport::Graph => {
@@ -290,6 +307,11 @@ impl App  {
                 self.draw_settings(frame);
             }
         }
+                
+        // Main layout
+        if !is_splash {
+            self.draw_title(frame);
+        }
 
         // Panes
         match self.viewport {
@@ -298,6 +320,12 @@ impl App  {
             _ => {
                 if self.is_branches {
                     self.draw_branches(frame);
+                }
+                if self.is_tags {
+                    self.draw_tags(frame);
+                }
+                if self.is_stashes {
+                    self.draw_stashes(frame);
                 }
                 if self.is_status {
                     self.draw_status(frame);
@@ -321,14 +349,23 @@ impl App  {
             Focus::ModalSolo => {
                 self.draw_modal_solo(frame);
             }
-            Focus::ModalCommit => {
-                self.draw_modal_commit(frame);
-            }
-            Focus::ModalCreateBranch => {
-                self.draw_modal_create_branch(frame);
-            }
             Focus::ModalDeleteBranch => {
                 self.draw_modal_delete_branch(frame);
+            }
+            Focus::ModalDeleteTag => {
+                self.draw_modal_delete_tag(frame);
+            }
+            Focus::ModalCommit => {
+                self.draw_modal_input(frame, STR_CREATE_COMMIT);
+            }
+            Focus::ModalCreateBranch => {
+                self.draw_modal_input(frame, STR_CREATE_BRANCH);
+            }
+            Focus::ModalGrep => {
+                self.draw_modal_input(frame, STR_FIND_SHA);
+            }
+            Focus::ModalTag => {
+                self.draw_modal_input(frame, STR_CREATE_TAG);
             }
             _ => {}
         }
@@ -407,6 +444,7 @@ impl App  {
                     branches_remote: walk_ctx.branches_remote.clone(),
                     tags_lanes: walk_ctx.tags_lanes.clone(),
                     tags_local: walk_ctx.tags_local.clone(),
+                    stashes_lanes: walk_ctx.stashes_lanes.clone(),
                     buffer: walk_ctx.buffer.clone(),
                     is_first,
                     is_again,
@@ -464,6 +502,12 @@ impl App  {
                 &self.color,
                 &result.tags_lanes,
                 result.tags_local
+            );
+
+            // Update stashes
+            self.stashes.feed(
+                &self.color,
+                &result.stashes_lanes,
             );
 
             if !result.is_again {

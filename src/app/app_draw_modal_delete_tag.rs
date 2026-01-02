@@ -19,53 +19,39 @@ use ratatui::{
         Widget
     },
 };
+use crate::helpers::symbols::SYM_TAG;
 #[rustfmt::skip]
-use crate::{
-    app::app::{
+use crate::app::app::{
         App
-    },
-    git::{
-        queries::{
-            commits::{
-                get_current_branch
-            }
-        }
-    }
-};
+    };
 
 impl App {
 
-    pub fn draw_modal_delete_branch(&mut self, frame: &mut Frame) {
+    pub fn draw_modal_delete_tag(&mut self, frame: &mut Frame) {
         
         let mut length = 30;
         let mut height = 8;
         let alias = self.oids.get_alias_by_idx(self.graph_selected);
         let mut lines = Vec::new();
-        let line_text = "select a branch to delete";
+        let line_text = "select a tag to delete";
         lines.push(Line::default());
         lines.push(Line::from(vec![Span::styled(line_text, Style::default().fg(self.theme.COLOR_TEXT))]));
         lines.push(Line::default());
-        
-        // Render list
-        let current = get_current_branch(&self.repo);
-        let color = self.branches.colors.get(&alias).unwrap();
-        let branches = self.branches.visible.get(&alias).unwrap();
-        branches
-            .iter()
-            .filter(|branch| current.as_ref() != Some(*branch))
-            .enumerate()
-            .for_each(|(idx, branch)| {
-                height += 1;
-                let is_local = self.branches.local
-                    .values()
-                    .any(|branches| branches.iter().any(|b| b.as_str() == branch));
 
-                let line_text = format!("{} {} ", if is_local { "●" } else { "◆" }, branch);
+        // Render list
+        let color = self.tags.colors.get(&alias).unwrap();
+        let tags = self.tags.local.get(&alias).unwrap();
+        tags
+            .iter()
+            .enumerate()
+            .for_each(|(idx, tag)| {
+                height += 1;
+                let line_text = format!("{} {} ", SYM_TAG, tag);
                 length = length.max(line_text.len());
 
                 lines.push(Line::from(Span::styled(
                     line_text,
-                    Style::default().fg(if idx == self.modal_delete_branch_selected as usize {
+                    Style::default().fg(if idx == self.modal_delete_tag_selected as usize {
                         *color
                     } else {
                         self.theme.COLOR_TEXT

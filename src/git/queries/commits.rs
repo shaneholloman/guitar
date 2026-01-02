@@ -1,5 +1,6 @@
 #[rustfmt::skip]
 use std::collections::HashMap;
+use git2::ObjectType;
 #[rustfmt::skip]
 use git2::{
     Oid,
@@ -48,16 +49,27 @@ pub fn get_tip_oids(repo: &Repository, oids: &mut Oids) -> (HashMap<u32, Vec<Str
 pub fn get_tag_oids(repo: &Repository, oids: &mut Oids) -> HashMap<u32, Vec<String>> {
     let mut local: HashMap<u32, Vec<String>> = HashMap::new();
 
-    // Iterate all references
     for reference in repo.references().unwrap().flatten() {
-        if let Some(oid) = reference.target() {
-            let alias = oids.get_alias_by_oid(oid);
-            let name = reference.name().unwrap_or("unknown");
+        let name = match reference.name() {
+            Some(n) => n,
+            None => continue,
+        };
 
-            if let Some(stripped) = name.strip_prefix("refs/tags/") {
-                local.entry(alias).or_default().push(stripped.to_string());
-            }
-        }
+        let stripped = match name.strip_prefix("refs/tags/") {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Peel ref to commit
+        let obj = match reference.peel(ObjectType::Commit) {
+            Ok(obj) => obj,
+            Err(_) => continue, // Ignore if the tag points to non-commit
+        };
+
+        let commit_oid = obj.id();
+        let alias = oids.get_alias_by_oid(commit_oid);
+
+        local.entry(alias).or_default().push(stripped.to_string());
     }
 
     local
@@ -123,4 +135,16 @@ pub fn get_git_user_info(
     let name = config.get_string("user.name").ok();
     let email = config.get_string("user.email").ok();
     Ok((name, email))
+}
+
+pub fn get_stashed_commits(repo: &mut Repository, oids: &mut Oids) -> Vec<u32> {
+    let mut stashes = Vec::new();
+
+    repo.stash_foreach(|_, _, oid| {
+        let alias = oids.get_alias_by_oid(*oid);
+        stashes.push(alias);
+        true
+    }).unwrap();
+
+    stashes
 }

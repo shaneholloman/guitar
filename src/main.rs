@@ -9,6 +9,8 @@ mod app {
     pub mod app_layout;
     pub mod app_draw_title;
     pub mod app_draw_branches;
+    pub mod app_draw_tags;
+    pub mod app_draw_stashes;
     pub mod app_draw_graph;
     pub mod app_draw_editor;
     pub mod app_draw_viewer;
@@ -19,9 +21,9 @@ mod app {
     pub mod app_draw_statusbar;
     pub mod app_draw_modal_checkout;
     pub mod app_draw_modal_solo;
-    pub mod app_draw_modal_commit;
-    pub mod app_draw_modal_create_branch;
     pub mod app_draw_modal_delete_branch;
+    pub mod app_draw_modal_input;
+    pub mod app_draw_modal_delete_tag;
 }
 mod core {
     pub mod buffer;
@@ -33,6 +35,7 @@ mod core {
     pub mod oids;
     pub mod branches;
     pub mod tags;
+    pub mod stashes;
 }
 pub mod git {
     pub mod actions {
@@ -45,12 +48,16 @@ pub mod git {
     }
 }
 pub mod helpers {
+    pub mod keymap;
     pub mod colors;
     pub mod palette;
     pub mod spinner;
     pub mod symbols;
     pub mod text;
     pub mod time;
+    pub mod copy;
+    pub mod logger;
+    pub mod heatmap;
 }
 
 use crate::app::app::App;

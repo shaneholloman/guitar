@@ -5,6 +5,7 @@ use std::{
     rc::Rc,
     cell::RefCell
 };
+use chrono::Utc;
 #[rustfmt::skip]
 use git2::Repository;
 #[rustfmt::skip]
@@ -21,6 +22,7 @@ use edtui::{
     EditorEventHandler,
     EditorState
 };
+use crate::{core::stashes::Stashes, git::queries::helpers::commits_per_day, helpers::heatmap::build_heatmap};
 #[rustfmt::skip]
 use crate::{
     app::{
@@ -77,6 +79,11 @@ impl Default for App {
             Span::styled("a", Style::default().fg(theme.COLOR_GRASS)),
             Span::styled("╭", Style::default().fg(theme.COLOR_GREEN))
         ];
+        let heatmap = {
+            let counts = commits_per_day(&repo);
+            let today = Utc::now().date_naive();
+            build_heatmap(&counts, today)
+        };
 
         App {
             // General
@@ -88,6 +95,7 @@ impl Default for App {
             keymap: IndexMap::new(),
             last_input_direction: None,
             theme,
+            heatmap,
 
             // User
             name: String::new(),
@@ -104,6 +112,7 @@ impl Default for App {
             oids: Oids::default(),
             branches: Branches::default(),
             tags: Tags::default(),
+            stashes: Stashes::default(),
             uncommitted: UncommittedChanges::default(),
 
             // Cache
@@ -115,8 +124,11 @@ impl Default for App {
             layout: Layout::default(),
             
             // Focus
+            is_shas: false,
             is_minimal: false,
             is_branches: false,
+            is_tags: false,
+            is_stashes: false,
             is_status: false,
             is_inspector: false,
             viewport: Viewport::Splash,
@@ -126,6 +138,14 @@ impl Default for App {
             branches_selected: 0,
             branches_scroll: 0.into(),
             
+            // Tags
+            tags_selected: 0,
+            tags_scroll: 0.into(),
+
+            // Stashes
+            stashes_selected: 0,
+            stashes_scroll: 0.into(),
+
             // Graph
             graph_selected: 0,
             graph_scroll: 0.into(),
@@ -160,16 +180,15 @@ impl Default for App {
             // Modal solo
             modal_solo_selected: 0,
 
-            // Modal commit
-            commit_editor: EditorState::default(),
-            commit_editor_event_handler: EditorEventHandler::default(),
-
-            // Modal create branch
-            create_branch_editor: EditorState::default(),
-            create_branch_editor_event_handler: EditorEventHandler::default(),
+            // Modal editor
+            modal_editor: EditorState::default(),
+            modal_editor_event_handler: EditorEventHandler::default(),
 
             // Modal delete branch
             modal_delete_branch_selected: 0,
+
+            // Modal delete tag
+            modal_delete_tag_selected: 0,
 
             // Exit
             is_exit: false,   

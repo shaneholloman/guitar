@@ -5,6 +5,7 @@ use std::{
         HashMap
     }
 };
+use git2::{CherrypickOptions, FetchPrune, StashApplyOptions, StashFlags};
 #[rustfmt::skip]
 use git2::{
     Oid,
@@ -229,9 +230,10 @@ pub fn fetch_over_ssh(
 
         let mut fetch_options = FetchOptions::new();
         fetch_options.remote_callbacks(callbacks);
+        fetch_options.prune(FetchPrune::On);
 
         remote.fetch(
-            &["refs/heads/*:refs/remotes/origin/*"],
+            &["refs/heads/*:refs/remotes/origin/*", "refs/tags/*:refs/tags/*"],
             Some(&mut fetch_options),
             None,
         )?;
@@ -273,15 +275,25 @@ pub fn push_over_ssh(
         let mut push_options = PushOptions::new();
         push_options.remote_callbacks(callbacks);
 
-        // The refspec tells Git what to push
-        let refspec = if force {
-            format!("+refs/heads/{0}:refs/heads/{0}", branch) // '+' means force
+        // Build refspecs
+        let mut refspecs = vec![];
+        
+        // Branch
+        let branch_refspec = if force {
+            format!("+refs/heads/{0}:refs/heads/{0}", branch)
         } else {
             format!("refs/heads/{0}:refs/heads/{0}", branch)
         };
+        refspecs.push(branch_refspec);
+
+        // Local tags
+        for tag_name in repo.tag_names(None)?.iter().flatten() {
+            let tag_refspec = format!("refs/tags/{0}:refs/tags/{0}", tag_name);
+            refspecs.push(tag_refspec);
+        }
 
         // Perform the push
-        remote.push(&[&refspec], Some(&mut push_options))?;
+        remote.push(&refspecs.iter().map(|s| s.as_str()).collect::<Vec<_>>(), Some(&mut push_options))?;
 
         // println!("Push complete for branch '{}'", branch);
         Ok(())
@@ -321,3 +333,134 @@ pub fn delete_branch(repo: &Repository, branch: &str) -> Result<(), Error> {
     Ok(())
 }
 
+pub fn stash(
+    repo: &mut Repository,
+) -> Result<Oid, git2::Error> {
+
+    let flags = StashFlags::DEFAULT | StashFlags::INCLUDE_UNTRACKED;
+
+    let message = {
+        let head = repo.head()?;
+        let commit = head.peel_to_commit()?;
+        let short_id = commit.id().to_string()[..7].to_string();
+        let summary = commit.summary().unwrap_or("WIP");
+        format!("{} {}", short_id, summary)
+    };
+
+    let stash_index = repo.stash_save(
+        &repo.signature()?,
+        message.as_str(),
+        Some(flags),
+    )?;
+
+    Ok(stash_index)
+}
+
+pub fn pop(
+    repo: &mut Repository,
+    target_oid: &Oid,
+    apply: bool
+) -> Result<(), git2::Error> {
+
+    let mut stash_index: Option<usize> = None;
+
+    repo.stash_foreach(|index, _message, oid| {
+        if oid == target_oid {
+            stash_index = Some(index);
+            false
+        } else {
+            true
+        }
+    })?;
+
+    if let Some(index) = stash_index {
+        if apply {
+            let mut opts = StashApplyOptions::new();
+            repo.stash_apply(index, Some(&mut opts))?;
+        }
+        repo.stash_drop(index)?;
+    }
+
+    Ok(())
+}
+
+pub fn tag(
+    repo: &Repository,
+    oid: git2::Oid,
+    tag: &str,
+) -> Result<Oid, Error> {
+    repo.tag_lightweight(tag, &repo.find_object(oid, None)?, false)
+}
+
+pub fn untag(
+    repo: &Repository,
+    tag: &str
+) -> Result<(), Error> {
+    repo.tag_delete(tag)
+}
+
+pub fn cherry_pick_commit(
+    repo: &Repository,
+    commit_oid: Oid,
+    message: Option<&str>, // optional override for commit message
+    allow_conflicts: bool, // true -> force working dir changes
+) -> Result<Oid, Error> {
+    // Find the commit to cherry-pick
+    let commit = repo.find_commit(commit_oid)?;
+
+    // Get current HEAD commit
+    let head_commit = repo.head()?.peel_to_commit()?;
+
+    // Prepare cherry-pick options
+    let mut cherrypick_opts = CherrypickOptions::new();
+
+    // Perform cherry-pick
+    repo.cherrypick(&commit, Some(&mut cherrypick_opts))?;
+
+    // Get the index after cherry-pick
+    let mut index = repo.index()?;
+
+    // If conflicts exist
+    if index.has_conflicts() {
+        if allow_conflicts {
+            let conflicts: Vec<_> = index
+                .conflicts()?
+                .flatten()
+                .filter_map(|e| e.our)
+                .collect();
+            for conflict in conflicts {
+                index.add(&conflict)?;
+            }
+        } else {
+            return Err(Error::from_str("Cherry-pick conflicts detected"));
+        }
+    }
+
+    // Write tree
+    let tree_oid = index.write_tree()?;
+    let tree = repo.find_tree(tree_oid)?;
+
+    // Create commit signature
+    let sig = repo.signature()?;
+
+    // Commit message
+    let commit_message = message.unwrap_or_else(|| commit.message().unwrap_or("Cherry-pick commit"));
+
+    // Determine parents: HEAD
+    let parents = [&head_commit];
+
+    // Create the new commit
+    let new_commit_oid = repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        commit_message,
+        &tree,
+        &parents,
+    )?;
+
+    // Update working directory
+    repo.checkout_head(Some(CheckoutBuilder::default().allow_conflicts(allow_conflicts).force()))?;
+
+    Ok(new_commit_oid)
+}

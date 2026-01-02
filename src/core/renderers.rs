@@ -26,15 +26,10 @@ use ratatui::{
         Span
     },
 };
+use crate::helpers::keymap::{Command, KeyBinding};
 #[rustfmt::skip]
 use crate::{
     layers,
-    app::{
-        app_input::{
-            Command,
-            KeyBinding
-        }
-    },
     git::{
         queries::{
             helpers::{
@@ -107,42 +102,64 @@ pub fn render_graph_range(
         // Find branching lanes
         let mut branching_lanes: Vec<usize> = Vec::new();
         for (lane_idx, chunk) in last.iter().enumerate() {
+            // Dummy in the end, chunk exists ont the same lane in prev
             if chunk.is_dummy()
-                && let Some(prev_snapshot) = prev && let Some(prev) = prev_snapshot.get(lane_idx)
-                    && ((prev.parent_a != NONE && prev.parent_b == NONE) || (prev.parent_a == NONE && prev.parent_b != NONE)) {
-                        branching_lanes.push(lane_idx);
-                    }
+                && let Some(prev_snapshot) = prev
+                && let Some(prev) = prev_snapshot.get(lane_idx)
+                && ((prev.parent_a != NONE && prev.parent_b == NONE) || (prev.parent_a == NONE && prev.parent_b != NONE)) {
+                branching_lanes.push(lane_idx);
+                continue;
+            }
+
+            // Dummy in the end, while nothing existed on the same lane in the prev
+            if chunk.is_dummy()
+                && let Some(prev_snapshot) = prev
+                && prev_snapshot.get(lane_idx).is_none()
+            {
+                branching_lanes.push(lane_idx);
+            }
         }
 
         for chunk in last.iter() {
-            if is_commit_found && !branching_lanes.is_empty()
-                && let Some(&closest_lane) = branching_lanes.first() {
-                    if closest_lane == lane_idx {
-                        branching_lanes.remove(0);
-                    } else if lane_idx < closest_lane {
-                        layers.merge(SYM_EMPTY, closest_lane);
-                        layers.merge(SYM_EMPTY, closest_lane);
-                        layers.commit(SYM_EMPTY, closest_lane);
-                        layers.commit(SYM_EMPTY, closest_lane);
-                        layers.pipe(SYM_HORIZONTAL, closest_lane);
-                        layers.pipe(SYM_HORIZONTAL, closest_lane);
-                        lane_idx += 1;
-                        continue;
-                    }
+            if is_commit_found && !branching_lanes.is_empty() && let Some(&closest_lane) = branching_lanes.first() {
+                if closest_lane == lane_idx {
+                    branching_lanes.remove(0);
+                } else if lane_idx < closest_lane {
+                    layers.merge(SYM_EMPTY, closest_lane);
+                    layers.merge(SYM_EMPTY, closest_lane);
+                    layers.commit(SYM_EMPTY, closest_lane);
+                    layers.commit(SYM_EMPTY, closest_lane);
+                    layers.pipe(SYM_HORIZONTAL, closest_lane);
+                    layers.pipe(SYM_HORIZONTAL, closest_lane);
+                    lane_idx += 1;
+                    continue;
                 }
+            }
 
             if chunk.is_dummy() {
-                if let Some(prev_snapshot) = prev && let Some(prev) = prev_snapshot.get(lane_idx) {
-                    if (prev.parent_a != NONE && prev.parent_b == NONE) || (prev.parent_a == NONE && prev.parent_b != NONE) {
-                        layers.commit(SYM_EMPTY, lane_idx);
-                        layers.commit(SYM_EMPTY, lane_idx);
-                        layers.pipe(SYM_BRANCH_UP, lane_idx);
-                        layers.pipe(SYM_EMPTY, lane_idx);
-                    } else {
-                        layers.commit(SYM_EMPTY, lane_idx);
-                        layers.commit(SYM_EMPTY, lane_idx);
-                        layers.pipe(SYM_EMPTY, lane_idx);
-                        layers.pipe(SYM_EMPTY, lane_idx);
+                if let Some(prev_snapshot) = prev {
+                    match prev_snapshot.get(lane_idx) {
+                        Some(prev) => {
+                            // Dummy in the end, chunk exists ont the same lane in prev
+                            if (prev.parent_a != NONE && prev.parent_b == NONE) || (prev.parent_a == NONE && prev.parent_b != NONE) {
+                                layers.commit(SYM_EMPTY, lane_idx);
+                                layers.commit(SYM_EMPTY, lane_idx);
+                                layers.pipe(SYM_BRANCH_UP, lane_idx);
+                                layers.pipe(SYM_EMPTY, lane_idx);
+                            } else {
+                                layers.commit(SYM_EMPTY, lane_idx);
+                                layers.commit(SYM_EMPTY, lane_idx);
+                                layers.pipe(SYM_EMPTY, lane_idx);
+                                layers.pipe(SYM_EMPTY, lane_idx);
+                            }
+                        }
+                        None => {
+                            // Dummy in the end, while nothing existed on the same lane in the prev
+                            layers.commit(SYM_EMPTY, lane_idx);
+                            layers.commit(SYM_EMPTY, lane_idx);
+                            layers.pipe(SYM_BRANCH_UP, lane_idx);
+                            layers.pipe(SYM_EMPTY, lane_idx);
+                        }
                     }
                 }
             } else if *alias == chunk.alias {
@@ -152,6 +169,8 @@ pub fn render_graph_range(
                     layers.commit(SYM_MERGE, lane_idx);
                 } else if all.contains_key(alias) {
                     layers.commit(SYM_COMMIT_BRANCH, lane_idx);
+                } else if oids.stashes.contains(alias) {
+                    layers.commit(SYM_COMMIT_STASH, lane_idx);
                 } else {
                     layers.commit(SYM_COMMIT, lane_idx);
                 }
@@ -241,6 +260,7 @@ pub fn render_graph_range(
                                 {
                                     layers.merge(SYM_MERGE_LEFT_FROM, merger_idx);
                                     layers.merge(SYM_EMPTY, merger_idx);
+                                    is_merged_before = true;
                                     is_drawing = false;
                                 } else if is_drawing {
                                     layers.merge(SYM_HORIZONTAL, merger_idx);
@@ -254,6 +274,7 @@ pub fn render_graph_range(
                     }
 
                     if !is_merger_found {
+                        
                         // Count how many dummies in the end to get the real last element, append there
                         let mut idx = last.len() - 1;
                         let mut trailing_dummies = 0;
@@ -266,9 +287,24 @@ pub fn render_graph_range(
                             }
                         }
 
+                        // Meet some corner cases against the previous buffer line - if there are further branches
+                        if let Some(prev) = prev {
+                            let mut prev_trailing_dummies = 0;
+                            for (_, c) in prev.iter().enumerate().rev() {
+                                if c.is_dummy() {
+                                    prev_trailing_dummies += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            if prev_trailing_dummies < trailing_dummies {
+                                trailing_dummies = prev_trailing_dummies;
+                            }
+                        }   
+
                         if trailing_dummies > 0
                             && prev.is_some()
-                            && prev.unwrap().len() > idx
+                            && prev.unwrap().len() > idx + 1
                             && prev.unwrap()[idx + 1].is_dummy()
                         {
                             layers.merge(SYM_BRANCH_DOWN, idx + 1);
@@ -384,56 +420,91 @@ pub fn render_buffer_range(
     start: usize,
     end: usize,
 ) -> Vec<Line<'static>> {
-    
-    let mut idx = start;
-    let mut lines_buffer: Vec<Line> = Vec::new();
 
-    // Iterate over the selected snapshots
-    for snapshot in history.iter().skip(start + 1).take(end + 1 - start - 1) {
-        
-        // Get the oid of the commit
-        let oid = oids.get_oid_by_idx(idx);
+    let mut lines = Vec::new();
 
-        // Setup the line
-        let mut spans =vec![
-            Span::styled(format!("{:.2} ", oid), Style::default().fg(theme.COLOR_TEXT))
+    for global_idx in start..end {
+
+        if history.is_empty() {
+            lines.push(Line::default());
+            continue;
+        }
+
+        let delta = (history.len() + global_idx).saturating_sub(end);
+        let snapshot = match history.get(delta) {
+            Some(s) => s,
+            None => {
+                lines.push(Line::default());
+                continue;
+            }
+        };
+
+        let oid = oids.get_oid_by_idx(global_idx);
+
+        let mut spans = vec![
+            Span::styled(
+                format!("{:.2} ", oid),
+                Style::default().fg(theme.COLOR_TEXT),
+            )
         ];
 
-        // Parse the snaphshot
-        let formatted_snapshot: String = snapshot
+        let formatted_snapshot = snapshot
             .iter()
             .map(|chunk| {
                 let oid_str = if chunk.alias == NONE {
-                    "--".to_string()
+                    "".to_string()
                 } else {
-                    format!("{}", chunk.alias)
+                    format!("{:.2}", oids.get_oid_by_alias(chunk.alias).to_string())
                 };
 
                 let parents_formatted = match (chunk.parent_a, chunk.parent_b) {
-                    (NONE, NONE) => "--,--".to_string(),
-                    (a, NONE) => format!("{:.2},--", a),
-                    (NONE, b) => format!("--,{:.2}", b),
-                    (a, b) => format!("{:.2},{:.2}", a, b),
+                    (NONE, NONE) => "".to_string(),
+                    (a, NONE) => format!("{:.2},--", oids.get_oid_by_alias(a)),
+                    (NONE, b) => format!("--,{:.2}", oids.get_oid_by_alias(b)),
+                    (a, b) => format!("{:.2},{:.2}", oids.get_oid_by_alias(a), oids.get_oid_by_alias(b)),
                 };
 
-                format!("{}({:<5})", &oid_str, parents_formatted)
+                format!("{}({})", oid_str, parents_formatted)
             })
-            .collect::<Vec<String>>()
+            .collect::<Vec<_>>()
             .join(" ");
 
-        // Append to the line
         spans.push(Span::styled(
             formatted_snapshot,
             Style::default().fg(theme.COLOR_TEXT),
         ));
 
-        // Push back the line for the current snapshot
-        lines_buffer.push(Line::from(spans));
-
-        idx += 1;
+        lines.push(Line::from(spans));
     }
 
-    lines_buffer
+    lines
+}
+
+pub fn render_sha_range(
+    theme: &Theme,
+    oids: &Oids,
+    start: usize,
+    end: usize,
+) -> Vec<Line<'static>> {
+    
+    let mut lines = Vec::new();
+
+    for global_idx in start..end {
+        let alias = oids.get_alias_by_idx(global_idx);
+
+        if alias != NONE {
+            let oid = oids.get_oid_by_alias(alias);
+            
+            lines.push(Line::from(Span::styled(
+                format!("{:.9} ", oid),
+                Style::default().fg(theme.COLOR_GREY_700),
+            )));
+        } else {
+            lines.push(Line::from(""));
+        }
+    }
+
+    lines
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -446,6 +517,7 @@ pub fn render_message_range(
     tags: &HashMap<u32, Vec<String>>,
     branch_colors: &mut HashMap<u32, Color>,
     tag_colors: &mut HashMap<u32, Color>,
+    stashes_colors: &mut HashMap<u32, Color>,
     start: usize,
     end: usize,
     selected: usize,
@@ -494,7 +566,7 @@ pub fn render_message_range(
                         spans.push(Span::styled(
                             format!(
                                 "{} {} ",
-                                "⚑",
+                                SYM_TAG,
                                 tag
                             ),
                             Style::default().fg(if let Some(color) = tag_colors.get(&alias) {
@@ -505,6 +577,14 @@ pub fn render_message_range(
                         ));
                     }
                 }
+            }
+
+            if oids.stashes.contains(&alias) {
+                spans.push(Span::styled(format!("{SYM_COMMIT_STASH} stash "), Style::default().fg(if let Some(color) = stashes_colors.get(&alias) {
+                    *color
+                } else {
+                    theme.COLOR_TEXT
+                })));
             }
 
             spans.push(Span::styled(

@@ -1,10 +1,12 @@
 #[rustfmt::skip]
 use std::cell::Cell;
+use std::fs;
 use ratatui::layout::Rect;
 #[rustfmt::skip]
 use ratatui::{
     Frame,
 };
+use toml::Value;
 #[rustfmt::skip]
 use crate::app::app::{
     App,
@@ -18,6 +20,10 @@ pub struct Layout {
     pub app: Rect,
     pub branches: Rect,
     pub branches_scrollbar: Rect,
+    pub tags: Rect,
+    pub tags_scrollbar: Rect,
+    pub stashes: Rect,
+    pub stashes_scrollbar: Rect,
     pub graph: Rect,
     pub graph_scrollbar: Rect,
     pub inspector: Rect,
@@ -59,17 +65,26 @@ impl App {
         let chunks_horizontal = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Horizontal)
             .constraints([
-                ratatui::layout::Constraint::Length(if self.is_branches && !is_settings { 45 } else { 0 }),
+                ratatui::layout::Constraint::Length(if (self.is_branches || self.is_tags || self.is_stashes ) && !is_settings { 45 } else { 0 }),
                 ratatui::layout::Constraint::Max(500),
                 ratatui::layout::Constraint::Length(if is_right_pane { 46 } else { 0 }),
             ])
             .split(chunks_vertical[1]);
 
-        let chunks_pane = ratatui::layout::Layout::default()
+        let chunks_pane_left = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
             .constraints([
-                ratatui::layout::Constraint::Percentage(if is_inspector { if !is_status { 100 } else { 35 } } else { 0 }),
-                ratatui::layout::Constraint::Percentage(if is_status { if !is_inspector { 100 } else { 65 } } else { 0 }),
+                ratatui::layout::Constraint::Percentage(if self.is_branches { if !self.is_tags && !self.is_stashes { 100 } else if self.is_tags && self.is_stashes { 33 } else { 50 } } else { 0 }),
+                ratatui::layout::Constraint::Percentage(if self.is_tags { if !self.is_branches && !self.is_stashes { 100 } else if self.is_branches && self.is_stashes { 33 } else { 50 } } else { 0 }),
+                ratatui::layout::Constraint::Percentage(if self.is_stashes { if !self.is_branches && !self.is_tags { 100 } else if self.is_branches && self.is_tags { 33 } else { 50 } } else { 0 }),
+            ])
+            .split(chunks_horizontal[0]);
+
+        let chunks_pane_right = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                ratatui::layout::Constraint::Percentage(if is_inspector { if !is_status { 100 } else { 50 } } else { 0 }),
+                ratatui::layout::Constraint::Percentage(if is_status { if !is_inspector { 100 } else { 50 } } else { 0 }),
             ])
             .split(chunks_horizontal[2]);
 
@@ -79,7 +94,7 @@ impl App {
                 ratatui::layout::Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 100 }),
                 ratatui::layout::Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 0 }),
             ])
-            .split(chunks_pane[1]);
+            .split(chunks_pane_right[1]);
 
         let chunks_status_bar = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Horizontal)
@@ -90,10 +105,32 @@ impl App {
             .split(chunks_vertical[2]);
 
         // Branches
-        let mut branches_scrollbar = chunks_horizontal[0];
+        let mut branches_scrollbar = chunks_pane_left[0];
         branches_scrollbar.width += 1;
-        let mut branches = chunks_horizontal[0];
-        branches.y += 1; 
+        let mut branches = chunks_pane_left[0];
+        branches.y += 1;
+
+        // Tags
+        let mut tags_scrollbar = chunks_pane_left[1];
+        tags_scrollbar.width += 1;
+        let mut tags = chunks_pane_left[1];
+        if !self.is_branches {
+            tags.y += 1;
+        } else {
+            tags_scrollbar.height += 1;
+            tags_scrollbar.y -= 1;
+        }
+
+        // Stashes
+        let mut stashes_scrollbar = chunks_pane_left[2];
+        stashes_scrollbar.width += 1;
+        let mut stashes = chunks_pane_left[2];
+        if !self.is_branches && !self.is_tags {
+            stashes.y += 1;
+        } else {
+            stashes_scrollbar.height += 1;
+            stashes_scrollbar.y -= 1;
+        }
 
         // Graph
         let graph_scrollbar = chunks_horizontal[1];
@@ -102,23 +139,19 @@ impl App {
         graph.height = graph.height.saturating_sub(2);
 
         // Inspector
-        let mut inspector_scrollbar = chunks_pane[0];
-        let mut inspector = chunks_pane[0];
+        let inspector_scrollbar = chunks_pane_right[0];
+        let mut inspector = chunks_pane_right[0];
         inspector.y += 1;
-        if self.is_status && self.graph_selected != 0 {
-           inspector.height += 2; 
-           inspector_scrollbar.height += 2; 
-        }
 
         // Status top
         let mut status_top_scrollbar = chunks_status[0];
         if self.is_inspector && self.graph_selected != 0 {
-            status_top_scrollbar.y += 1;
-            status_top_scrollbar.height = status_top_scrollbar.height.saturating_sub(1);
+            status_top_scrollbar.y -= 1;
+            status_top_scrollbar.height += 1;
         }
         let mut status_top = chunks_status[0];
-        status_top.y += 1;
-        status_top.height = if self.is_inspector && self.graph_selected != 0 { status_top.height.saturating_sub(1) } else { status_top.height };
+        status_top.y = if self.is_inspector && self.graph_selected != 0 { status_top.y - 1 } else { status_top.y + 1 };
+        status_top.height = if self.is_inspector && self.graph_selected != 0 { status_top.height + 1 } else { status_top.height };
         status_top.width = status_top.width.saturating_sub(1);
 
         // Status bottom
@@ -136,6 +169,10 @@ impl App {
             app: chunks_vertical[1],
             branches,
             branches_scrollbar,
+            tags,
+            tags_scrollbar,
+            stashes,
+            stashes_scrollbar,
             graph,
             graph_scrollbar,
             inspector,
@@ -179,5 +216,82 @@ impl App {
 
         // Otherwise selection is already visible; ensure scroll is clamped
         scroll.set(scroll_val);
+    }
+
+    pub fn save_layout(&self) {
+        let mut pathbuf = dirs::config_dir().unwrap();
+        pathbuf.push("guitar");
+        pathbuf.push("layout.toml");
+        let path = pathbuf.as_path();
+
+        let mut table = toml::map::Map::new();
+        table.insert("is_shas".into(), Value::Boolean(self.is_shas));
+        table.insert("is_minimal".into(), Value::Boolean(self.is_minimal));
+        table.insert("is_branches".into(), Value::Boolean(self.is_branches));
+        table.insert("is_tags".into(), Value::Boolean(self.is_tags));
+        table.insert("is_stashes".into(), Value::Boolean(self.is_stashes));
+        table.insert("is_status".into(), Value::Boolean(self.is_status));
+        table.insert("is_inspector".into(), Value::Boolean(self.is_inspector));
+
+        let toml = Value::Table(table).to_string();
+
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        let _ = fs::write(path, toml);
+    }
+    
+    pub fn load_layout(&mut self) {
+        let mut pathbuf = dirs::config_dir().unwrap();
+        pathbuf.push("guitar");
+        pathbuf.push("layout.toml");
+        let path = pathbuf.as_path();
+
+        let text = match fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(_) => {
+                self.save_layout();
+                return;
+            }
+        };
+
+        let value: Value = match text.parse() {
+            Ok(v) => v,
+            Err(_) => {
+                self.save_layout();
+                return;
+            }
+        };
+
+        let table = match value.as_table() {
+            Some(t) => t,
+            None => {
+                self.save_layout();
+                return;
+            }
+        };
+
+        if let Some(v) = table.get("is_shas").and_then(|v| v.as_bool()) {
+            self.is_shas = v;
+        }
+        if let Some(v) = table.get("is_minimal").and_then(|v| v.as_bool()) {
+            self.is_minimal = v;
+        }
+        if let Some(v) = table.get("is_branches").and_then(|v| v.as_bool()) {
+            self.is_branches = v;
+        }
+        if let Some(v) = table.get("is_tags").and_then(|v| v.as_bool()) {
+            self.is_tags = v;
+        }
+        if let Some(v) = table.get("is_stashes").and_then(|v| v.as_bool()) {
+            self.is_stashes = v;
+        }
+        if let Some(v) = table.get("is_status").and_then(|v| v.as_bool()) {
+            self.is_status = v;
+        }
+        if let Some(v) = table.get("is_inspector").and_then(|v| v.as_bool()) {
+            self.is_inspector = v;
+        }
     }
 }

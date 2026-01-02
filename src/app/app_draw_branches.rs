@@ -103,7 +103,7 @@ impl App {
         let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.branches_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("─"))
-            .end_symbol(Some("─"))
+            .end_symbol(Some(if self.is_tags || self.is_stashes { "│" } else { "─" }))
             .track_symbol(Some("│"))
             .thumb_symbol(if total_lines > visible_height { "▌" } else { "│" })
             .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::Branches {

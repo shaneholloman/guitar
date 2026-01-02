@@ -4,6 +4,8 @@ use std::{
         HashSet,
     },
 };
+use chrono::{NaiveDate, Utc};
+use chrono::TimeZone;
 #[rustfmt::skip]
 use git2::{
     ObjectType,
@@ -13,6 +15,7 @@ use git2::{
         Patch
     }
 };
+use im::HashMap;
 #[rustfmt::skip]
 use crate::{
     helpers::{
@@ -134,4 +137,26 @@ pub fn diff_to_hunks(diff: Diff) -> Result<Vec<Hunk>, git2::Error> {
     })?;
 
     Ok(hunks)
+}
+
+pub fn commits_per_day(repo: &Repository) -> HashMap<NaiveDate, usize> {
+    let mut revwalk = repo.revwalk().unwrap();
+    revwalk.push_head().unwrap();
+
+    let mut map = HashMap::new();
+
+    for oid in revwalk.flatten() {
+        let commit = repo.find_commit(oid).unwrap();
+        let time = commit.time();
+        let secs = time.seconds();
+
+        let date = Utc.timestamp_opt(secs, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+
+        *map.entry(date).or_insert(0) += 1;
+    }
+
+    map
 }

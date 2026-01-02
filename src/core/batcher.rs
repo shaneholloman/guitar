@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 #[rustfmt::skip]
 use std::{
     rc::Rc,
@@ -32,11 +33,11 @@ pub struct Batcher {
 impl Batcher {
     // Creates a new Batcher by building a revwalk from the repo
     pub fn new(
-        repo: Rc<Repository>,
+        repo: Rc<RefCell<Repository>>,
         visible: HashMap<u32, Vec<String>>,
         oids: &mut Oids
     ) -> Result<Self, git2::Error> {
-        let revwalk = Self::build(&repo, visible, oids)?;
+        let revwalk = Self::build(&repo.borrow(), visible, oids)?;
         Ok(Self {
             revwalk: Mutex::new(revwalk),
         })
@@ -45,11 +46,11 @@ impl Batcher {
     // Reset the revwalk
     pub fn reset(
         &self,
-        repo: Rc<Repository>,
+        repo: Rc<RefCell<Repository>>,
         visible: HashMap<u32, Vec<String>>,
         oids: &mut Oids
     ) -> Result<(), git2::Error> {
-        let revwalk = Self::build(&repo, visible, oids)?;
+        let revwalk = Self::build(&repo.borrow(), visible, oids)?;
         let mut guard = self.revwalk.lock().unwrap();
         *guard = revwalk;
         Ok(())
