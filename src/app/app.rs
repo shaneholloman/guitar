@@ -1,3 +1,4 @@
+use std::io::stdout;
 #[rustfmt::skip]
 use std::{
     cell::{
@@ -20,6 +21,7 @@ use std::{
     thread,
     io,
 };
+use crossterm::{event::{KeyboardEnhancementFlags, PushKeyboardEnhancementFlags}, execute, terminal::enable_raw_mode};
 #[rustfmt::skip]
 use git2::{
     Repository
@@ -237,6 +239,11 @@ impl App  {
     
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
 
+        // Enable faster Escape detection in supported terminals
+        enable_raw_mode()?;
+        execute!(stdout(), PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES))?;
+
+        // Load the app and initialize state
         self.load_layout();
         self.load_keymap();
         self.reload();
