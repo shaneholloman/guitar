@@ -1,3 +1,4 @@
+use std::path::Path;
 #[rustfmt::skip]
 use std::{
     io
@@ -13,7 +14,7 @@ use ratatui::{
         KeyEventKind
     }
 };
-use crate::{git::actions::commits::{cherry_pick_commit, pop, stash, tag, untag}, helpers::keymap::{Command, KeyBinding, load_or_init_keymap}};
+use crate::{git::actions::commits::{cherry_pick_commit, pop, stage_file, stash, tag, unstage_file, untag}, helpers::keymap::{Command, KeyBinding, load_or_init_keymap}};
 #[rustfmt::skip]
 use crate::{
     app::app::{
@@ -1143,9 +1144,40 @@ impl App {
         match self.viewport {
             Viewport::Settings | Viewport::Viewer => {}
             _ => {
-                if self.uncommitted.is_staged {
-                    unstage_all(&self.repo).expect("Error");
-                    self.reload();
+                match self.focus {
+                    Focus::Viewport => {
+                        if self.uncommitted.is_staged {
+                            unstage_all(&self.repo).expect("Error");
+                            self.reload();
+                        }
+                    }
+                    Focus::StatusTop => {
+                        let file: String = {
+                            let mut idx = self.status_bottom_selected;
+                            let modified = &self.uncommitted.staged.modified;
+                            let added = &self.uncommitted.staged.added;
+                            let deleted = &self.uncommitted.staged.deleted;
+                            if idx < modified.len() {
+                                modified[idx].clone()
+                            } else {
+                                idx -= modified.len();
+                                if idx < added.len() {
+                                    added[idx].clone()
+                                } else {
+                                    idx -= added.len();
+                                    if idx < deleted.len() {
+                                        deleted[idx].clone()
+                                    } else {
+                                        // TODO: Handle this case later
+                                        return;
+                                    }
+                                }
+                            }
+                        };
+                        unstage_file(&self.repo, Path::new(&file)).expect("Error");
+                        self.reload();
+                    }
+                    _ => {}
                 }
             }
         }
@@ -1155,9 +1187,40 @@ impl App {
         match self.viewport {
             Viewport::Settings | Viewport::Viewer => {}
             _ => {
-                if self.uncommitted.is_unstaged {
-                    git_add_all(&self.repo).expect("Error");
-                    self.reload();
+                match self.focus {
+                    Focus::Viewport => {
+                        if self.uncommitted.is_unstaged {
+                            git_add_all(&self.repo).expect("Error");
+                            self.reload();
+                        }
+                    }
+                    Focus::StatusBottom => {
+                        let file: String = {
+                            let mut idx = self.status_bottom_selected;
+                            let modified = &self.uncommitted.unstaged.modified;
+                            let added = &self.uncommitted.unstaged.added;
+                            let deleted = &self.uncommitted.unstaged.deleted;
+                            if idx < modified.len() {
+                                modified[idx].clone()
+                            } else {
+                                idx -= modified.len();
+                                if idx < added.len() {
+                                    added[idx].clone()
+                                } else {
+                                    idx -= added.len();
+                                    if idx < deleted.len() {
+                                        deleted[idx].clone()
+                                    } else {
+                                        // TODO: Handle this case later
+                                        return;
+                                    }
+                                }
+                            }
+                        };
+                        stage_file(&self.repo, Path::new(&file)).expect("Error");
+                        self.reload();
+                    }
+                    _ => {}
                 }
             }
         }

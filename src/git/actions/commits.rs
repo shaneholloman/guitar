@@ -464,3 +464,30 @@ pub fn cherry_pick_commit(
 
     Ok(new_commit_oid)
 }
+
+pub fn stage_file(repo: &Repository, path: &std::path::Path) -> Result<(), git2::Error> {
+    let mut index = repo.index()?;
+
+    // Equivalent to: git add <path>
+    index.add_path(path)?;
+
+    index.write()?;
+    Ok(())
+}
+
+pub fn unstage_file(repo: &Repository, path: &std::path::Path) -> Result<(), git2::Error> {
+    let head = match repo.head() {
+        Ok(h) => h.peel_to_commit()?,
+        Err(_) => {
+            // No HEAD (initial commit case)
+            let mut index = repo.index()?;
+            index.remove_path(path)?;
+            index.write()?;
+            return Ok(());
+        }
+    };
+
+    // Reset only this path in the index
+    repo.reset_default(Some(&head.into_object()), &[path])?;
+    Ok(())
+}
