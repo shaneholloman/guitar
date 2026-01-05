@@ -27,7 +27,7 @@ pub fn build_heatmap(
 
 pub fn heat_cell(count: usize, theme: &Theme) -> Span<'_> {
     let (ch, color) = match count {
-        0 => ("🞝 ", Some(theme.COLOR_GREY_800)),
+        0 => ("⋅ ", Some(theme.COLOR_GREY_800)),
         1 => ("⠁ ", Some(theme.COLOR_GRASS)),
         2 => ("⠃ ", Some(theme.COLOR_GRASS)),
         3 => ("⠇ ", Some(theme.COLOR_GRASS)),
