@@ -43,58 +43,101 @@ pub fn get_filenames_diff_at_workdir(repo: &Repository) -> Result<UncommittedCha
         .renames_head_to_index(false)
         .renames_index_to_workdir(false);
 
-    // Retrieve the current status of the working directory and index
     let statuses = repo.statuses(Some(&mut options))?;
     let mut changes = UncommittedChanges::default();
+    let workdir = repo.workdir().expect("Bare repo not supported");
 
-    // Iterate through each file entry in the status list
     for entry in statuses.iter() {
-        let status = entry.status();
-        let path = entry.path().unwrap_or("").to_string();
-
-        // Skip unchanged files
-        if status.is_empty() {
-            continue;
-        }
-
-        // Record staged changes (index vs HEAD)
-        if status.is_index_modified() {
-            changes.staged.modified.push(path.clone());
-        }
-        if status.is_index_new() {
-            changes.staged.added.push(path.clone());
-        }
-        if status.is_index_deleted() {
-            changes.staged.deleted.push(path.clone());
-        }
-
-        // Record unstaged changes (workdir vs index)
-        if status.is_wt_modified() {
-            changes.unstaged.modified.push(path.clone());
-        }
-        if status.is_wt_new() {
-            changes.unstaged.added.push(path.clone());
-        }
-        if status.is_wt_deleted() {
-            changes.unstaged.deleted.push(path.clone());
+        let rel_path = entry.path().unwrap_or("");
+        let full_path = workdir.join(rel_path);
+    
+        // Expand directories
+        let files = if full_path.is_dir() {
+            collect_files_for_status(repo, workdir, rel_path)
+        } else {
+            vec![rel_path.to_string()]
+        };
+    
+        for file in files {
+    
+            // Ask git for this file’s individual status
+            let file_status = repo.status_file(Path::new(&file))?;
+    
+            // Now you can safely check staged vs unstaged per file
+            if file_status.is_index_modified() {
+                changes.staged.modified.push(file.clone());
+            }
+            if file_status.is_index_new() {
+                changes.staged.added.push(file.clone());
+            }
+            if file_status.is_index_deleted() {
+                changes.staged.deleted.push(file.clone());
+            }
+    
+            if file_status.is_wt_modified() {
+                changes.unstaged.modified.push(file.clone());
+            }
+            if file_status.is_wt_new() {
+                changes.unstaged.added.push(file.clone());
+            }
+            if file_status.is_wt_deleted() {
+                changes.unstaged.deleted.push(file.clone());
+            }
         }
     }
 
-    // Compute counts of deduplicated filenames
+    // Counts
     changes.modified_count = deduplicate(&changes.staged.modified, &changes.unstaged.modified);
     changes.added_count = deduplicate(&changes.staged.added, &changes.unstaged.added);
     changes.deleted_count = deduplicate(&changes.staged.deleted, &changes.unstaged.deleted);
 
-    // Set flags for change states
     changes.is_staged = !changes.staged.modified.is_empty()
         || !changes.staged.added.is_empty()
         || !changes.staged.deleted.is_empty();
+
     changes.is_unstaged = !changes.unstaged.modified.is_empty()
         || !changes.unstaged.added.is_empty()
         || !changes.unstaged.deleted.is_empty();
+
     changes.is_clean = !changes.is_staged && !changes.is_unstaged;
 
     Ok(changes)
+}
+
+fn collect_files_for_status(repo: &Repository, workdir: &Path, rel_path: &str) -> Vec<String> {
+    let full_path = workdir.join(rel_path);
+    
+    if full_path.exists() {
+        if full_path.is_file() {
+            return vec![rel_path.to_string()];
+        } else if full_path.is_dir() {
+            let mut result = Vec::new();
+            if let Ok(entries) = std::fs::read_dir(&full_path) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let child_rel = match path.strip_prefix(workdir) {
+                        Ok(p) => p.to_string_lossy().to_string(),
+                        Err(_) => continue,
+                    };
+
+                    // Skip ignored files
+                    if repo.status_should_ignore(Path::new(&child_rel)).unwrap_or(false) {
+                        continue;
+                    }
+
+                    if path.is_file() {
+                        result.push(child_rel);
+                    } else if path.is_dir() {
+                        result.extend(collect_files_for_status(repo, workdir, &child_rel));
+                    }
+                }
+            }
+            return result;
+        }
+    }
+
+    // If path does not exist (deleted file), just return the rel_path itself
+    vec![rel_path.to_string()]
 }
 
 // Lists all files changed in a given commit compared to its parent

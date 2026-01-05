@@ -1153,7 +1153,7 @@ impl App {
                     }
                     Focus::StatusTop => {
                         let file: String = {
-                            let mut idx = self.status_bottom_selected;
+                            let mut idx = self.status_top_selected;
                             let modified = &self.uncommitted.staged.modified;
                             let added = &self.uncommitted.staged.added;
                             let deleted = &self.uncommitted.staged.deleted;

@@ -468,8 +468,13 @@ pub fn cherry_pick_commit(
 pub fn stage_file(repo: &Repository, path: &std::path::Path) -> Result<(), git2::Error> {
     let mut index = repo.index()?;
 
-    // Equivalent to: git add <path>
-    index.add_path(path)?;
+    // If the file exists, add it (new or modified)
+    if path.exists() {
+        index.add_path(path)?;
+    } else {
+        // File deleted: remove from index
+        index.remove_path(path)?;
+    }
 
     index.write()?;
     Ok(())
