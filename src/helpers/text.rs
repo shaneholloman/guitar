@@ -182,27 +182,6 @@ pub fn sanitize(string: String) -> String {
         .collect()
 }
 
-// A helper to convert KeyCode to string
-pub fn keycode_to_string(code: &KeyCode) -> String {
-    match code {
-        KeyCode::Char(c) => c.to_string(),
-        KeyCode::Enter => "Enter".into(),
-        KeyCode::Tab => "Tab".into(),
-        KeyCode::Backspace => "Backspace".into(),
-        KeyCode::Esc => "Esc".into(),
-        KeyCode::Up => "Up".into(),
-        KeyCode::Down => "Down".into(),
-        KeyCode::Left => "Left".into(),
-        KeyCode::Right => "Right".into(),
-        KeyCode::Home => "Home".into(),
-        KeyCode::End => "End".into(),
-        KeyCode::PageUp => "Pageup".into(),
-        KeyCode::PageDown => "Pagedown".into(),
-        KeyCode::F(n) => format!("F{}", n),
-        _ => "?".into(),
-    }
-}
-
 // A helper to convert KeyModifiers to string
 pub fn modifiers_to_string(mods: KeyModifiers) -> String {
     let mut parts = Vec::new();

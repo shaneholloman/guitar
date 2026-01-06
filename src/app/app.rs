@@ -1,101 +1,50 @@
-use std::io::stdout;
-#[rustfmt::skip]
-use std::{
-    cell::{
-        Cell,
-        RefCell
-    },
-    rc::Rc,
-    sync::{
-        mpsc::{
-            channel
-        },
-        Arc,
-        atomic::{
-            AtomicBool
-        }
-    },
-    time::{
-        Duration
-    },
-    thread,
-    io,
-};
-use crossterm::{event::{KeyboardEnhancementFlags, PushKeyboardEnhancementFlags}, execute, terminal::enable_raw_mode};
-#[rustfmt::skip]
-use git2::{
-    Repository
-};
-#[rustfmt::skip]
-use indexmap::{
-    IndexMap
-};
-#[rustfmt::skip]
-use ratatui::{
-    DefaultTerminal,
-    Frame,
-    style::{
-        Style
-    },
-    crossterm::event,
-    widgets::{
-        ListItem,
-        Block,
-        Borders
-    },
-    text::{
-        Span
-    },
-};
-use crate::{app::input::TextInput, core::stashes::Stashes, helpers::{copy::{STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_FIND_SHA}, heatmap::{DAYS, WEEKS}, keymap::{Command, KeyBinding}}};
-#[rustfmt::skip]
 use crate::{
-    app::{
-        app_layout::{
-            Layout
-        }
-    },
+    app::app_layout::Layout,
     core::{
-        oids::{
-            Oids
-        },
-        branches::{
-            Branches
-        },
-        walker::{
-            Walker,
-            WalkerOutput
-        },
-        buffer::{
-            Buffer
-        },
-        tags::{
-            Tags
-        }
+        branches::Branches,
+        buffer::Buffer,
+        oids::Oids,
+        tags::Tags,
+        walker::{Walker, WalkerOutput},
     },
+    git::queries::{
+        commits::get_git_user_info,
+        diffs::get_filenames_diff_at_workdir,
+        helpers::{FileChange, UncommittedChanges},
+    },
+    helpers::{colors::ColorPicker, palette::*, spinner::Spinner},
+};
+use crate::{
+    app::input::TextInput,
+    core::stashes::Stashes,
     helpers::{
-        palette::*,
-        colors::{
-            ColorPicker
-        },
-        spinner::{
-            Spinner
-        }
+        copy::{STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_FIND_SHA},
+        heatmap::{DAYS, WEEKS},
+        keymap::{Command, KeyBinding},
     },
-    git::{
-        queries::{
-            diffs::{
-                get_filenames_diff_at_workdir
-            },
-            commits::{
-                get_git_user_info
-            },
-            helpers::{
-                FileChange,
-                UncommittedChanges
-            }
-        }
-    },
+};
+use crossterm::{
+    event::{KeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
+    execute,
+    terminal::enable_raw_mode,
+};
+use git2::Repository;
+use indexmap::IndexMap;
+use ratatui::{
+    DefaultTerminal, Frame,
+    crossterm::event,
+    style::Style,
+    text::Span,
+    widgets::{Block, Borders, ListItem},
+};
+use std::io::stdout;
+use std::{
+    cell::{Cell, RefCell},
+    io,
+    rc::Rc,
+    sync::{Arc, atomic::AtomicBool, mpsc::channel},
+    thread,
+    time::Duration,
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -136,12 +85,12 @@ pub struct App {
     pub logo: Vec<Span<'static>>,
     pub path: String,
     pub repo: Rc<Repository>,
-    pub hint: String,
     pub spinner: Spinner,
     pub keymap: IndexMap<KeyBinding, Command>,
     pub last_input_direction: Option<Direction>,
     pub theme: Theme,
     pub heatmap: [[usize; WEEKS]; DAYS],
+    pub is_leader: bool,
 
     // User
     pub name: String,

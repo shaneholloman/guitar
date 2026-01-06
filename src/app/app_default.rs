@@ -1,63 +1,21 @@
-#[rustfmt::skip]
-use std::{
-    env,
-    path::PathBuf,
-    rc::Rc,
-    cell::RefCell
+use crate::{
+    app::input::TextInput, core::stashes::Stashes, git::queries::helpers::commits_per_day,
+    helpers::heatmap::build_heatmap,
 };
-use chrono::Utc;
-#[rustfmt::skip]
-use git2::Repository;
-#[rustfmt::skip]
-use indexmap::IndexMap;
-#[rustfmt::skip]
-use ratatui::{
-    style::Style,
-    text::{
-        Span
-    }
-};
-#[rustfmt::skip]
-use crate::{app::input::TextInput, core::stashes::Stashes, git::queries::helpers::commits_per_day, helpers::heatmap::build_heatmap};
-#[rustfmt::skip]
 use crate::{
     app::{
-        app::{
-            App,
-            Viewport,
-            Focus
-        },
-        app_layout::{
-            Layout
-        }
+        app::{App, Focus, Viewport},
+        app_layout::Layout,
     },
-    core::{
-        buffer::{
-            Buffer
-        },
-        branches::{
-            Branches
-        },
-        tags::{
-            Tags
-        },
-        oids::{
-            Oids
-        }
-    },
-    helpers::{
-        palette::*,
-        colors::ColorPicker,
-        spinner::Spinner
-    },
-    git::{
-        queries::{
-            helpers::{
-                UncommittedChanges
-            }
-        }
-    }
+    core::{branches::Branches, buffer::Buffer, oids::Oids, tags::Tags},
+    git::queries::helpers::UncommittedChanges,
+    helpers::{colors::ColorPicker, palette::*, spinner::Spinner},
 };
+use chrono::Utc;
+use git2::Repository;
+use indexmap::IndexMap;
+use ratatui::{style::Style, text::Span};
+use std::{cell::RefCell, env, path::PathBuf, rc::Rc};
 
 impl Default for App {
     fn default() -> Self {
@@ -86,12 +44,12 @@ impl Default for App {
             logo,
             path: absolute_path.display().to_string(),
             repo,
-            hint: String::new(),
             spinner: Spinner::new(),
             keymap: IndexMap::new(),
             last_input_direction: None,
             theme,
             heatmap,
+            is_leader: false,
 
             // User
             name: String::new(),

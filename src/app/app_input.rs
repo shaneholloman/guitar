@@ -1,56 +1,22 @@
-use std::path::Path;
-#[rustfmt::skip]
-use std::{
-    io
+use crate::{
+    app::app::{App, Direction, Focus, Viewport},
+    git::{
+        actions::commits::{
+            checkout_branch, checkout_head, commit_staged, create_branch, delete_branch,
+            fetch_over_ssh, git_add_all, push_over_ssh, reset_to_commit, unstage_all,
+        },
+        queries::{commits::get_current_branch, diffs::get_filenames_diff_at_oid},
+    },
+    helpers::palette::Theme,
+};
+use crate::{
+    git::actions::commits::{cherry_pick_commit, pop, stage_file, stash, tag, unstage_file, untag},
+    helpers::keymap::{Command, KeyBinding, load_or_init_keymap},
 };
 use git2::{Oid, Repository};
-#[rustfmt::skip]
-use ratatui::{
-    crossterm::event::{
-        self,
-        Event,
-        KeyCode,
-        KeyEvent,
-        KeyEventKind
-    }
-};
-use crate::{git::actions::commits::{cherry_pick_commit, pop, stage_file, stash, tag, unstage_file, untag}, helpers::keymap::{Command, KeyBinding, load_or_init_keymap}};
-#[rustfmt::skip]
-use crate::{
-    app::app::{
-        App,
-        Focus,
-        Viewport,
-        Direction
-    },
-    git::{
-        actions::{
-            commits::{
-                checkout_head,
-                checkout_branch,
-                commit_staged,
-                git_add_all,
-                reset_to_commit,
-                unstage_all,
-                fetch_over_ssh,
-                push_over_ssh,
-                create_branch,
-                delete_branch
-            }
-        },
-        queries::{
-            diffs::{
-                get_filenames_diff_at_oid,
-            },
-            commits::{
-                get_current_branch
-            }
-        }
-    },
-    helpers::{
-        palette::Theme
-    }
-};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use std::io;
+use std::path::Path;
 
 impl App {
 
@@ -60,6 +26,7 @@ impl App {
     
     fn get_focusable_panes(&self) -> Vec<Focus> {
         let mut order = Vec::new();
+        if self.viewport == Viewport::Settings || self.viewport == Viewport::Splash { return order; }
         for focus in &[
             Focus::Viewport,
             Focus::Inspector,
@@ -86,7 +53,7 @@ impl App {
     pub fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
             Event::Key(key_event) if matches!(key_event.kind, KeyEventKind::Press) => {
-                self.handle_key_event(key_event)
+                self.handle_key_event(key_event);
             }
             _ => {}
         };
@@ -96,8 +63,14 @@ impl App {
     pub fn handle_key_event(&mut self, key_event: KeyEvent) {
 
         let key_binding = KeyBinding::new(key_event.code, key_event.modifiers);
+
+        // Leader key
+        if self.keymap.get(&key_binding) == Some(&Command::Leader) {
+            self.is_leader = true;
+            return;
+        }
         
-        // Handle text editing
+        // Handle text editing within modals
         match self.focus {
             Focus::ModalCommit => {
                 match key_event.code {
@@ -225,97 +198,86 @@ impl App {
             }
             _ => {}
         }
+        
+        if self.is_leader {
+            
+            if let Some(cmd) = self.keymap.get(&key_binding) {
+                match cmd {
 
-        // Handle the application
-        if let Some(cmd) = self.keymap.get(&key_binding) {
-            match cmd {
-                // List navigation
-                Command::Select => self.on_select(),
-                Command::NextPane => self.on_next_pane(),
-                Command::PreviousPane => self.on_prev_pane(),
-                Command::PageUp => self.on_scroll_page_up(),
-                Command::PageDown => self.on_scroll_page_down(),
-                Command::ScrollUp => self.on_scroll_up(),
-                Command::ScrollDown => self.on_scroll_down(),
-                Command::ScrollUpHalf => self.on_scroll_up_half(),
-                Command::ScrollDownHalf => self.on_scroll_down_half(),
-                Command::ScrollUpBranch => self.on_scroll_up_branch(),
-                Command::ScrollDownBranch => self.on_scroll_down_branch(),
-                Command::ScrollUpCommit => self.on_scroll_up_commit(),
-                Command::ScrollDownCommit => self.on_scroll_down_commit(),
-                Command::GoToBeginning => self.on_scroll_to_beginning(),
-                Command::GoToEnd => self.on_scroll_to_end(),
-                Command::Jump => self.on_jump(),
+                    // Git
+                    Command::Drop => self.on_drop(),
+                    Command::Pop => self.on_pop(),
+                    Command::Stash => self.on_stash(),
+                    Command::FetchAll => self.on_fetch_all(),
+                    Command::Checkout => self.on_checkout(),
+                    Command::HardReset => self.on_hard_reset(),
+                    Command::MixedReset => self.on_mixed_reset(),
+                    Command::Unstage => self.on_unstage(),
+                    Command::Stage => self.on_stage(),
+                    Command::Commit => self.on_commit(),
+                    Command::ForcePush => self.on_force_push(),
+                    Command::CreateBranch => self.on_create_branch(),
+                    Command::DeleteBranch => self.on_delete_branch(),
+                    Command::Tag => self.on_tag(),
+                    Command::Untag => self.on_untag(),
+                    Command::Cherrypick => self.on_cherrypick(),
+                    Command::Reload => self.on_reload(),
 
-                // Branches
-                Command::SoloBranch => self.on_solo_branch(),
+                    // Rest
+                    _ => {}
+                }
+            }
 
-                // Git
-                Command::Drop => self.on_drop(),
-                Command::Pop => self.on_pop(),
-                Command::Stash => self.on_stash(),
-                Command::Grep => self.on_grep(),
-                Command::Fetch => self.on_fetch(),
-                Command::Checkout => self.on_checkout(),
-                Command::HardReset => self.on_hard_reset(),
-                Command::MixedReset => self.on_mixed_reset(),
-                Command::UnstageAll => self.on_unstage_all(),
-                Command::StageAll => self.on_stage_all(),
-                Command::Commit => self.on_commit(),
-                Command::Push => self.on_push(),
-                Command::CreateANewBranch => self.on_create_branch(),
-                Command::DeleteABranch => self.on_delete_branch(),
-                Command::Tag => self.on_tag(),
-                Command::Untag => self.on_untag(),
-                Command::Cherrypick => self.on_cherrypick(),
-                
-                // Layout
-                Command::GoBack => self.on_go_back(),
-                Command::Reload => self.on_reload(),
-                Command::Minimize => self.on_minimize(),
-                Command::ToggleShas => self.on_toggle_shas(),
-                Command::ToggleBranches => self.on_toggle_branches(),
-                Command::ToggleTags => self.on_toggle_tags(),
-                Command::ToggleStashes => self.on_toggle_stashes(),
-                Command::ToggleStatus => self.on_toggle_status(),
-                Command::ToggleInspector => self.on_toggle_inspector(),
-                Command::ToggleSettings => self.on_toggle_settings(),
-                Command::Exit => self.on_exit(),
+            // Reset leader key
+            self.is_leader = false;
+
+        } else {
+            if let Some(cmd) = self.keymap.get(&key_binding) {
+                match cmd {
+                    
+                    // User Interface
+                    Command::FocusNextPane => self.on_focus_next_pane(),
+                    Command::FocusPreviousPane => self.on_focus_prev_pane(),
+                    Command::Select => self.on_select(),
+                    Command::Back => self.on_back(),
+                    Command::Minimize => self.on_minimize(),
+                    Command::ToggleBranches => self.on_toggle_branches(),
+                    Command::ToggleTags => self.on_toggle_tags(),
+                    Command::ToggleStashes => self.on_toggle_stashes(),
+                    Command::ToggleStatus => self.on_toggle_status(),
+                    Command::ToggleInspector => self.on_toggle_inspector(),
+                    Command::ToggleShas => self.on_toggle_shas(),
+                    Command::ToggleSettings => self.on_toggle_settings(),
+                    Command::Exit => self.on_exit(),
+                    
+                    // Lists
+                    Command::PageUp => self.on_scroll_page_up(),
+                    Command::PageDown => self.on_scroll_page_down(),
+                    Command::ScrollUp => self.on_scroll_up(),
+                    Command::ScrollDown => self.on_scroll_down(),
+                    Command::ScrollUpHalf => self.on_scroll_up_half(),
+                    Command::ScrollDownHalf => self.on_scroll_down_half(),
+                    Command::GoToBeginning => self.on_scroll_to_beginning(),
+                    Command::GoToEnd => self.on_scroll_to_end(),
+                    
+                    // Graph
+                    Command::ScrollUpBranch => self.on_scroll_up_branch(),
+                    Command::ScrollDownBranch => self.on_scroll_down_branch(),
+                    Command::ScrollUpCommit => self.on_scroll_up_commit(),
+                    Command::ScrollDownCommit => self.on_scroll_down_commit(),
+                    Command::Find => self.on_find(),
+                    Command::SoloBranch => self.on_solo_branch(),
+                    Command::ToggleBranch => self.on_toggle_branch(),
+
+                    // Rest
+                    _ => {}
+                }
             }
         }
     }
 
     pub fn on_select(&mut self) {
         match self.focus {
-            Focus::Branches => {
-                let (oid, branch) = self.branches.sorted.get(self.branches_selected).unwrap();
-
-                let branch = branch.clone(); // clone because we may insert/remove it
-
-                self.branches.visible
-                    .entry(*oid)
-                    .and_modify(|branches| {
-                        if let Some(pos) = branches.iter().position(|b| b == &branch) {
-                            branches.remove(pos);
-                        } else {
-                            branches.push(branch.clone());
-                        }
-
-                        // remove oid entirely if empty
-                        if branches.is_empty() {
-                            // can't remove while borrowing, so mark later
-                        }
-                    })
-                    .or_insert_with(|| vec![branch]);
-
-                // cleanup pass (safe because we can't mutate while borrowed above)
-                if let Some(branches) = self.branches.visible.get(oid)
-                    && branches.is_empty() {
-                        self.branches.visible.remove(oid);
-                    }
-
-                self.reload();
-            }
             Focus::Viewport => {
                 if self.viewport == Viewport::Settings
                     && let Some(position) = self.settings_selections.iter().position(|&x| x == self.settings_selected) {
@@ -327,6 +289,28 @@ impl App {
                         }
                         self.reload();
                     }
+            }
+            Focus::Branches => {
+                self.viewport = Viewport::Graph;
+                self.focus = Focus::Viewport;
+                let alias = self.branches.sorted.get(self.branches_selected).unwrap().0;
+                self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias).unwrap_or(0);
+            }
+            Focus::Tags => {
+                self.viewport = Viewport::Graph;
+                self.focus = Focus::Viewport;
+                let alias = self.tags.sorted.get(self.tags_selected).unwrap().0;
+                self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias).unwrap_or(0);
+            } 
+            Focus::Stashes => {
+                self.viewport = Viewport::Graph;
+                self.focus = Focus::Viewport;
+                let alias = self.oids.stashes.get(self.stashes_selected).unwrap();
+                self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == alias).unwrap_or(0);
+            }
+            Focus::StatusTop | Focus::StatusBottom => {
+                self.open_viewer();
+                self.focus = Focus::Viewport;
             }
             Focus::ModalCheckout => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
@@ -395,40 +379,22 @@ impl App {
                 self.modal_delete_tag_selected = 0;
                 self.focus = Focus::Viewport;
                 self.reload();
-            }
-            Focus::StatusTop | Focus::StatusBottom => {
-                self.open_viewer();
-                self.focus = Focus::Viewport;
-            }
+            }      
             _ => {}
         };
     }
 
-    pub fn on_next_pane(&mut self) {
+    pub fn on_focus_next_pane(&mut self) {
         let active = self.get_focusable_panes();
-        if active.is_empty() {
-            return;
-        }
-
-        let idx = active
-            .iter()
-            .position(|&f| f == self.focus)
-            .unwrap_or(0);
-
+        if active.is_empty() { return; }
+        let idx = active.iter().position(|&f| f == self.focus).unwrap_or(0);
         self.focus = active[(idx + 1) % active.len()];
     }
     
-    pub fn on_prev_pane(&mut self) {
+    pub fn on_focus_prev_pane(&mut self) {
         let active = self.get_focusable_panes();
-        if active.is_empty() {
-            return;
-        }
-
-        let idx = active
-            .iter()
-            .position(|&f| f == self.focus)
-            .unwrap_or(0);
-
+        if active.is_empty() { return; }
+        let idx = active.iter().position(|&f| f == self.focus).unwrap_or(0);
         self.focus = active[(idx + active.len() - 1) % active.len()];
     }
 
@@ -933,31 +899,42 @@ impl App {
             _ => {}
         };
     }
-
-    pub fn on_jump(&mut self) {
+   
+    pub fn on_toggle_branch(&mut self) {
         match self.focus {
             Focus::Branches => {
-                self.viewport = Viewport::Graph;
-                self.focus = Focus::Viewport;
-                let alias = self.branches.sorted.get(self.branches_selected).unwrap().0;
-                self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias).unwrap_or(0);
+                let (oid, branch) = self.branches.sorted.get(self.branches_selected).unwrap();
+
+                let branch = branch.clone(); // clone because we may insert/remove it
+
+                self.branches.visible
+                    .entry(*oid)
+                    .and_modify(|branches| {
+                        if let Some(pos) = branches.iter().position(|b| b == &branch) {
+                            branches.remove(pos);
+                        } else {
+                            branches.push(branch.clone());
+                        }
+
+                        // remove oid entirely if empty
+                        if branches.is_empty() {
+                            // can't remove while borrowing, so mark later
+                        }
+                    })
+                    .or_insert_with(|| vec![branch]);
+
+                // cleanup pass (safe because we can't mutate while borrowed above)
+                if let Some(branches) = self.branches.visible.get(oid)
+                    && branches.is_empty() {
+                        self.branches.visible.remove(oid);
+                    }
+
+                self.reload();
             }
-            Focus::Tags => {
-                self.viewport = Viewport::Graph;
-                self.focus = Focus::Viewport;
-                let alias = self.tags.sorted.get(self.tags_selected).unwrap().0;
-                self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias).unwrap_or(0);
-            } 
-            Focus::Stashes => {
-                self.viewport = Viewport::Graph;
-                self.focus = Focus::Viewport;
-                let alias = self.oids.stashes.get(self.stashes_selected).unwrap();
-                self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == alias).unwrap_or(0);
-            }
-            _ => {}
+            _ => {}   
         }
     }
-    
+
     pub fn on_solo_branch(&mut self) {
         match self.focus {
             Focus::Branches => {
@@ -1056,14 +1033,14 @@ impl App {
         }
     }
 
-    pub fn on_grep(&mut self) {
+    pub fn on_find(&mut self) {
         if self.viewport == Viewport::Graph
             && self.focus == Focus::Viewport {
                 self.focus = Focus::ModalGrep;
             }
     }
 
-    pub fn on_fetch(&mut self) {
+    pub fn on_fetch_all(&mut self) {
         if self.viewport != Viewport::Settings {
             let handle = fetch_over_ssh(&self.path, "origin");
             match handle.join().expect("Thread panicked") {
@@ -1140,7 +1117,7 @@ impl App {
         }
     }
 
-    pub fn on_unstage_all(&mut self) {
+    pub fn on_unstage(&mut self) {
         match self.viewport {
             Viewport::Settings | Viewport::Viewer => {}
             _ => {
@@ -1183,7 +1160,7 @@ impl App {
         }
     }
 
-    pub fn on_stage_all(&mut self) {
+    pub fn on_stage(&mut self) {
         match self.viewport {
             Viewport::Settings | Viewport::Viewer => {}
             _ => {
@@ -1237,7 +1214,7 @@ impl App {
         }
     }
 
-    pub fn on_push(&mut self) {
+    pub fn on_force_push(&mut self) {
         match self.viewport {
             Viewport::Settings | Viewport::Viewer => {}
             _ => {
@@ -1376,7 +1353,7 @@ impl App {
             }
     }
 
-    pub fn on_go_back(&mut self) {
+    pub fn on_back(&mut self) {
         match self.focus {
             Focus::ModalCommit => {
                 self.focus = Focus::Viewport;

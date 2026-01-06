@@ -1,51 +1,16 @@
-#[rustfmt::skip]
+use crate::helpers::heatmap::heat_cell;
+use crate::helpers::palette::*;
+use crate::{
+    app::app::{App, Direction, Focus},
+    core::renderers::render_keybindings,
+    git::queries::commits::get_git_user_info,
+    helpers::text::fill_width,
+};
 use ratatui::{
     Frame,
     style::Style,
-    text::{
-        Span,
-        Line
-    },
-    widgets::{
-        Block,
-        Scrollbar,
-        ScrollbarOrientation,
-        ScrollbarState,
-        List,
-        ListItem,
-    }
-};
-use crate::{ helpers::heatmap::{heat_cell}};
-#[rustfmt::skip]
-use crate::{
-    helpers::{
-        palette::*
-    },
-};
-#[rustfmt::skip]
-use crate::{
-    app::app::{
-        App,
-        Focus,
-        Direction
-    },
-    git::{
-        queries::{
-            commits::{
-                get_git_user_info
-            }
-        }
-    },
-    helpers::{
-        text::{
-            fill_width
-        }
-    },
-    core::{
-        renderers::{
-            render_keybindings
-        }
-    }
+    text::{Line, Span},
+    widgets::{Block, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 impl App {
@@ -70,7 +35,7 @@ impl App {
 
         // Heatmap
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled("commit heatmap (last year)", Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::from(Span::styled("v0.1.22", Style::default().fg(self.theme.COLOR_TEXT))).centered());
         lines.push(Line::default());
 
         // Each heat cell is "X " - two columns

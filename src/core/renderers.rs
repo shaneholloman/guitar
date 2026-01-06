@@ -26,7 +26,7 @@ use ratatui::{
         Span
     },
 };
-use crate::helpers::keymap::{Command, KeyBinding};
+use crate::helpers::keymap::{Command, KeyBinding, keycode_to_string};
 #[rustfmt::skip]
 use crate::{
     layers,
@@ -53,7 +53,6 @@ use crate::{
             ColorPicker,
         },
         text::{
-            keycode_to_string,
             modifiers_to_string,
             pascal_to_spaced
         },
@@ -638,7 +637,7 @@ pub fn render_keybindings(theme: &Theme, keymap: &IndexMap<KeyBinding, Command>,
         if !key_string.is_empty() {
             key_string = format!("{} + ", key_string);
         }
-        key_string.push_str(&keycode_to_string(&kb.code));
+        key_string.push_str(&keycode_to_string(kb.code));
 
         // Command string
         let mut cmd_string = format!("{:?}", cmd);

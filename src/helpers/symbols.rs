@@ -1,3 +1,5 @@
+pub const SYM_FOLDER: &str = "🖿";
+
 pub const SYM_COMMIT_BRANCH: &str = "●";
 pub const SYM_COMMIT: &str = "○";
 pub const SYM_COMMIT_STASH: &str = "◎";
