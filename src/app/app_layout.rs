@@ -6,6 +6,7 @@ use ratatui::layout::Rect;
 use ratatui::{
     Frame,
 };
+use serde_json::json;
 use toml::Value;
 #[rustfmt::skip]
 use crate::app::app::{
@@ -221,31 +222,30 @@ impl App {
     pub fn save_layout(&self) {
         let mut pathbuf = dirs::config_dir().unwrap();
         pathbuf.push("guitar");
-        pathbuf.push("layout.toml");
+        pathbuf.push("layout.json");
         let path = pathbuf.as_path();
 
-        let mut table = toml::map::Map::new();
-        table.insert("is_shas".into(), Value::Boolean(self.is_shas));
-        table.insert("is_minimal".into(), Value::Boolean(self.is_minimal));
-        table.insert("is_branches".into(), Value::Boolean(self.is_branches));
-        table.insert("is_tags".into(), Value::Boolean(self.is_tags));
-        table.insert("is_stashes".into(), Value::Boolean(self.is_stashes));
-        table.insert("is_status".into(), Value::Boolean(self.is_status));
-        table.insert("is_inspector".into(), Value::Boolean(self.is_inspector));
-
-        let toml = Value::Table(table).to_string();
+        let value = json!({
+            "is_shas": self.is_shas,
+            "is_minimal": self.is_minimal,
+            "is_branches": self.is_branches,
+            "is_tags": self.is_tags,
+            "is_stashes": self.is_stashes,
+            "is_status": self.is_status,
+            "is_inspector": self.is_inspector,
+        });
 
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
 
-        let _ = fs::write(path, toml);
+        let _ = fs::write(path, serde_json::to_string_pretty(&value).unwrap());
     }
     
     pub fn load_layout(&mut self) {
         let mut pathbuf = dirs::config_dir().unwrap();
         pathbuf.push("guitar");
-        pathbuf.push("layout.toml");
+        pathbuf.push("layout.json");
         let path = pathbuf.as_path();
 
         let text = match fs::read_to_string(path) {
@@ -256,7 +256,7 @@ impl App {
             }
         };
 
-        let value: Value = match text.parse() {
+        let value: serde_json::Value = match serde_json::from_str(&text) {
             Ok(v) => v,
             Err(_) => {
                 self.save_layout();
@@ -264,33 +264,25 @@ impl App {
             }
         };
 
-        let table = match value.as_table() {
-            Some(t) => t,
-            None => {
-                self.save_layout();
-                return;
-            }
-        };
-
-        if let Some(v) = table.get("is_shas").and_then(|v| v.as_bool()) {
+        if let Some(v) = value.get("is_shas").and_then(|v| v.as_bool()) {
             self.is_shas = v;
         }
-        if let Some(v) = table.get("is_minimal").and_then(|v| v.as_bool()) {
+        if let Some(v) = value.get("is_minimal").and_then(|v| v.as_bool()) {
             self.is_minimal = v;
         }
-        if let Some(v) = table.get("is_branches").and_then(|v| v.as_bool()) {
+        if let Some(v) = value.get("is_branches").and_then(|v| v.as_bool()) {
             self.is_branches = v;
         }
-        if let Some(v) = table.get("is_tags").and_then(|v| v.as_bool()) {
+        if let Some(v) = value.get("is_tags").and_then(|v| v.as_bool()) {
             self.is_tags = v;
         }
-        if let Some(v) = table.get("is_stashes").and_then(|v| v.as_bool()) {
+        if let Some(v) = value.get("is_stashes").and_then(|v| v.as_bool()) {
             self.is_stashes = v;
         }
-        if let Some(v) = table.get("is_status").and_then(|v| v.as_bool()) {
+        if let Some(v) = value.get("is_status").and_then(|v| v.as_bool()) {
             self.is_status = v;
         }
-        if let Some(v) = table.get("is_inspector").and_then(|v| v.as_bool()) {
+        if let Some(v) = value.get("is_inspector").and_then(|v| v.as_bool()) {
             self.is_inspector = v;
         }
     }

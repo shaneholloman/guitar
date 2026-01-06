@@ -34,11 +34,6 @@ impl App {
 
         lines.push(Line::default());
 
-        // Heatmap
-        lines.push(Line::default());
-        lines.push(Line::from(Span::styled("v0.1.22", Style::default().fg(self.theme.COLOR_TEXT))).centered());
-        lines.push(Line::default());
-
         // Each heat cell is "X " - two columns
         let cell_width = 2;
 
@@ -60,68 +55,66 @@ impl App {
         // Width used by the heatmap body excluding borders
         let heatmap_width = visible_weeks * cell_width;
 
-        // Top border
-        lines.push(Line::from(Span::styled(format!("╭{}╮", "─".repeat(heatmap_width + 2)),Style::default().fg(self.theme.COLOR_GREY_800))).centered());
+        // Info
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(fill_width(" version:", "0.1.22 ", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
 
-        // Body
+        // Heatmap
+        lines.push(Line::default());
         for day in 0..7 {
             let mut spans = Vec::new();
-            spans.push(Span::styled("│ ", Style::default().fg(self.theme.COLOR_GREY_800)));
             spans.extend(self.heatmap[day][week_start..].iter().map(|&count| heat_cell(count, &self.theme)));
-            spans.push(Span::styled(" │", Style::default().fg(self.theme.COLOR_GREY_800)));
             lines.push(Line::from(spans).centered());
         }
 
-        // Bottom border
-        lines.push(Line::from(Span::styled(format!("╰{}╯", "─".repeat(heatmap_width + 2)), Style::default().fg(self.theme.COLOR_GREY_800))).centered());
+        // Paths        
         lines.push(Line::default());
+        lines.push(Line::from(vec![Span::styled(fill_width(" paths:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
         lines.push(Line::default());
+        let mut pathbuf = dirs::config_dir().unwrap();
+        pathbuf.push("guitar");
+        let path = pathbuf.as_path().to_str().unwrap();
+        lines.push(Line::from(Span::styled(fill_width(" keymap:", format!(" {}/keymap.json ", path).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
+        lines.push(Line::from(Span::styled(fill_width(" layout:", format!(" {}/layout.json ", path).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
 
         // Credentials
-        lines.push(Line::from(vec![Span::styled(fill_width("credentials:", "", max_text_width / 2), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled(fill_width("name:", name.unwrap().as_str(), max_text_width / 2), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
+        lines.push(Line::from(vec![Span::styled(fill_width(" credentials:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(fill_width(" name:", format!("{} ", name.unwrap()).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
         
         // Record the line index as selectable
         self.settings_selections.push(lines.len() - 1);
-        lines.push(Line::from(Span::styled(fill_width("email:", email.unwrap().as_str(), max_text_width / 2), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::from(Span::styled(fill_width(" email:", format!("{} ", email.unwrap()).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         
         // Record the line index as selectable
         self.settings_selections.push(lines.len() - 1);
-        lines.push(Line::from(Span::styled(fill_width("authorization:", "external ssh agent", max_text_width / 2), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
+        lines.push(Line::from(Span::styled(fill_width(" authorization:", "external ssh agent ", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
         
         // Record the line index as selectable
         self.settings_selections.push(lines.len() - 1);
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled(fill_width("themes:", "", max_text_width / 2), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::from(Span::styled(fill_width(" themes:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled(fill_width("classic", format!("({})", if self.theme.name == ThemeNames::Classic {"*"} else {" "}).as_str(), max_text_width / 2), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
+        lines.push(Line::from(Span::styled(fill_width(" classic", format!("({}) ", if self.theme.name == ThemeNames::Classic {"*"} else {" "}).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
         
         // Record the line index as selectable
         self.settings_selections.push(lines.len() - 1);
-        lines.push(Line::from(Span::styled(fill_width("ansi", format!("({})", if self.theme.name == ThemeNames::Ansi {"*"} else {" "}).as_str(), max_text_width / 2), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::from(Span::styled(fill_width(" ansi", format!("({}) ", if self.theme.name == ThemeNames::Ansi {"*"} else {" "}).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         
         // Record the line index as selectable
         self.settings_selections.push(lines.len() - 1);
-        lines.push(Line::from(Span::styled(fill_width("monochrome", format!("({})", if self.theme.name == ThemeNames::Monochrome {"*"} else {" "}).as_str(), max_text_width / 2), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
+        lines.push(Line::from(Span::styled(fill_width(" monochrome", format!("({}) ", if self.theme.name == ThemeNames::Monochrome {"*"} else {" "}).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
 
         // Record the line index as selectable
         self.settings_selections.push(lines.len() - 1);
 
         // Keymap
-        let mut pathbuf = dirs::config_dir().unwrap();
-        pathbuf.push("guitar");
-        pathbuf.push("keymap.toml");
-        let path = pathbuf.as_path().to_str().unwrap();
         lines.push(Line::default());
-        lines.push(Line::from(vec![
-            Span::styled(fill_width(format!("{}:", path).as_str(), "", max_text_width / 2), Style::default().fg(self.theme.COLOR_TEXT))
-        ]).centered());
+        lines.push(Line::from(Span::styled(fill_width(" shortcuts / normal mode:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         lines.push(Line::default());
-
-        lines.push(Line::from(Span::styled("Normal Mode", Style::default().fg(self.theme.COLOR_TEXT))).centered());
         if let Some(mode_keymap) = self.keymaps.get(&InputMode::Normal) {
-            render_keybindings(&self.theme, &mode_keymap, max_text_width / 2).iter().enumerate().for_each(|(idx, kb_line)| {
+            render_keybindings(&self.theme, &mode_keymap, heatmap_width).iter().enumerate().for_each(|(idx, kb_line)| {
                 let spans: Vec<Span> = kb_line.clone().spans.iter().map(|span| {
                     let mut style = span.style;
                     if idx % 2 == 0 { style = style.bg(self.theme.COLOR_GREY_900); }
@@ -133,10 +126,11 @@ impl App {
                 self.settings_selections.push(lines.len() - 1);
             });
         }
-
-        lines.push(Line::from(Span::styled("Git Mode", Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(fill_width(" shortcuts / git mode:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::default());
         if let Some(mode_keymap) = self.keymaps.get(&InputMode::Git) {
-            render_keybindings(&self.theme, &mode_keymap, max_text_width / 2).iter().enumerate().for_each(|(idx, kb_line)| {
+            render_keybindings(&self.theme, &mode_keymap, heatmap_width).iter().enumerate().for_each(|(idx, kb_line)| {
                 let spans: Vec<Span> = kb_line.clone().spans.iter().map(|span| {
                     let mut style = span.style;
                     if idx % 2 == 0 { style = style.bg(self.theme.COLOR_GREY_900); }

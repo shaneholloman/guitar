@@ -211,7 +211,7 @@ impl App {
                     Command::ToggleInspector => self.on_toggle_inspector(),
                     Command::ToggleShas => self.on_toggle_shas(),
                     Command::ToggleSettings => self.on_toggle_settings(),
-                    Command::Leader => self.on_leader(),
+                    Command::ActionMode => self.on_action_mode(),
                     Command::Exit => self.on_exit(),
                     
                     // Lists
@@ -261,7 +261,7 @@ impl App {
         }
     }
 
-    pub fn on_leader(&mut self) {
+    pub fn on_action_mode(&mut self) {
         self.mode = InputMode::Git;
     }
 

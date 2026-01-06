@@ -27,7 +27,7 @@ pub enum Command {
     ToggleInspector,
     ToggleShas,
     ToggleSettings,
-    Leader,
+    ActionMode,
     Exit,
 
     // Lists
@@ -77,7 +77,11 @@ fn default_normal_keymap() -> IndexMap<KeyBinding, Command> {
  
     // User Interface
     map.insert(KeyBinding::new(Tab, KeyModifiers::NONE), Command::FocusNextPane);
+    map.insert(KeyBinding::new(Right, KeyModifiers::NONE), Command::FocusNextPane);
+    map.insert(KeyBinding::new(Char('l'), KeyModifiers::NONE), Command::FocusNextPane);
     map.insert(KeyBinding::new(BackTab, KeyModifiers::SHIFT), Command::FocusPreviousPane);
+    map.insert(KeyBinding::new(Left, KeyModifiers::NONE), Command::FocusPreviousPane);
+    map.insert(KeyBinding::new(Char('h'), KeyModifiers::NONE), Command::FocusPreviousPane);
     map.insert(KeyBinding::new(Enter, KeyModifiers::NONE), Command::Select);
     map.insert(KeyBinding::new(Esc, KeyModifiers::NONE), Command::Back);
     map.insert(KeyBinding::new(Char('.'), KeyModifiers::NONE), Command::Minimize);
@@ -88,7 +92,7 @@ fn default_normal_keymap() -> IndexMap<KeyBinding, Command> {
     map.insert(KeyBinding::new(Char('5'), KeyModifiers::NONE), Command::ToggleInspector);
     map.insert(KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleShas);
     map.insert(KeyBinding::new(F(1), KeyModifiers::NONE), Command::ToggleSettings);
-    map.insert(KeyBinding::new(Char(' '), KeyModifiers::CONTROL), Command::Leader);
+    map.insert(KeyBinding::new(Char(' '), KeyModifiers::CONTROL), Command::ActionMode);
     map.insert(KeyBinding::new(Char('q'), KeyModifiers::NONE), Command::Exit);
     map.insert(KeyBinding::new(Char('c'), KeyModifiers::CONTROL), Command::Exit);
     
@@ -126,8 +130,32 @@ fn default_git_keymap() -> IndexMap<KeyBinding, Command> {
     let mut map = IndexMap::new();
 
     // User Interface
+    map.insert(KeyBinding::new(Tab, KeyModifiers::NONE), Command::FocusNextPane);
+    map.insert(KeyBinding::new(BackTab, KeyModifiers::SHIFT), Command::FocusPreviousPane);
+    map.insert(KeyBinding::new(Right, KeyModifiers::NONE), Command::FocusNextPane);
+    map.insert(KeyBinding::new(Left, KeyModifiers::NONE), Command::FocusPreviousPane);
+    map.insert(KeyBinding::new(Enter, KeyModifiers::NONE), Command::Select);
+    map.insert(KeyBinding::new(Esc, KeyModifiers::NONE), Command::Back);
+    map.insert(KeyBinding::new(Char('.'), KeyModifiers::NONE), Command::Minimize);
+    map.insert(KeyBinding::new(Char('1'), KeyModifiers::NONE), Command::ToggleBranches);
+    map.insert(KeyBinding::new(Char('2'), KeyModifiers::NONE), Command::ToggleTags);
+    map.insert(KeyBinding::new(Char('3'), KeyModifiers::NONE), Command::ToggleStashes);
+    map.insert(KeyBinding::new(Char('4'), KeyModifiers::NONE), Command::ToggleStatus);
+    map.insert(KeyBinding::new(Char('5'), KeyModifiers::NONE), Command::ToggleInspector);
+    map.insert(KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleShas);
+    map.insert(KeyBinding::new(F(1), KeyModifiers::NONE), Command::ToggleSettings);
     map.insert(KeyBinding::new(Char('q'), KeyModifiers::NONE), Command::Exit);
     map.insert(KeyBinding::new(Char('c'), KeyModifiers::CONTROL), Command::Exit);
+
+    // Lists
+    map.insert(KeyBinding::new(PageUp, KeyModifiers::NONE), Command::PageUp);
+    map.insert(KeyBinding::new(PageDown, KeyModifiers::NONE), Command::PageDown);
+    map.insert(KeyBinding::new(Up, KeyModifiers::NONE), Command::ScrollUp);
+    map.insert(KeyBinding::new(Down, KeyModifiers::NONE), Command::ScrollDown);
+    map.insert(KeyBinding::new(Up, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ScrollUpHalf);
+    map.insert(KeyBinding::new(Down, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ScrollDownHalf);
+    map.insert(KeyBinding::new(Home, KeyModifiers::NONE), Command::GoToBeginning);
+    map.insert(KeyBinding::new(End, KeyModifiers::NONE), Command::GoToEnd);
 
     // Git
     map.insert(KeyBinding::new(Char('y'), KeyModifiers::NONE), Command::Drop);
@@ -341,7 +369,7 @@ fn load_keymaps_from_disk(
     path: &Path,
 ) -> Result<Keymaps, Box<dyn std::error::Error>> {
     let text = fs::read_to_string(path)?;
-    let cfg: KeymapConfig = toml::from_str(&text)?;
+    let cfg: KeymapConfig = serde_json::from_str(&text)?;
     Ok(config_to_keymaps(cfg)?)
 }
 
@@ -350,16 +378,16 @@ fn save_keymaps_to_disk(
     maps: &Keymaps,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = keymaps_to_config(maps);
-    let toml = toml::to_string_pretty(&cfg)?;
+    let json = serde_json::to_string_pretty(&cfg)?;
     fs::create_dir_all(path.parent().unwrap())?;
-    fs::write(path, toml)?;
+    fs::write(path, json)?;
     Ok(())
 }
 
 pub fn load_or_init_keymaps() -> Keymaps {
     let mut pathbuf = dirs::config_dir().unwrap();
     pathbuf.push("guitar");
-    pathbuf.push("keymap.toml");
+    pathbuf.push("keymap.json");
     let path = pathbuf.as_path();
 
     match load_keymaps_from_disk(path) {
