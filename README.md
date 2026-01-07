@@ -50,18 +50,11 @@ I needed a git client that would make it easy for me to understand where I am to
 - **Layout** – Somewhat primitive, also serilazied into `~/.config/guitar` folder (depending on your OS).
 - **Terminal-friendly colors** – Easy on the eyes for long coding sessions with three builtin themes. 
 
-### Planned features
+### Roadmap
 
-- **Rebasing** – Ability to rebase.  
-- **Merge** – Ability to merge.  
-- **Conflicts** – Issue an alert with conflicting files to resolve externally.  
+Follow the link to get an idea of the roadmap and see what currently is being worked on:
 
-### Maybe I get to it someday features
-
-- **Auth** – Comprehensive auth management.
-- **Keymaps** – In-app keymap configuration.
-- **Themes** – Custom themes.
-- **Recent repos** – List of most recent repositories.
+https://github.com/users/asinglebit/projects/1/views/1
 
 ### Default keyboard mappings (they suck for now)
 
