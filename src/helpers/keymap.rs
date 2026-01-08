@@ -14,6 +14,8 @@ pub enum InputMode {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Command {
     // User Interface
+    WidenScope,
+    NarrowScope,
     FocusNextPane,
     FocusPreviousPane,
     Select,
@@ -25,13 +27,15 @@ pub enum Command {
     ToggleStatus,
     ToggleInspector,
     ToggleShas,
-    ToggleSettings,
+    ToggleHelp,
     ActionMode,
     Exit,
 
     // Lists
-    PageUp,
-    PageDown,
+    ScrollPageUp,
+    ScrollPageDown,
+    ScrollHalfPageUp,
+    ScrollHalfPageDown,
     ScrollUp,
     ScrollDown,
     ScrollUpHalf,
@@ -80,13 +84,13 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     // 'h' = go back / widen scope
     map.insert(
         KeyBinding::new(Char('h'), KeyModifiers::NONE),
-        Command::Back,
+        Command::WidenScope,
     );
 
     // 'l' = select / narrow scope
     map.insert(
         KeyBinding::new(Char('l'), KeyModifiers::NONE),
-        Command::Select,
+        Command::NarrowScope,
     );
 
     // Primary action keys
@@ -151,29 +155,41 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     // [Up] = scroll up
     map.insert(KeyBinding::new(Up, KeyModifiers::NONE), Command::ScrollUp);
 
+    // [Ctrl] + [Alt] + 'd' = down
+    map.insert(
+        KeyBinding::new(Char('d'), KeyModifiers::CONTROL | KeyModifiers::ALT),
+        Command::ScrollDownHalf,
+    );
+
+    // [Ctrl] + [Alt] + 'u' = up
+    map.insert(
+        KeyBinding::new(Char('u'), KeyModifiers::CONTROL | KeyModifiers::ALT),
+        Command::ScrollUpHalf,
+    );
+
     // Half-page scrolling (Vim-style)
 
     // [Ctrl] + 'd' = down
     map.insert(
         KeyBinding::new(Char('d'), KeyModifiers::CONTROL),
-        Command::ScrollDownHalf,
+        Command::ScrollHalfPageDown,
     );
 
     // [Ctrl] + 'u' = up
     map.insert(
         KeyBinding::new(Char('u'), KeyModifiers::CONTROL),
-        Command::ScrollUpHalf,
+        Command::ScrollHalfPageUp,
     );
 
     // Regular page up and page down
 
     // [Page Up] = up
-    map.insert(KeyBinding::new(PageUp, KeyModifiers::NONE), Command::PageUp);
+    map.insert(KeyBinding::new(PageUp, KeyModifiers::NONE), Command::ScrollPageUp);
 
     // [Page Down] = down
     map.insert(
         KeyBinding::new(PageDown, KeyModifiers::NONE),
-        Command::PageDown,
+        Command::ScrollPageDown,
     );
 
     // Full-page scrolling (Vim-style)
@@ -261,9 +277,11 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
         KeyBinding::new(Char('6'), KeyModifiers::NONE),
         Command::ToggleShas,
     );
+
+    // Help and settings
     map.insert(
-        KeyBinding::new(F(1), KeyModifiers::NONE),
-        Command::ToggleSettings,
+        KeyBinding::new(Char('?'), KeyModifiers::NONE),
+        Command::ToggleHelp,
     );
 
     // Ctrl-A to enter action mode (mnemonic: 'A' for Action)

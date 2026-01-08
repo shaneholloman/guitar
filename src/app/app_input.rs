@@ -33,9 +33,9 @@ impl App {
             Focus::Inspector,
             Focus::StatusTop,
             Focus::StatusBottom,
-            Focus::Branches,
-            Focus::Tags,
             Focus::Stashes,
+            Focus::Tags,
+            Focus::Branches,
         ] {
             match focus {
                 Focus::Viewport => order.push(Focus::Viewport),
@@ -213,6 +213,8 @@ impl App {
             if let Some(cmd) = mode_map.get(&key_binding) {
                 match cmd {
                     // User Interface
+                    Command::WidenScope => self.on_widen_scope(),
+                    Command::NarrowScope => self.on_narrow_scope(),
                     Command::FocusNextPane => self.on_focus_next_pane(),
                     Command::FocusPreviousPane => self.on_focus_prev_pane(),
                     Command::Select => self.on_select(),
@@ -224,13 +226,15 @@ impl App {
                     Command::ToggleStatus => self.on_toggle_status(),
                     Command::ToggleInspector => self.on_toggle_inspector(),
                     Command::ToggleShas => self.on_toggle_shas(),
-                    Command::ToggleSettings => self.on_toggle_settings(),
+                    Command::ToggleHelp => self.on_toggle_help(),
                     Command::ActionMode => self.on_action_mode(),
                     Command::Exit => self.on_exit(),
 
                     // Lists
-                    Command::PageUp => self.on_scroll_page_up(),
-                    Command::PageDown => self.on_scroll_page_down(),
+                    Command::ScrollPageUp => self.on_scroll_page_up(),
+                    Command::ScrollPageDown => self.on_scroll_page_down(),
+                    Command::ScrollHalfPageDown => self.on_scroll_half_page_down(),
+                    Command::ScrollHalfPageUp => self.on_scroll_half_page_up(),
                     Command::ScrollUp => self.on_scroll_up(),
                     Command::ScrollDown => self.on_scroll_down(),
                     Command::ScrollUpHalf => self.on_scroll_up_half(),
@@ -422,6 +426,108 @@ impl App {
             }
             _ => {}
         };
+    }
+
+    pub fn on_widen_scope(&mut self) {
+        match self.focus {
+            Focus::Viewport => {
+                match self.viewport {
+                    Viewport::Settings => {
+                        self.viewport = Viewport::Graph;
+                    }
+                    Viewport::Viewer => {
+                        self.is_status = true;
+                        self.focus = Focus::StatusTop;
+                    }
+                    Viewport::Graph => {
+                        self.is_branches = true;
+                        self.focus = Focus::Branches;
+                    }
+                    _ => {}
+                }
+            }
+            Focus::Inspector => {
+                self.focus = Focus::Viewport;
+                self.viewport = Viewport::Graph;
+            }
+            Focus::StatusTop | Focus::StatusBottom => {
+                if self.graph_selected != 0 {
+                    self.is_inspector = true;
+                    self.focus = Focus::Inspector;
+                } else {
+                    self.focus = Focus::Viewport;
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    pub fn on_narrow_scope(&mut self) {
+        match self.focus {
+            Focus::Viewport => {
+                match self.viewport {
+                    Viewport::Graph => {
+                        if self.graph_selected != 0 {
+                            self.is_inspector = true;
+                            self.focus = Focus::Inspector;
+                        } else {
+                            if self.uncommitted.is_clean {
+                                return;
+                            }
+                            self.is_status = true;
+                            if self.uncommitted.is_staged {
+                                self.focus = Focus::StatusTop;
+                            } else {
+                                self.focus = Focus::StatusBottom;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Focus::Inspector => {
+                self.is_status = true;
+                self.focus = Focus::StatusTop;
+            }
+            Focus::Branches => {
+                self.viewport = Viewport::Graph;
+                self.focus = Focus::Viewport;
+                let alias = self.branches.sorted.get(self.branches_selected).unwrap().0;
+                self.graph_selected = self
+                    .oids
+                    .get_sorted_aliases()
+                    .iter()
+                    .position(|o| o == &alias)
+                    .unwrap_or(0);
+            }
+            Focus::Tags => {
+                self.viewport = Viewport::Graph;
+                self.focus = Focus::Viewport;
+                let alias = self.tags.sorted.get(self.tags_selected).unwrap().0;
+                self.graph_selected = self
+                    .oids
+                    .get_sorted_aliases()
+                    .iter()
+                    .position(|o| o == &alias)
+                    .unwrap_or(0);
+            }
+            Focus::Stashes => {
+                self.viewport = Viewport::Graph;
+                self.focus = Focus::Viewport;
+                let alias = self.oids.stashes.get(self.stashes_selected).unwrap();
+                self.graph_selected = self
+                    .oids
+                    .get_sorted_aliases()
+                    .iter()
+                    .position(|o| o == alias)
+                    .unwrap_or(0);
+            }
+            Focus::StatusTop | Focus::StatusBottom => {
+                self.open_viewer();
+                self.focus = Focus::Viewport;
+            }
+            _ => {}
+        }
     }
 
     pub fn on_focus_next_pane(&mut self) {
@@ -806,6 +912,120 @@ impl App {
             }
             _ => {}
         };
+    }
+
+    pub fn on_scroll_half_page_up(&mut self) {
+        match self.focus {
+            Focus::Branches => {
+                let half = (self.layout.branches.height as usize - 1) / 2;
+                self.branches_selected = self.branches_selected.saturating_sub(half);
+            }
+            Focus::Tags => {
+                let half = (self.layout.tags.height as usize - 1) / 2;
+                self.tags_selected = self.tags_selected.saturating_sub(half);
+            }
+            Focus::Stashes => {
+                let half = (self.layout.stashes.height as usize - 1) / 2;
+                self.stashes_selected = self.stashes_selected.saturating_sub(half);
+            }
+            Focus::Viewport => {
+                let half = (self.layout.graph.height as usize - 1) / 2;
+                match self.viewport {
+                    Viewport::Graph => {
+                        self.graph_selected = self.graph_selected.saturating_sub(half);
+
+                        if self.graph_selected < self.oids.get_commit_count() {
+                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                            self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                        }
+                    }
+                    Viewport::Viewer => {
+                        self.viewer_selected = self.viewer_selected.saturating_sub(half);
+                    }
+                    Viewport::Settings => {
+                        self.settings_selected = self.settings_selected.saturating_sub(half);
+                        self.last_input_direction = Some(Direction::Up);
+                    }
+                    _ => {}
+                }
+            }
+            Focus::Inspector => {
+                let half = (self.layout.inspector.height as usize - 3) / 2;
+                self.inspector_selected = self.inspector_selected.saturating_sub(half);
+            }
+            Focus::StatusTop => {
+                let half = (self.layout.status_top.height as usize - 3) / 2;
+                self.status_top_selected = self.status_top_selected.saturating_sub(half);
+            }
+            Focus::StatusBottom => {
+                let half = (self.layout.status_bottom.height as usize - 3) / 2;
+                self.status_bottom_selected = self.status_bottom_selected.saturating_sub(half);
+            }
+            _ => {}
+        }
+
+        if self.graph_selected < self.oids.get_commit_count() {
+            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+            self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+        }
+    }
+
+    pub fn on_scroll_half_page_down(&mut self) {
+        match self.focus {
+            Focus::Branches => {
+                let half = (self.layout.branches.height as usize - 1) / 2;
+                self.branches_selected += half;
+            }
+            Focus::Tags => {
+                let half = (self.layout.tags.height as usize - 1) / 2;
+                self.tags_selected += half;
+            }
+            Focus::Stashes => {
+                let half = (self.layout.stashes.height as usize - 1) / 2;
+                self.stashes_selected += half;
+            }
+            Focus::Viewport => {
+                let half = (self.layout.graph.height as usize - 1) / 2;
+                match self.viewport {
+                    Viewport::Graph => {
+                        let max = self.oids.get_commit_count().saturating_sub(1);
+                        self.graph_selected = (self.graph_selected + half).min(max);
+
+                        if self.graph_selected < self.oids.get_commit_count() {
+                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                            self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                        }
+                    }
+                    Viewport::Viewer => {
+                        let max = self.viewer_lines.len().saturating_sub(1);
+                        self.viewer_selected = (self.viewer_selected + half).min(max);
+                    }
+                    Viewport::Settings => {
+                        self.settings_selected += half;
+                        self.last_input_direction = Some(Direction::Down);
+                    }
+                    _ => {}
+                }
+            }
+            Focus::Inspector => {
+                let half = (self.layout.inspector.height as usize - 3) / 2;
+                self.inspector_selected += half;
+            }
+            Focus::StatusTop => {
+                let half = (self.layout.status_top.height as usize - 3) / 2;
+                self.status_top_selected += half;
+            }
+            Focus::StatusBottom => {
+                let half = (self.layout.status_bottom.height as usize - 3) / 2;
+                self.status_bottom_selected += half;
+            }
+            _ => {}
+        }
+
+        if self.graph_selected < self.oids.get_commit_count() {
+            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+            self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+        }
     }
 
     pub fn on_scroll_up_branch(&mut self) {
@@ -1551,7 +1771,7 @@ impl App {
         self.save_layout();
     }
 
-    pub fn on_toggle_settings(&mut self) {
+    pub fn on_toggle_help(&mut self) {
         match self.viewport {
             Viewport::Graph => {
                 self.viewport = Viewport::Settings;
