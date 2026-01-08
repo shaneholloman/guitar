@@ -52,8 +52,21 @@ pub struct LineChange {
 // Represents a diff hunk (header and its line changes)
 #[derive(Debug)]
 pub struct Hunk {
-    pub header: String,         // e.g. @@ -X,Y +X,Y @@
+    pub header: HunkHeader,
     pub lines: Vec<LineChange>, // All line changes in this hunk
+}
+
+// Represents a diff hunk header, whose raw byte format is:
+// @@ -k,l +n,m @@ optional context string
+#[derive(Debug)]
+pub struct HunkHeader {
+    pub old_start: u32, // -k
+    pub old_lines: u32, // l
+    pub new_start: u32, // +n
+    pub new_lines: u32, // m
+    // We may eventually want to use the optional context part of the header,
+    // in which case we'd need to parse it out from raw_header.
+    pub raw_header: String, // The entire header as a string
 }
 
 // Deduplicate and count unique filenames from two lists
@@ -98,7 +111,13 @@ pub fn diff_to_hunks(diff: Diff) -> Result<Vec<Hunk>, git2::Error> {
         // Start a new hunk if encountered
         if let Some(hunk) = hunk_opt {
             hunks.push(Hunk {
-                header: sanitize(decode(hunk.header())).to_string(),
+                header: HunkHeader {
+                    old_start: hunk.old_start(),
+                    old_lines: hunk.old_lines(),
+                    new_start: hunk.new_start(),
+                    new_lines: hunk.new_lines(),
+                    raw_header: sanitize(decode(hunk.header())).to_string(),
+                },
                 lines: Vec::new(),
             });
         }
