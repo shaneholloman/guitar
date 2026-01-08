@@ -56,7 +56,7 @@ Follow the link to get an idea of the roadmap and see what currently is being wo
 
 https://github.com/users/asinglebit/projects/1/views/1
 
-### Default keyboard mappings (they suck for now)
+### Default keyboard mappings (to be done: better MacOS defaults)
 
 You will probably need to change the configs to your taste, for optimal experience, especially on MacOS due to Option/Command keys. I will version configs properly in the future. Dangerous actions, like resetting and force pushing are now behind `Action Mode` key. You need to enter the `Action Mode` first, and then next shortcut you commit will be picked from the `Action Mode` key pool.
 
@@ -71,6 +71,7 @@ You will probably need to change the configs to your taste, for optimal experien
 │ [_][_][_][_][_][_][_][_][_][_][_][_][______]    [_]    [_][_][_][ | │
 │ [__][_][__][_____________________][__][_][_] [_][_][_] [____][_][_| │
 ╰─────────────────────────────────────────────────────────────────────╯
+
 shortcuts / normal mode:                                                                
 
 Widen Scope                                                           h
