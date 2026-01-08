@@ -187,7 +187,7 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
 
     // 'G' for end
     map.insert(
-        KeyBinding::new(Char('G'), KeyModifiers::NONE),
+        KeyBinding::new(Char('G'), KeyModifiers::SHIFT),
         Command::GoToEnd,
     );
 
@@ -335,7 +335,7 @@ fn default_normal_keymap() -> IndexMap<KeyBinding, Command> {
 
     // 'T' for toggle branch visibility in graph
     map.insert(
-        KeyBinding::new(Char('T'), KeyModifiers::NONE),
+        KeyBinding::new(Char('T'), KeyModifiers::SHIFT),
         Command::ToggleBranch,
     );
 
@@ -366,7 +366,7 @@ fn default_action_keymap() -> IndexMap<KeyBinding, Command> {
 
     // 'S' for stash (capital to emphasize it's a state-changing operation)
     map.insert(
-        KeyBinding::new(Char('S'), KeyModifiers::NONE),
+        KeyBinding::new(Char('S'), KeyModifiers::SHIFT),
         Command::Stash,
     );
 
@@ -378,31 +378,31 @@ fn default_action_keymap() -> IndexMap<KeyBinding, Command> {
 
     // 'H' for hard reset (capital to indicate DANGER - destructive operation)
     map.insert(
-        KeyBinding::new(Char('H'), KeyModifiers::NONE),
+        KeyBinding::new(Char('H'), KeyModifiers::SHIFT),
         Command::HardReset,
     );
 
     // 'M' for mixed reset (capital to indicate caution)
     map.insert(
-        KeyBinding::new(Char('M'), KeyModifiers::NONE),
+        KeyBinding::new(Char('M'), KeyModifiers::SHIFT),
         Command::MixedReset,
     );
 
     // 'P' for force push (capital P to indicate DANGER)
     map.insert(
-        KeyBinding::new(Char('P'), KeyModifiers::NONE),
+        KeyBinding::new(Char('P'), KeyModifiers::SHIFT),
         Command::ForcePush,
     );
 
     // 'D' for delete branch (vim uses 'D' to delete to end of line)
     map.insert(
-        KeyBinding::new(Char('D'), KeyModifiers::NONE),
+        KeyBinding::new(Char('D'), KeyModifiers::SHIFT),
         Command::DeleteBranch,
     );
 
     // 'U' for untag (capital U to match vim's "undo whole line" conceptually)
     map.insert(
-        KeyBinding::new(Char('U'), KeyModifiers::NONE),
+        KeyBinding::new(Char('U'), KeyModifiers::SHIFT),
         Command::Untag,
     );
 
