@@ -109,11 +109,13 @@ impl App {
             .position(self.branches_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("─"))
-            .end_symbol(Some(if self.is_tags || self.is_stashes {
-                "│"
-            } else {
-                "─"
-            }))
+            .end_symbol(Some(
+                if self.layout_config.is_tags || self.layout_config.is_stashes {
+                    "│"
+                } else {
+                    "─"
+                },
+            ))
             .track_symbol(Some("│"))
             .thumb_symbol(if total_lines > visible_height {
                 "▌"

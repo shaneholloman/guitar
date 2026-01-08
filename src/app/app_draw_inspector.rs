@@ -196,7 +196,7 @@ impl App {
             .position(self.inspector_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("╮"))
-            .end_symbol(if self.is_status {
+            .end_symbol(if self.layout_config.is_status {
                 Some("│")
             } else {
                 Some("╯")

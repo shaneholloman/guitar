@@ -39,16 +39,16 @@ impl App {
         ] {
             match focus {
                 Focus::Viewport => order.push(Focus::Viewport),
-                Focus::Inspector if self.is_inspector && self.graph_selected != 0 => {
+                Focus::Inspector if self.layout_config.is_inspector && self.graph_selected != 0 => {
                     order.push(Focus::Inspector)
                 }
-                Focus::StatusTop if self.is_status => order.push(*focus),
-                Focus::StatusBottom if self.is_status && self.graph_selected == 0 => {
+                Focus::StatusTop if self.layout_config.is_status => order.push(*focus),
+                Focus::StatusBottom if self.layout_config.is_status && self.graph_selected == 0 => {
                     order.push(*focus)
                 }
-                Focus::Branches if self.is_branches => order.push(Focus::Branches),
-                Focus::Tags if self.is_tags => order.push(Focus::Tags),
-                Focus::Stashes if self.is_stashes => order.push(Focus::Stashes),
+                Focus::Branches if self.layout_config.is_branches => order.push(Focus::Branches),
+                Focus::Tags if self.layout_config.is_tags => order.push(Focus::Tags),
+                Focus::Stashes if self.layout_config.is_stashes => order.push(Focus::Stashes),
                 _ => {}
             }
         }
@@ -435,11 +435,11 @@ impl App {
                     self.viewport = Viewport::Graph;
                 }
                 Viewport::Viewer => {
-                    self.is_status = true;
+                    self.layout_config.is_status = true;
                     self.focus = Focus::StatusTop;
                 }
                 Viewport::Graph => {
-                    self.is_branches = true;
+                    self.layout_config.is_branches = true;
                     self.focus = Focus::Branches;
                 }
                 _ => {}
@@ -450,7 +450,7 @@ impl App {
             }
             Focus::StatusTop | Focus::StatusBottom => {
                 if self.graph_selected != 0 {
-                    self.is_inspector = true;
+                    self.layout_config.is_inspector = true;
                     self.focus = Focus::Inspector;
                 } else {
                     self.focus = Focus::Viewport;
@@ -465,13 +465,13 @@ impl App {
             Focus::Viewport => {
                 if self.viewport == Viewport::Graph {
                     if self.graph_selected != 0 {
-                        self.is_inspector = true;
+                        self.layout_config.is_inspector = true;
                         self.focus = Focus::Inspector;
                     } else {
                         if self.uncommitted.is_clean {
                             return;
                         }
-                        self.is_status = true;
+                        self.layout_config.is_status = true;
                         if self.uncommitted.is_staged {
                             self.focus = Focus::StatusTop;
                         } else {
@@ -481,7 +481,7 @@ impl App {
                 }
             }
             Focus::Inspector => {
-                self.is_status = true;
+                self.layout_config.is_status = true;
                 self.focus = Focus::StatusTop;
             }
             Focus::Branches => {
@@ -1666,23 +1666,23 @@ impl App {
     }
 
     pub fn on_minimize(&mut self) {
-        self.is_minimal = !self.is_minimal;
+        self.layout_config.is_minimal = !self.layout_config.is_minimal;
         self.save_layout();
     }
 
     pub fn on_toggle_shas(&mut self) {
         if self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
-            self.is_shas = !self.is_shas;
+            self.layout_config.is_shas = !self.layout_config.is_shas;
         }
         self.save_layout();
     }
 
     pub fn on_toggle_branches(&mut self) {
-        self.is_branches = !self.is_branches;
+        self.layout_config.is_branches = !self.layout_config.is_branches;
         if self.viewport == Viewport::Settings {
             return;
         }
-        if self.is_branches {
+        if self.layout_config.is_branches {
             self.focus = Focus::Branches;
         } else {
             self.focus = Focus::Viewport;
@@ -1691,11 +1691,11 @@ impl App {
     }
 
     pub fn on_toggle_tags(&mut self) {
-        self.is_tags = !self.is_tags;
+        self.layout_config.is_tags = !self.layout_config.is_tags;
         if self.viewport == Viewport::Settings {
             return;
         }
-        if self.is_tags {
+        if self.layout_config.is_tags {
             self.focus = Focus::Tags;
         } else {
             self.focus = Focus::Viewport;
@@ -1704,11 +1704,11 @@ impl App {
     }
 
     pub fn on_toggle_stashes(&mut self) {
-        self.is_stashes = !self.is_stashes;
+        self.layout_config.is_stashes = !self.layout_config.is_stashes;
         if self.viewport == Viewport::Settings {
             return;
         }
-        if self.is_stashes {
+        if self.layout_config.is_stashes {
             self.focus = Focus::Stashes;
         } else {
             self.focus = Focus::Viewport;
@@ -1717,8 +1717,9 @@ impl App {
     }
 
     pub fn on_toggle_status(&mut self) {
-        self.is_status = !self.is_status;
-        if !self.is_status && (self.focus == Focus::StatusTop || self.focus == Focus::StatusBottom)
+        self.layout_config.is_status = !self.layout_config.is_status;
+        if !self.layout_config.is_status
+            && (self.focus == Focus::StatusTop || self.focus == Focus::StatusBottom)
         {
             self.focus = Focus::Viewport;
         }
@@ -1726,9 +1727,9 @@ impl App {
     }
 
     pub fn on_toggle_inspector(&mut self) {
-        self.is_inspector = !self.is_inspector;
-        if !self.is_inspector && self.focus == Focus::Inspector {
-            if self.is_status {
+        self.layout_config.is_inspector = !self.layout_config.is_inspector;
+        if !self.layout_config.is_inspector && self.focus == Focus::Inspector {
+            if self.layout_config.is_status {
                 self.focus = Focus::StatusTop;
             } else {
                 self.focus = Focus::Viewport;

@@ -1,9 +1,8 @@
 use crate::app::app::{App, Viewport};
+use crate::config::layout::{load_layout_config, save_layout_config};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use serde_json::json;
 use std::cell::Cell;
-use std::fs;
 
 #[derive(Default)]
 pub struct Layout {
@@ -31,16 +30,25 @@ pub struct Layout {
 impl App {
     pub fn layout(&mut self, frame: &mut Frame) {
         let is_settings = self.viewport == Viewport::Splash || self.viewport == Viewport::Settings;
-        let is_inspector = !is_settings && self.is_inspector && self.graph_selected != 0;
-        let is_status = !is_settings && self.is_status;
+        let is_inspector =
+            !is_settings && self.layout_config.is_inspector && self.graph_selected != 0;
+        let is_status = !is_settings && self.layout_config.is_status;
         let is_right_pane = is_inspector || is_status;
 
         let chunks_vertical = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
             .constraints([
-                ratatui::layout::Constraint::Length(if self.is_minimal { 0 } else { 1 }),
+                ratatui::layout::Constraint::Length(if self.layout_config.is_minimal {
+                    0
+                } else {
+                    1
+                }),
                 ratatui::layout::Constraint::Percentage(100),
-                ratatui::layout::Constraint::Length(if self.is_minimal { 0 } else { 1 }),
+                ratatui::layout::Constraint::Length(if self.layout_config.is_minimal {
+                    0
+                } else {
+                    1
+                }),
             ])
             .split(frame.area());
 
@@ -56,7 +64,11 @@ impl App {
             .direction(ratatui::layout::Direction::Horizontal)
             .constraints([
                 ratatui::layout::Constraint::Length(
-                    if (self.is_branches || self.is_tags || self.is_stashes) && !is_settings {
+                    if (self.layout_config.is_branches
+                        || self.layout_config.is_tags
+                        || self.layout_config.is_stashes)
+                        && !is_settings
+                    {
                         45
                     } else {
                         0
@@ -70,10 +82,10 @@ impl App {
         let chunks_pane_left = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
             .constraints([
-                ratatui::layout::Constraint::Percentage(if self.is_branches {
-                    if !self.is_tags && !self.is_stashes {
+                ratatui::layout::Constraint::Percentage(if self.layout_config.is_branches {
+                    if !self.layout_config.is_tags && !self.layout_config.is_stashes {
                         100
-                    } else if self.is_tags && self.is_stashes {
+                    } else if self.layout_config.is_tags && self.layout_config.is_stashes {
                         33
                     } else {
                         50
@@ -81,10 +93,10 @@ impl App {
                 } else {
                     0
                 }),
-                ratatui::layout::Constraint::Percentage(if self.is_tags {
-                    if !self.is_branches && !self.is_stashes {
+                ratatui::layout::Constraint::Percentage(if self.layout_config.is_tags {
+                    if !self.layout_config.is_branches && !self.layout_config.is_stashes {
                         100
-                    } else if self.is_branches && self.is_stashes {
+                    } else if self.layout_config.is_branches && self.layout_config.is_stashes {
                         33
                     } else {
                         50
@@ -92,10 +104,10 @@ impl App {
                 } else {
                     0
                 }),
-                ratatui::layout::Constraint::Percentage(if self.is_stashes {
-                    if !self.is_branches && !self.is_tags {
+                ratatui::layout::Constraint::Percentage(if self.layout_config.is_stashes {
+                    if !self.layout_config.is_branches && !self.layout_config.is_tags {
                         100
-                    } else if self.is_branches && self.is_tags {
+                    } else if self.layout_config.is_branches && self.layout_config.is_tags {
                         33
                     } else {
                         50
@@ -156,7 +168,7 @@ impl App {
         let mut tags_scrollbar = chunks_pane_left[1];
         tags_scrollbar.width += 1;
         let mut tags = chunks_pane_left[1];
-        if !self.is_branches {
+        if !self.layout_config.is_branches {
             tags.y += 1;
         } else {
             tags_scrollbar.height += 1;
@@ -167,7 +179,7 @@ impl App {
         let mut stashes_scrollbar = chunks_pane_left[2];
         stashes_scrollbar.width += 1;
         let mut stashes = chunks_pane_left[2];
-        if !self.is_branches && !self.is_tags {
+        if !self.layout_config.is_branches && !self.layout_config.is_tags {
             stashes.y += 1;
         } else {
             stashes_scrollbar.height += 1;
@@ -187,17 +199,17 @@ impl App {
 
         // Status top
         let mut status_top_scrollbar = chunks_status[0];
-        if self.is_inspector && self.graph_selected != 0 {
+        if self.layout_config.is_inspector && self.graph_selected != 0 {
             status_top_scrollbar.y -= 1;
             status_top_scrollbar.height += 1;
         }
         let mut status_top = chunks_status[0];
-        status_top.y = if self.is_inspector && self.graph_selected != 0 {
+        status_top.y = if self.layout_config.is_inspector && self.graph_selected != 0 {
             status_top.y - 1
         } else {
             status_top.y + 1
         };
-        status_top.height = if self.is_inspector && self.graph_selected != 0 {
+        status_top.height = if self.layout_config.is_inspector && self.graph_selected != 0 {
             status_top.height + 1
         } else {
             status_top.height
@@ -275,70 +287,10 @@ impl App {
     }
 
     pub fn save_layout(&self) {
-        let mut pathbuf = dirs::config_dir().unwrap();
-        pathbuf.push("guitar");
-        pathbuf.push("layout.json");
-        let path = pathbuf.as_path();
-
-        let value = json!({
-            "is_shas": self.is_shas,
-            "is_minimal": self.is_minimal,
-            "is_branches": self.is_branches,
-            "is_tags": self.is_tags,
-            "is_stashes": self.is_stashes,
-            "is_status": self.is_status,
-            "is_inspector": self.is_inspector,
-        });
-
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-
-        let _ = fs::write(path, serde_json::to_string_pretty(&value).unwrap());
+        save_layout_config(&self.layout_config);
     }
 
     pub fn load_layout(&mut self) {
-        let mut pathbuf = dirs::config_dir().unwrap();
-        pathbuf.push("guitar");
-        pathbuf.push("layout.json");
-        let path = pathbuf.as_path();
-
-        let text = match fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(_) => {
-                self.save_layout();
-                return;
-            }
-        };
-
-        let value: serde_json::Value = match serde_json::from_str(&text) {
-            Ok(v) => v,
-            Err(_) => {
-                self.save_layout();
-                return;
-            }
-        };
-
-        if let Some(v) = value.get("is_shas").and_then(|v| v.as_bool()) {
-            self.is_shas = v;
-        }
-        if let Some(v) = value.get("is_minimal").and_then(|v| v.as_bool()) {
-            self.is_minimal = v;
-        }
-        if let Some(v) = value.get("is_branches").and_then(|v| v.as_bool()) {
-            self.is_branches = v;
-        }
-        if let Some(v) = value.get("is_tags").and_then(|v| v.as_bool()) {
-            self.is_tags = v;
-        }
-        if let Some(v) = value.get("is_stashes").and_then(|v| v.as_bool()) {
-            self.is_stashes = v;
-        }
-        if let Some(v) = value.get("is_status").and_then(|v| v.as_bool()) {
-            self.is_status = v;
-        }
-        if let Some(v) = value.get("is_inspector").and_then(|v| v.as_bool()) {
-            self.is_inspector = v;
-        }
+        self.layout_config = load_layout_config();
     }
 }
