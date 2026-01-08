@@ -74,37 +74,126 @@ pub type Keymaps = IndexMap<InputMode, ModeKeymap>;
 fn default_normal_keymap() -> IndexMap<KeyBinding, Command> {
     let mut map = IndexMap::new();
 
-    // User Interface
+
+    // Vim-style scope navigation: h=widen scope (back), l=narrow scope (select)
+    // This creates a horizontal mental model where h goes "out" and l goes "in"
     map.insert(
-        KeyBinding::new(Tab, KeyModifiers::NONE),
-        Command::FocusNextPane,
-    );
-    map.insert(
-        KeyBinding::new(Right, KeyModifiers::NONE),
-        Command::FocusNextPane,
+        KeyBinding::new(Char('h'), KeyModifiers::NONE),
+        Command::Back,
     );
     map.insert(
         KeyBinding::new(Char('l'), KeyModifiers::NONE),
+        Command::Select,
+    );
+
+    // Enter as action key -- select
+    map.insert(KeyBinding::new(Enter, KeyModifiers::NONE), Command::Select);
+
+    map.insert(KeyBinding::new(Esc, KeyModifiers::NONE), Command::Back);
+
+    // Ctrl-P and Ctrl-N for navigating between adjacent hierarchy layers (panes)
+    // Think of this as moving between sibling views rather than parent/child
+    map.insert(
+        KeyBinding::new(Char('p'), KeyModifiers::CONTROL),
+        Command::FocusPreviousPane,
+    );
+    map.insert(
+        KeyBinding::new(Char('n'), KeyModifiers::CONTROL),
+        Command::FocusNextPane,
+    );
+
+    // Keep Tab/BackTab as fallback for muscle memory and accessibility
+    map.insert(
+        KeyBinding::new(Tab, KeyModifiers::NONE),
         Command::FocusNextPane,
     );
     map.insert(
         KeyBinding::new(BackTab, KeyModifiers::SHIFT),
         Command::FocusPreviousPane,
     );
+
+    // Vim-style vertical navigation
     map.insert(
-        KeyBinding::new(Left, KeyModifiers::NONE),
-        Command::FocusPreviousPane,
+        KeyBinding::new(Char('j'), KeyModifiers::NONE),
+        Command::ScrollDown,
+
     );
     map.insert(
-        KeyBinding::new(Char('h'), KeyModifiers::NONE),
-        Command::FocusPreviousPane,
+        KeyBinding::new(Char('k'), KeyModifiers::NONE),
+        Command::ScrollUp,
     );
-    map.insert(KeyBinding::new(Enter, KeyModifiers::NONE), Command::Select);
-    map.insert(KeyBinding::new(Esc, KeyModifiers::NONE), Command::Back);
+
     map.insert(
-        KeyBinding::new(Char('.'), KeyModifiers::NONE),
-        Command::Minimize,
+        KeyBinding::new(Down, KeyModifiers::NONE),
+        Command::ScrollDown,
     );
+    map.insert(KeyBinding::new(Up, KeyModifiers::NONE), Command::ScrollUp);
+
+    // Vim-style half-page scroll: Ctrl-D (down half page), Ctrl-U (up half page)
+    map.insert(
+        KeyBinding::new(Char('d'), KeyModifiers::CONTROL),
+        Command::ScrollDownHalf,
+    );
+    map.insert(
+        KeyBinding::new(Char('u'), KeyModifiers::CONTROL),
+        Command::ScrollUpHalf,
+    );
+
+    // Regular page up and page down
+    map.insert(KeyBinding::new(PageUp, KeyModifiers::NONE), Command::PageUp);
+    map.insert(
+        KeyBinding::new(PageDown, KeyModifiers::NONE),
+        Command::PageDown,
+    );
+
+    // 'g' for beginning (in vim it's 'gg', but that requires stateful key handling)
+    // 'G' (Shift-g) for end
+    map.insert(
+        KeyBinding::new(Char('g'), KeyModifiers::NONE),
+        Command::GoToBeginning,
+    );
+    map.insert(
+        KeyBinding::new(Char('G'), KeyModifiers::SHIFT),
+        Command::GoToEnd,
+    );
+
+    // The semantic obviousness here
+    map.insert(
+        KeyBinding::new(Home, KeyModifiers::NONE),
+        Command::GoToBeginning,
+    );
+    map.insert(KeyBinding::new(End, KeyModifiers::NONE), Command::GoToEnd);
+
+
+    // Vim-style search: '/' for find/search
+    map.insert(
+        KeyBinding::new(Char('/'), KeyModifiers::NONE),
+        Command::Find,
+    );
+
+    // Graph-specific navigation using vim-style bracket motions
+    // '{' and '}' for branch navigation (larger conceptual jumps between branches)
+    map.insert(
+        KeyBinding::new(Char('{'), KeyModifiers::SHIFT),
+        Command::ScrollUpBranch,
+    );
+    map.insert(
+        KeyBinding::new(Char('}'), KeyModifiers::SHIFT),
+        Command::ScrollDownBranch,
+    );
+
+    // '[' and ']' for commit navigation (smaller jumps between commits)
+    // Note: Using Ctrl modifier since '[' and ']' alone are hard to distinguish as Shift-[ and Shift-]
+    map.insert(
+        KeyBinding::new(Char('['), KeyModifiers::CONTROL),
+        Command::ScrollUpCommit,
+    );
+    map.insert(
+        KeyBinding::new(Char(']'), KeyModifiers::CONTROL),
+        Command::ScrollDownCommit,
+    );
+
+    // UI panel toggles: numbered 1-6
     map.insert(
         KeyBinding::new(Char('1'), KeyModifiers::NONE),
         Command::ToggleBranches,
@@ -133,132 +222,81 @@ fn default_normal_keymap() -> IndexMap<KeyBinding, Command> {
         KeyBinding::new(F(1), KeyModifiers::NONE),
         Command::ToggleSettings,
     );
+
+    // '.' for minimize (vim uses '.' to repeat last command; here it minimizes panels)
     map.insert(
-        KeyBinding::new(Char(' '), KeyModifiers::CONTROL),
-        Command::ActionMode,
+        KeyBinding::new(Char('.'), KeyModifiers::NONE),
+        Command::Minimize,
     );
+
+    // Safe git operations (non-destructive)
+
+    // 's' for stage (git add)
     map.insert(
-        KeyBinding::new(Char('q'), KeyModifiers::NONE),
-        Command::Exit,
+        KeyBinding::new(Char('s'), KeyModifiers::NONE),
+        Command::Stage,
     );
+
+    // 'u' for unstage (undo staging)
     map.insert(
-        KeyBinding::new(Char('c'), KeyModifiers::CONTROL),
-        Command::Exit,
+        KeyBinding::new(Char('u'), KeyModifiers::NONE),
+        Command::Unstage,
     );
+
+
+    // 'c' for commit (git commit)
+    map.insert(
+        KeyBinding::new(Char('c'), KeyModifiers::NONE),
+        Command::Commit,
+    );
+
+    // 'f' for fetch (git fetch)
+    map.insert(
+        KeyBinding::new(Char('f'), KeyModifiers::NONE),
+        Command::FetchAll,
+    );
+
+    // 'b' for branch (create new branch)
+
+    map.insert(
+        KeyBinding::new(Char('b'), KeyModifiers::NONE),
+        Command::CreateBranch,
+    );
+
+
+    // 't' for tag (create tag)
+    map.insert(KeyBinding::new(Char('t'), KeyModifiers::NONE), Command::Tag);
+
+    // 'T' (Shift-t) for toggle branch visibility in graph
+    map.insert(
+        KeyBinding::new(Char('T'), KeyModifiers::SHIFT),
+        Command::ToggleBranch,
+    );
+
+    // Space for solo branch (similar to vim's fold toggle, shows only one branch)
+    map.insert(
+        KeyBinding::new(Char(' '), KeyModifiers::NONE),
+        Command::SoloBranch,
+    );
+
+    // 'r' for reload (similar to vim's :e to reload file)
     map.insert(
         KeyBinding::new(Char('r'), KeyModifiers::NONE),
         Command::Reload,
     );
 
-    // Lists
-    map.insert(KeyBinding::new(PageUp, KeyModifiers::NONE), Command::PageUp);
+    // Ctrl-A to enter action mode (mnemonic: 'A' for Action)
+    // This is where dangerous/destructive operations live
     map.insert(
-        KeyBinding::new(PageDown, KeyModifiers::NONE),
-        Command::PageDown,
-    );
-    map.insert(
-        KeyBinding::new(Char('k'), KeyModifiers::NONE),
-        Command::ScrollUp,
-    );
-    map.insert(
-        KeyBinding::new(Char('j'), KeyModifiers::NONE),
-        Command::ScrollDown,
-    );
-    map.insert(KeyBinding::new(Up, KeyModifiers::NONE), Command::ScrollUp);
-    map.insert(
-        KeyBinding::new(Down, KeyModifiers::NONE),
-        Command::ScrollDown,
-    );
-    map.insert(
-        KeyBinding::new(Char('k'), KeyModifiers::CONTROL | KeyModifiers::ALT),
-        Command::ScrollUpHalf,
-    );
-    map.insert(
-        KeyBinding::new(Char('j'), KeyModifiers::CONTROL | KeyModifiers::ALT),
-        Command::ScrollDownHalf,
-    );
-    map.insert(
-        KeyBinding::new(Up, KeyModifiers::CONTROL | KeyModifiers::ALT),
-        Command::ScrollUpHalf,
-    );
-    map.insert(
-        KeyBinding::new(Down, KeyModifiers::CONTROL | KeyModifiers::ALT),
-        Command::ScrollDownHalf,
-    );
-    map.insert(
-        KeyBinding::new(Home, KeyModifiers::NONE),
-        Command::GoToBeginning,
-    );
-    map.insert(KeyBinding::new(End, KeyModifiers::NONE), Command::GoToEnd);
-
-    // Graph
-    map.insert(
-        KeyBinding::new(Char('k'), KeyModifiers::CONTROL),
-        Command::ScrollUpBranch,
-    );
-    map.insert(
-        KeyBinding::new(Char('j'), KeyModifiers::CONTROL),
-        Command::ScrollDownBranch,
-    );
-    map.insert(
-        KeyBinding::new(Up, KeyModifiers::CONTROL),
-        Command::ScrollUpBranch,
-    );
-    map.insert(
-        KeyBinding::new(Down, KeyModifiers::CONTROL),
-        Command::ScrollDownBranch,
-    );
-    map.insert(
-        KeyBinding::new(Char('k'), KeyModifiers::ALT),
-        Command::ScrollUpCommit,
-    );
-    map.insert(
-        KeyBinding::new(Char('j'), KeyModifiers::ALT),
-        Command::ScrollDownCommit,
-    );
-    map.insert(
-        KeyBinding::new(Up, KeyModifiers::ALT),
-        Command::ScrollUpCommit,
-    );
-    map.insert(
-        KeyBinding::new(Down, KeyModifiers::ALT),
-        Command::ScrollDownCommit,
-    );
-    map.insert(
-        KeyBinding::new(Char('f'), KeyModifiers::CONTROL),
-        Command::Find,
-    );
-    map.insert(
-        KeyBinding::new(Char(' '), KeyModifiers::NONE),
-        Command::SoloBranch,
-    );
-    map.insert(
-        KeyBinding::new(Char('t'), KeyModifiers::NONE),
-        Command::ToggleBranch,
+        KeyBinding::new(Char('a'), KeyModifiers::CONTROL),
+        Command::ActionMode,
     );
 
-    // Git
+    // 'q' for quit (vim standard)
     map.insert(
-        KeyBinding::new(Char('f'), KeyModifiers::NONE),
-        Command::FetchAll,
+        KeyBinding::new(Char('q'), KeyModifiers::NONE),
+        Command::Exit,
     );
-    map.insert(
-        KeyBinding::new(Char('u'), KeyModifiers::NONE),
-        Command::Unstage,
-    );
-    map.insert(
-        KeyBinding::new(Char('s'), KeyModifiers::NONE),
-        Command::Stage,
-    );
-    map.insert(
-        KeyBinding::new(Char('a'), KeyModifiers::NONE),
-        Command::Commit,
-    );
-    map.insert(
-        KeyBinding::new(Char('b'), KeyModifiers::NONE),
-        Command::CreateBranch,
-    );
-    map.insert(KeyBinding::new(Char('/'), KeyModifiers::NONE), Command::Tag);
 
     map
 }
@@ -266,7 +304,27 @@ fn default_normal_keymap() -> IndexMap<KeyBinding, Command> {
 fn default_action_keymap() -> IndexMap<KeyBinding, Command> {
     let mut map = IndexMap::new();
 
-    // User Interface
+
+    // Keep all basic navigation in action mode
+    map.insert(
+        KeyBinding::new(Char('h'), KeyModifiers::NONE),
+        Command::Back,
+    );
+    map.insert(
+        KeyBinding::new(Char('l'), KeyModifiers::NONE),
+        Command::Select,
+    );
+    map.insert(KeyBinding::new(Enter, KeyModifiers::NONE), Command::Select);
+    map.insert(KeyBinding::new(Esc, KeyModifiers::NONE), Command::Back);
+
+    map.insert(
+        KeyBinding::new(Char('p'), KeyModifiers::CONTROL),
+        Command::FocusPreviousPane,
+    );
+    map.insert(
+        KeyBinding::new(Char('n'), KeyModifiers::CONTROL),
+        Command::FocusNextPane,
+    );
     map.insert(
         KeyBinding::new(Tab, KeyModifiers::NONE),
         Command::FocusNextPane,
@@ -275,20 +333,57 @@ fn default_action_keymap() -> IndexMap<KeyBinding, Command> {
         KeyBinding::new(BackTab, KeyModifiers::SHIFT),
         Command::FocusPreviousPane,
     );
+
     map.insert(
-        KeyBinding::new(Right, KeyModifiers::NONE),
-        Command::FocusNextPane,
+        KeyBinding::new(Char('j'), KeyModifiers::NONE),
+        Command::ScrollDown,
     );
     map.insert(
-        KeyBinding::new(Left, KeyModifiers::NONE),
-        Command::FocusPreviousPane,
+        KeyBinding::new(Char('k'), KeyModifiers::NONE),
+        Command::ScrollUp,
     );
-    map.insert(KeyBinding::new(Enter, KeyModifiers::NONE), Command::Select);
-    map.insert(KeyBinding::new(Esc, KeyModifiers::NONE), Command::Back);
     map.insert(
-        KeyBinding::new(Char('.'), KeyModifiers::NONE),
-        Command::Minimize,
+        KeyBinding::new(Down, KeyModifiers::NONE),
+        Command::ScrollDown,
     );
+    map.insert(KeyBinding::new(Up, KeyModifiers::NONE), Command::ScrollUp);
+
+    map.insert(
+        KeyBinding::new(Char('d'), KeyModifiers::CONTROL),
+        Command::ScrollDownHalf,
+    );
+    map.insert(
+        KeyBinding::new(Char('u'), KeyModifiers::CONTROL),
+        Command::ScrollUpHalf,
+    );
+
+    map.insert(
+        KeyBinding::new(Char('b'), KeyModifiers::CONTROL),
+        Command::PageUp,
+    );
+    map.insert(
+        KeyBinding::new(PageDown, KeyModifiers::NONE),
+        Command::PageDown,
+    );
+    map.insert(KeyBinding::new(PageUp, KeyModifiers::NONE), Command::PageUp);
+
+    map.insert(
+        KeyBinding::new(Char('g'), KeyModifiers::NONE),
+        Command::GoToBeginning,
+    );
+    map.insert(
+        KeyBinding::new(Char('G'), KeyModifiers::SHIFT),
+        Command::GoToEnd,
+
+    );
+    map.insert(
+        KeyBinding::new(Home, KeyModifiers::NONE),
+        Command::GoToBeginning,
+    );
+    map.insert(KeyBinding::new(End, KeyModifiers::NONE), Command::GoToEnd);
+
+
+    // UI toggles (same as normal mode)
     map.insert(
         KeyBinding::new(Char('1'), KeyModifiers::NONE),
         Command::ToggleBranches,
@@ -318,105 +413,102 @@ fn default_action_keymap() -> IndexMap<KeyBinding, Command> {
         Command::ToggleSettings,
     );
     map.insert(
-        KeyBinding::new(Char('q'), KeyModifiers::NONE),
-        Command::Exit,
-    );
-    map.insert(
-        KeyBinding::new(Char('c'), KeyModifiers::CONTROL),
-        Command::Exit,
-    );
-    map.insert(
-        KeyBinding::new(Char('r'), KeyModifiers::NONE),
-        Command::Reload,
+        KeyBinding::new(Char('.'), KeyModifiers::NONE),
+        Command::Minimize,
     );
 
-    // Lists
-    map.insert(KeyBinding::new(PageUp, KeyModifiers::NONE), Command::PageUp);
-    map.insert(
-        KeyBinding::new(PageDown, KeyModifiers::NONE),
-        Command::PageDown,
-    );
-    map.insert(KeyBinding::new(Up, KeyModifiers::NONE), Command::ScrollUp);
-    map.insert(
-        KeyBinding::new(Down, KeyModifiers::NONE),
-        Command::ScrollDown,
-    );
-    map.insert(
-        KeyBinding::new(Up, KeyModifiers::CONTROL | KeyModifiers::ALT),
-        Command::ScrollUpHalf,
-    );
-    map.insert(
-        KeyBinding::new(Down, KeyModifiers::CONTROL | KeyModifiers::ALT),
-        Command::ScrollDownHalf,
-    );
-    map.insert(
-        KeyBinding::new(Home, KeyModifiers::NONE),
-        Command::GoToBeginning,
-    );
-    map.insert(KeyBinding::new(End, KeyModifiers::NONE), Command::GoToEnd);
-
-    // Git
-    map.insert(
-        KeyBinding::new(Char('f'), KeyModifiers::NONE),
-        Command::FetchAll,
-    );
-    map.insert(
-        KeyBinding::new(Char('u'), KeyModifiers::NONE),
-        Command::Unstage,
-    );
+    // Safe git operations (same as normal mode)
     map.insert(
         KeyBinding::new(Char('s'), KeyModifiers::NONE),
         Command::Stage,
     );
     map.insert(
-        KeyBinding::new(Char('a'), KeyModifiers::NONE),
+
+        KeyBinding::new(Char('u'), KeyModifiers::NONE),
+        Command::Unstage,
+    );
+    map.insert(
+        KeyBinding::new(Char('c'), KeyModifiers::NONE),
         Command::Commit,
+    );
+    map.insert(
+        KeyBinding::new(Char('f'), KeyModifiers::NONE),
+        Command::FetchAll,
     );
     map.insert(
         KeyBinding::new(Char('b'), KeyModifiers::NONE),
         Command::CreateBranch,
     );
-    map.insert(KeyBinding::new(Char('/'), KeyModifiers::NONE), Command::Tag);
+    map.insert(KeyBinding::new(Char('t'), KeyModifiers::NONE), Command::Tag);
 
-    // Git, but dangerous
+    // Dangerous/destructive git operations (action mode only)
+    // 'x' for drop (vim uses 'x' to delete character; here delete/drop stash or commit)
     map.insert(
-        KeyBinding::new(Char('y'), KeyModifiers::NONE),
+        KeyBinding::new(Char('x'), KeyModifiers::NONE),
         Command::Drop,
     );
-    map.insert(KeyBinding::new(Char('t'), KeyModifiers::NONE), Command::Pop);
+
+    // 'p' for pop stash (vim uses 'p' for put/paste; contextually pop from stash here)
+    map.insert(KeyBinding::new(Char('p'), KeyModifiers::NONE), Command::Pop);
+
+    // 'S' (Shift-s) for stash (capital to emphasize it's a state-changing operation)
     map.insert(
-        KeyBinding::new(Char('e'), KeyModifiers::NONE),
+        KeyBinding::new(Char('S'), KeyModifiers::SHIFT),
         Command::Stash,
     );
+
+    // 'o' for checkout (vim uses 'o' to open line below; here "open" a different branch)
     map.insert(
-        KeyBinding::new(Char('c'), KeyModifiers::NONE),
+        KeyBinding::new(Char('o'), KeyModifiers::NONE),
         Command::Checkout,
     );
+
+    // 'H' (Shift-h) for hard reset (capital to indicate DANGER - destructive operation)
     map.insert(
-        KeyBinding::new(Char('h'), KeyModifiers::NONE),
+        KeyBinding::new(Char('H'), KeyModifiers::SHIFT),
         Command::HardReset,
     );
+
+    // 'M' (Shift-m) for mixed reset (capital to indicate caution)
     map.insert(
-        KeyBinding::new(Char('m'), KeyModifiers::NONE),
+        KeyBinding::new(Char('M'), KeyModifiers::SHIFT),
         Command::MixedReset,
     );
+
+    // 'P' (Shift-p) for force push (capital P to indicate DANGER)
     map.insert(
-        KeyBinding::new(Char('p'), KeyModifiers::NONE),
+        KeyBinding::new(Char('P'), KeyModifiers::SHIFT),
         Command::ForcePush,
     );
+
+    // 'D' (Shift-d) for delete branch (vim uses 'D' to delete to end of line)
     map.insert(
-        KeyBinding::new(Char('d'), KeyModifiers::NONE),
+        KeyBinding::new(Char('D'), KeyModifiers::SHIFT),
         Command::DeleteBranch,
     );
+
+    // 'U' (Shift-u) for untag (capital U to match vim's "undo whole line" conceptually)
     map.insert(
-        KeyBinding::new(Char('?'), KeyModifiers::NONE),
+        KeyBinding::new(Char('U'), KeyModifiers::SHIFT),
         Command::Untag,
     );
+
+    // 'y' for cherrypick (vim uses 'y' for yank; here yank/copy a commit to current branch)
     map.insert(
-        KeyBinding::new(Char(']'), KeyModifiers::NONE),
+        KeyBinding::new(Char('y'), KeyModifiers::NONE),
         Command::Cherrypick,
     );
 
+    map.insert(
+        KeyBinding::new(Char('r'), KeyModifiers::NONE),
+        Command::Reload,
+    );
+
+    map.insert(
+        KeyBinding::new(Char('q'), KeyModifiers::NONE),
+        Command::Exit,
+    );
+      
     map
 }
 
@@ -526,7 +618,7 @@ pub fn modifiers_to_vec(mods: KeyModifiers) -> Vec<String> {
         vec.push("Alt".to_string());
     }
     if mods.contains(KeyModifiers::SUPER) {
-        vec.push("Command".to_string()); // SUPER maps to Command/Meta
+        vec.push("Command".to_string());
     }
 
     vec
