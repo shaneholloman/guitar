@@ -1,5 +1,5 @@
-use crate::helpers::heatmap::empty_heatmap;
 use crate::config::layout::load_layout_config;
+use crate::helpers::heatmap::empty_heatmap;
 use crate::helpers::keymap::InputMode;
 use crate::{app::input::TextInput, core::stashes::Stashes};
 use crate::{
