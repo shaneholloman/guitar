@@ -131,7 +131,6 @@ impl App {
     }
 
     pub fn update_viewer(&mut self, oid: Oid) {
-
         // Clone the current file name
         let filename = self.file_name.clone().unwrap();
 
@@ -157,7 +156,6 @@ impl App {
         let mut last_origin: Option<char> = None;
 
         for hunk in hunks.iter() {
-
             // Proceed with hunk processing
             let header = &hunk.header;
             let old_start_idx: usize = header.old_start.saturating_sub(1) as usize; // Convert to 0-based index
@@ -182,47 +180,23 @@ impl App {
 
             // Process lines in the hunk
             for line in hunk.lines.iter().filter(|l| l.origin != 'H') {
-
                 // Remove trailing newline
                 let text = line.content.trim_end_matches('\n');
 
                 // Detect transition: push hunk navigation if origin changed
                 if let Some(prev) = last_origin
-                    && prev != line.origin {
-                        self.viewer_hunks.push(self.viewer_lines.len());
-                    }
+                    && prev != line.origin
+                {
+                    self.viewer_hunks.push(self.viewer_lines.len());
+                }
                 last_origin = Some(line.origin);
 
                 // Determine styling, prefix, color, and line number based on line origin
                 let (style, prefix, side, fg, count) = match line.origin {
-                    '-' => (
-                        Style::default().bg(self.theme.COLOR_DARK_RED).fg(self.theme.COLOR_RED),
-                        "- ".to_string(),
-                        self.theme.COLOR_RED,
-                        self.theme.COLOR_RED,
-                        current_line_old + 1,
-                    ),
-                    '+' => (
-                        Style::default().bg(self.theme.COLOR_LIGHT_GREEN_900).fg(self.theme.COLOR_GREEN),
-                        "+ ".to_string(),
-                        self.theme.COLOR_GREEN,
-                        self.theme.COLOR_GREEN,
-                        current_line + 1,
-                    ),
-                    ' ' => (
-                        Style::default(),
-                        "".to_string(),
-                        self.theme.COLOR_BORDER,
-                        self.theme.COLOR_GREY_500,
-                        current_line + 1,
-                    ),
-                    _ => (
-                        Style::default(),
-                        "".to_string(),
-                        self.theme.COLOR_BORDER,
-                        self.theme.COLOR_GREY_500,
-                        0,
-                    ),
+                    '-' => (Style::default().bg(self.theme.COLOR_DARK_RED).fg(self.theme.COLOR_RED), "- ".to_string(), self.theme.COLOR_RED, self.theme.COLOR_RED, current_line_old + 1),
+                    '+' => (Style::default().bg(self.theme.COLOR_LIGHT_GREEN_900).fg(self.theme.COLOR_GREEN), "+ ".to_string(), self.theme.COLOR_GREEN, self.theme.COLOR_GREEN, current_line + 1),
+                    ' ' => (Style::default(), "".to_string(), self.theme.COLOR_BORDER, self.theme.COLOR_GREY_500, current_line + 1),
+                    _ => (Style::default(), "".to_string(), self.theme.COLOR_BORDER, self.theme.COLOR_GREY_500, 0),
                 };
 
                 // Wrap the line to viewport width

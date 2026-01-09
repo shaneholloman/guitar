@@ -773,7 +773,7 @@ impl App {
                             self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
                         }
                     },
-                    Viewport::Viewer => {                        
+                    Viewport::Viewer => {
                         if let Some(&prev) = self.viewer_hunks.iter().rev().find(|&&h| h < self.viewer_selected) {
                             self.viewer_selected = prev;
                         }
