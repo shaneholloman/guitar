@@ -232,16 +232,16 @@ impl App {
         match self.viewport {
             Viewport::Graph => {
                 self.draw_graph(frame);
-            }
+            },
             Viewport::Viewer => {
                 self.draw_viewer(frame);
-            }
+            },
             Viewport::Splash => {
                 self.draw_splash(frame);
-            }
+            },
             Viewport::Settings => {
                 self.draw_settings(frame);
-            }
+            },
         }
 
         // Main layout
@@ -251,8 +251,8 @@ impl App {
 
         // Panes
         match self.viewport {
-            Viewport::Splash => {}
-            Viewport::Settings => {}
+            Viewport::Splash => {},
+            Viewport::Settings => {},
             _ => {
                 if self.layout_config.is_branches {
                     self.draw_branches(frame);
@@ -269,7 +269,7 @@ impl App {
                 if self.layout_config.is_inspector && self.graph_selected != 0 {
                     self.draw_inspector(frame);
                 }
-            }
+            },
         }
 
         // Status bar
@@ -281,29 +281,29 @@ impl App {
         match self.focus {
             Focus::ModalCheckout => {
                 self.draw_modal_checkout(frame);
-            }
+            },
             Focus::ModalSolo => {
                 self.draw_modal_solo(frame);
-            }
+            },
             Focus::ModalDeleteBranch => {
                 self.draw_modal_delete_branch(frame);
-            }
+            },
             Focus::ModalDeleteTag => {
                 self.draw_modal_delete_tag(frame);
-            }
+            },
             Focus::ModalCommit => {
                 self.draw_modal_input(frame, STR_CREATE_COMMIT);
-            }
+            },
             Focus::ModalCreateBranch => {
                 self.draw_modal_input(frame, STR_CREATE_BRANCH);
-            }
+            },
             Focus::ModalGrep => {
                 self.draw_modal_input(frame, STR_FIND_SHA);
-            }
+            },
             Focus::ModalTag => {
                 self.draw_modal_input(frame, STR_CREATE_TAG);
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 

@@ -104,7 +104,7 @@ impl App {
                     self.update_viewer(Oid::zero());
                     self.viewport = Viewport::Viewer;
                 }
-            }
+            },
             Focus::StatusBottom => {
                 // If uncommitted unstaged changes exist in bottom status view
                 if self.graph_selected == 0 && self.uncommitted.is_unstaged {
@@ -125,8 +125,8 @@ impl App {
                     self.update_viewer(Oid::zero());
                     self.viewport = Viewport::Viewer;
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -202,15 +202,15 @@ impl App {
                 match line.origin {
                     '-' => {
                         current_line_old += 1;
-                    }
+                    },
                     '+' => {
                         current_line += 1;
-                    }
+                    },
                     ' ' => {
                         current_line += 1;
                         current_line_old += 1;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
         }

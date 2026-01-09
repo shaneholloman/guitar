@@ -122,13 +122,13 @@ impl Buffer {
                 match op {
                     DeltaOp::Insert { index, item } => {
                         curr.insert(*index, item.clone());
-                    }
+                    },
                     DeltaOp::Remove { index } => {
                         curr.remove(*index);
-                    }
+                    },
                     DeltaOp::Replace { index, new } => {
                         curr[*index] = new.clone();
-                    }
+                    },
                 }
             }
             self.history.push_back(curr.clone());

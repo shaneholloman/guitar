@@ -16,7 +16,7 @@ impl App {
             None => {
                 let oid = self.repo.head().unwrap().target().unwrap();
                 Line::from(vec![Span::styled(format!("  detached head: #{:.6}", oid), Style::default().fg(self.theme.COLOR_TEXT))])
-            }
+            },
         };
         let status_paragraph = ratatui::widgets::Paragraph::new(Text::from(lines)).left_aligned().block(Block::default());
 
@@ -34,7 +34,7 @@ impl App {
                 } else {
                     self.current_diff.len()
                 }
-            }
+            },
             Focus::StatusBottom => self.uncommitted.unstaged.modified.len() + self.uncommitted.unstaged.added.len() + self.uncommitted.unstaged.deleted.len(),
             Focus::Branches => self.branches.sorted.len(),
             _ => 0,

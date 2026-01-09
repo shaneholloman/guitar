@@ -80,13 +80,13 @@ pub fn walk_tree(repo: &Repository, tree: &git2::Tree, base: &str, changes: &mut
             match entry.kind() {
                 Some(ObjectType::Blob) => {
                     changes.push(FileChange { filename: path, status: FileStatus::Added });
-                }
+                },
                 Some(ObjectType::Tree) => {
                     if let Ok(subtree) = entry.to_object(repo).and_then(|o| o.peel_to_tree()) {
                         walk_tree(repo, &subtree, &path, changes);
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
     }

@@ -110,14 +110,14 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                                 layers.pipe(SYM_EMPTY, lane_idx);
                                 layers.pipe(SYM_EMPTY, lane_idx);
                             }
-                        }
+                        },
                         None => {
                             // Dummy in the end, while nothing existed on the same lane in the prev
                             layers.commit(SYM_EMPTY, lane_idx);
                             layers.commit(SYM_EMPTY, lane_idx);
                             layers.pipe(SYM_BRANCH_UP, lane_idx);
                             layers.pipe(SYM_EMPTY, lane_idx);
-                        }
+                        },
                     }
                 }
             } else if *alias == chunk.alias {
@@ -373,7 +373,7 @@ pub fn render_buffer_range(theme: &Theme, oids: &Oids, history: &Vector<Vector<C
             None => {
                 lines.push(Line::default());
                 continue;
-            }
+            },
         };
 
         let oid = oids.get_oid_by_idx(global_idx);

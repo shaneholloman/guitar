@@ -69,11 +69,11 @@ pub fn git_add_all(repo: &Repository) -> Result<(), Error> {
                     if index.get_path(path, 0).is_some() {
                         index.remove_path(path)?;
                     }
-                }
+                },
                 _ => {
                     // Stage new or modified files
                     index.add_path(path)?;
-                }
+                },
             }
         }
     }
@@ -92,14 +92,14 @@ pub fn commit_staged(repo: &Repository, message: &str, name: &str, email: &str) 
         Ok(head_ref) => {
             // Try to peel to commit
             head_ref.peel_to_commit().ok()
-        }
+        },
         Err(e) => {
             if e.code() == ErrorCode::UnbornBranch {
                 None // empty repo, initial commit
             } else {
                 return Err(e);
             }
-        }
+        },
     };
 
     let signature = Signature::now(name, email)?;
@@ -146,7 +146,7 @@ pub fn unstage_all(repo: &Repository) -> Result<(), git2::Error> {
         Err(_) => {
             // If no HEAD exists (fresh repo), there's nothing to unstage
             return Ok(());
-        }
+        },
     };
 
     // Perform mixed reset - keeps working directory changes but resets index to HEAD
@@ -387,7 +387,7 @@ pub fn unstage_file(repo: &Repository, path: &std::path::Path) -> Result<(), git
             index.remove_path(path)?;
             index.write()?;
             return Ok(());
-        }
+        },
     };
 
     // Reset only this path in the index
