@@ -206,25 +206,8 @@ impl App {
         let mut current_line_old: usize = 0; // Current line in old file
 
         for hunk in hunks.iter() {
-            // Parse hunk header to extract old file start line and length
-            // Example header: "@@ -22,8 +22,14 @@"
             let header = &hunk.header;
-            let (old_start, _old_len) = header
-                .split_whitespace()
-                .nth(1) // get "-22,8"
-                .and_then(|s| s.strip_prefix('-'))
-                .and_then(|s| {
-                    let mut parts = s.split(',');
-                    Some((
-                        parts.next()?.parse::<usize>().ok()?,
-                        parts
-                            .next()
-                            .and_then(|n| n.parse::<usize>().ok())
-                            .unwrap_or(0),
-                    ))
-                })
-                .unwrap_or((1, 0));
-            let old_start_idx = old_start.saturating_sub(1); // Convert to 0-based index
+            let old_start_idx: usize = header.old_start.saturating_sub(1) as usize; // Convert to 0-based index
 
             // Add unchanged lines before this hunk
             while current_line < old_start_idx && current_line < original_lines.len() {
