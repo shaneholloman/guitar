@@ -239,11 +239,13 @@ impl App {
             let list = List::new(list_items).block(
                 Block::default()
                     .padding(padding)
-                    .borders(if self.is_inspector && self.graph_selected != 0 {
-                        Borders::TOP
-                    } else {
-                        Borders::NONE
-                    })
+                    .borders(
+                        if self.layout_config.is_inspector && self.graph_selected != 0 {
+                            Borders::TOP
+                        } else {
+                            Borders::NONE
+                        },
+                    )
                     .border_style(Style::default().fg(self.theme.COLOR_BORDER)),
             );
 
@@ -254,11 +256,13 @@ impl App {
                 ScrollbarState::new(total_lines.saturating_sub(visible_height))
                     .position(self.status_top_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .begin_symbol(if self.is_inspector && self.graph_selected != 0 {
-                    Some("│")
-                } else {
-                    Some("╮")
-                })
+                .begin_symbol(
+                    if self.layout_config.is_inspector && self.graph_selected != 0 {
+                        Some("│")
+                    } else {
+                        Some("╮")
+                    },
+                )
                 .end_symbol(if self.graph_selected == 0 {
                     Some("┤")
                 } else {

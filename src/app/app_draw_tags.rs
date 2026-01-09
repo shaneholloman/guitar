@@ -42,7 +42,7 @@ impl App {
         // Get vertical dimensions
         let total_lines = lines.len();
         let visible_height =
-            self.layout.tags.height as usize - if self.is_branches { 1 } else { 2 };
+            self.layout.tags.height as usize - if self.layout_config.is_branches { 1 } else { 2 };
 
         // Clamp selection
         if total_lines == 0 {
@@ -88,7 +88,7 @@ impl App {
             .collect();
 
         // Setup the list
-        if self.is_branches || self.is_tags {
+        if self.layout_config.is_branches || self.layout_config.is_tags {
             let top_border = Paragraph::new("─".repeat(self.layout.tags.width as usize - 1_usize))
                 .style(Style::default().fg(self.theme.COLOR_BORDER));
             frame.render_widget(
@@ -109,8 +109,16 @@ impl App {
         let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height))
             .position(self.tags_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some(if self.is_branches { "│" } else { "─" }))
-            .end_symbol(Some(if self.is_stashes { "│" } else { "─" }))
+            .begin_symbol(Some(if self.layout_config.is_branches {
+                "│"
+            } else {
+                "─"
+            }))
+            .end_symbol(Some(if self.layout_config.is_stashes {
+                "│"
+            } else {
+                "─"
+            }))
             .track_symbol(Some("│"))
             .thumb_symbol(if total_lines > visible_height {
                 "▌"

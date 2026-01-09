@@ -1,3 +1,4 @@
+use crate::config::layout::load_layout_config;
 use crate::helpers::heatmap::empty_heatmap;
 use crate::helpers::keymap::InputMode;
 use crate::{app::input::TextInput, core::stashes::Stashes};
@@ -75,13 +76,7 @@ impl Default for App {
             layout: Layout::default(),
 
             // Focus
-            is_shas: false,
-            is_minimal: false,
-            is_branches: false,
-            is_tags: false,
-            is_stashes: false,
-            is_status: false,
-            is_inspector: false,
+            layout_config: load_layout_config(),
             viewport: Viewport::Splash,
             focus: Focus::Viewport,
 

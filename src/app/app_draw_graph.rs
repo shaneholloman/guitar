@@ -52,7 +52,7 @@ impl App {
             render_buffer_range(&self.theme, &self.oids, &buffer.history, start + 1, end + 1);
 
         // Shas
-        let sha_range = if self.is_shas {
+        let sha_range = if self.layout_config.is_shas {
             Some(render_sha_range(&self.theme, &self.oids, start, end))
         } else {
             None
@@ -105,7 +105,7 @@ impl App {
                     .unwrap_or(0) as u16;
 
                 // Create cells vector
-                let mut cells = Vec::with_capacity(if self.is_shas { 3 } else { 2 });
+                let mut cells = Vec::with_capacity(if self.layout_config.is_shas { 3 } else { 2 });
 
                 // Fill the vector with cells
                 if let Some(sha) = &sha_range {
@@ -134,7 +134,7 @@ impl App {
         }
 
         // Conditional constraints
-        let constraints = if self.is_shas {
+        let constraints = if self.layout_config.is_shas {
             vec![
                 ratatui::layout::Constraint::Length(9),
                 ratatui::layout::Constraint::Length(width + 5),
@@ -167,14 +167,18 @@ impl App {
                     .position(self.graph_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(
-                    if (self.is_inspector && self.graph_selected != 0) || self.is_status {
+                    if (self.layout_config.is_inspector && self.graph_selected != 0)
+                        || self.layout_config.is_status
+                    {
                         Some("─")
                     } else {
                         Some("╮")
                     },
                 )
                 .end_symbol(
-                    if (self.is_inspector && self.graph_selected != 0) || self.is_status {
+                    if (self.layout_config.is_inspector && self.graph_selected != 0)
+                        || self.layout_config.is_status
+                    {
                         Some("─")
                     } else {
                         Some("╯")

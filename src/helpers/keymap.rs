@@ -1,17 +1,18 @@
+use facet::Facet;
 use indexmap::IndexMap;
 use ratatui::crossterm::event::{KeyCode, KeyCode::*, KeyModifiers};
-use serde::Deserialize;
-use serde::Serialize;
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Facet)]
+#[repr(C)]
 pub enum InputMode {
     Normal,
     Action,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Facet)]
+#[repr(C)]
 pub enum Command {
     // User Interface
     WidenScope,
@@ -469,13 +470,13 @@ impl KeyBinding {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Facet)]
 struct KeymapConfig {
     normal: Vec<KeyBindingEntry>,
     action: Vec<KeyBindingEntry>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Facet)]
 struct KeyBindingEntry {
     key: String,
     modifiers: Vec<String>,
@@ -667,13 +668,13 @@ fn config_to_keymaps(cfg: KeymapConfig) -> Result<Keymaps, String> {
 
 fn load_keymaps_from_disk(path: &Path) -> Result<Keymaps, Box<dyn std::error::Error>> {
     let text = fs::read_to_string(path)?;
-    let cfg: KeymapConfig = serde_json::from_str(&text)?;
+    let cfg: KeymapConfig = facet_json::from_str(&text)?;
     Ok(config_to_keymaps(cfg)?)
 }
 
 fn save_keymaps_to_disk(path: &Path, maps: &Keymaps) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = keymaps_to_config(maps);
-    let json = serde_json::to_string_pretty(&cfg)?;
+    let json = facet_json::to_string_pretty(&cfg)?;
     fs::create_dir_all(path.parent().unwrap())?;
     fs::write(path, json)?;
     Ok(())

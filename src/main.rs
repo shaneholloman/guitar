@@ -23,6 +23,9 @@ mod app {
     pub mod app_layout;
     pub mod input;
 }
+mod config {
+    pub mod layout;
+}
 mod core {
     pub mod batcher;
     pub mod branches;

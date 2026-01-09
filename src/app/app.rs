@@ -1,5 +1,6 @@
 use crate::{
     app::app_layout::Layout,
+    config::layout::LayoutConfig,
     core::{
         branches::Branches,
         buffer::Buffer,
@@ -121,13 +122,7 @@ pub struct App {
     pub layout: Layout,
 
     // Focus
-    pub is_shas: bool,
-    pub is_minimal: bool,
-    pub is_branches: bool,
-    pub is_status: bool,
-    pub is_tags: bool,
-    pub is_stashes: bool,
-    pub is_inspector: bool,
+    pub layout_config: LayoutConfig,
     pub viewport: Viewport,
     pub focus: Focus,
 
@@ -217,8 +212,10 @@ impl App {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
-        let minimal_horizontal_space = if (self.is_branches || self.is_tags || self.is_stashes)
-            && (self.is_inspector || self.is_status)
+        let minimal_horizontal_space = if (self.layout_config.is_branches
+            || self.layout_config.is_tags
+            || self.layout_config.is_stashes)
+            && (self.layout_config.is_inspector || self.layout_config.is_status)
         {
             100
         } else {
@@ -274,19 +271,19 @@ impl App {
             Viewport::Splash => {}
             Viewport::Settings => {}
             _ => {
-                if self.is_branches {
+                if self.layout_config.is_branches {
                     self.draw_branches(frame);
                 }
-                if self.is_tags {
+                if self.layout_config.is_tags {
                     self.draw_tags(frame);
                 }
-                if self.is_stashes {
+                if self.layout_config.is_stashes {
                     self.draw_stashes(frame);
                 }
-                if self.is_status {
+                if self.layout_config.is_status {
                     self.draw_status(frame);
                 }
-                if self.is_inspector && self.graph_selected != 0 {
+                if self.layout_config.is_inspector && self.graph_selected != 0 {
                     self.draw_inspector(frame);
                 }
             }
