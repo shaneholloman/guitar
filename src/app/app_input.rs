@@ -458,6 +458,7 @@ impl App {
             }
             _ => {}
         }
+        self.save_layout();
     }
 
     pub fn on_narrow_scope(&mut self) {
@@ -523,6 +524,7 @@ impl App {
             }
             _ => {}
         }
+        self.save_layout();
     }
 
     pub fn on_focus_next_pane(&mut self) {

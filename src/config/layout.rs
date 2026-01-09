@@ -26,7 +26,9 @@ pub fn load_layout_config() -> LayoutConfig {
         let contents = fs::read_to_string(&path).unwrap();
         facet_json::from_str(&contents).unwrap_or_default()
     } else {
-        LayoutConfig::default()
+        let config = LayoutConfig::default();
+        save_layout_config(&config);
+        config
     }
 }
 
