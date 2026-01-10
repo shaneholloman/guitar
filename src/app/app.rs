@@ -1,4 +1,13 @@
 use crate::{
+    app::input::TextInput,
+    core::stashes::Stashes,
+    helpers::{
+        copy::{STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_FIND_SHA},
+        heatmap::{DAYS, WEEKS},
+        keymap::{Command, KeyBinding},
+    },
+};
+use crate::{
     app::{app_default::ViewerMode, app_layout::Layout},
     config::layout::LayoutConfig,
     core::{
@@ -14,15 +23,6 @@ use crate::{
         helpers::{FileChange, UncommittedChanges},
     },
     helpers::{colors::ColorPicker, heatmap::build_heatmap, keymap::InputMode, palette::*, spinner::Spinner},
-};
-use crate::{
-    app::input::TextInput,
-    core::stashes::Stashes,
-    helpers::{
-        copy::{STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_FIND_SHA},
-        heatmap::{DAYS, WEEKS},
-        keymap::{Command, KeyBinding},
-    },
 };
 use crossterm::{
     event::{KeyboardEnhancementFlags, PushKeyboardEnhancementFlags},

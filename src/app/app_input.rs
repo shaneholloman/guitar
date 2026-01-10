@@ -1,5 +1,8 @@
 use crate::{
-    app::{app::{App, Direction, Focus, Viewport}, app_default::ViewerMode},
+    app::{
+        app::{App, Direction, Focus, Viewport},
+        app_default::ViewerMode,
+    },
     git::{
         actions::commits::{checkout_branch, checkout_head, commit_staged, create_branch, delete_branch, fetch_over_ssh, git_add_all, push_over_ssh, reset_to_commit, unstage_all},
         queries::{commits::get_current_branch, diffs::get_filenames_diff_at_oid},
@@ -776,17 +779,15 @@ impl App {
                             self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
                         }
                     },
-                    Viewport::Viewer => {
-                        match self.viewer_mode {
-                            ViewerMode::Full => {
-                                if let Some(&prev) = self.viewer_edges.iter().rev().find(|&h| h < &self.viewer_selected) {
-                                    self.viewer_selected = prev;
-                                }
+                    Viewport::Viewer => match self.viewer_mode {
+                        ViewerMode::Full => {
+                            if let Some(&prev) = self.viewer_edges.iter().rev().find(|&h| h < &self.viewer_selected) {
+                                self.viewer_selected = prev;
                             }
-                            ViewerMode::Hunks => {
-                                self.viewer_selected = self.viewer_selected.saturating_sub(half);
-                            }
-                        }
+                        },
+                        ViewerMode::Hunks => {
+                            self.viewer_selected = self.viewer_selected.saturating_sub(half);
+                        },
                     },
                     Viewport::Settings => {
                         self.settings_selected = self.settings_selected.saturating_sub(half);
@@ -837,17 +838,15 @@ impl App {
                             self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
                         }
                     },
-                    Viewport::Viewer => {
-                        match self.viewer_mode {
-                            ViewerMode::Full => {
-                                if let Some(&next) = self.viewer_edges.iter().find(|&h| h > &self.viewer_selected) {
-                                    self.viewer_selected = next;
-                                }
+                    Viewport::Viewer => match self.viewer_mode {
+                        ViewerMode::Full => {
+                            if let Some(&next) = self.viewer_edges.iter().find(|&h| h > &self.viewer_selected) {
+                                self.viewer_selected = next;
                             }
-                            ViewerMode::Hunks => {
-                                self.viewer_selected += half;
-                            }
-                        }
+                        },
+                        ViewerMode::Hunks => {
+                            self.viewer_selected += half;
+                        },
                     },
                     Viewport::Settings => {
                         self.settings_selected += half;
@@ -936,19 +935,14 @@ impl App {
     }
 
     pub fn on_toggle_hunk_mode(&mut self) {
-
         // Switching mode, preserving the semantically correct line number
         match self.viewer_mode {
             ViewerMode::Full => {
                 let full_idx = self.viewer_selected;
-                let hunk_view_idx = self.viewer_hunks.iter()
-                    .enumerate()
-                    .min_by_key(|(_, h)| h.abs_diff(full_idx))
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
+                let hunk_view_idx = self.viewer_hunks.iter().enumerate().min_by_key(|(_, h)| h.abs_diff(full_idx)).map(|(i, _)| i).unwrap_or(0);
                 self.viewer_mode = ViewerMode::Hunks;
                 self.viewer_selected = hunk_view_idx;
-            }
+            },
             ViewerMode::Hunks => {
                 let hunk_view_idx = self.viewer_selected;
                 if let Some(&full_idx) = self.viewer_hunks.get(hunk_view_idx) {
@@ -958,7 +952,7 @@ impl App {
                     self.viewer_mode = ViewerMode::Full;
                     self.viewer_selected = 0;
                 }
-            }
+            },
         }
 
         self.viewer_scroll.set(self.viewer_selected);

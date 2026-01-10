@@ -68,8 +68,8 @@ impl Default for App {
             current_diff: Vec::new(),
             file_name: None,
             viewer_lines: Vec::new(),
-            viewer_edges: Vec::new(), // line numbers where hunks start and end
-            viewer_hunks: Vec::new(), // indices of changed lines the belong to hunks
+            viewer_edges: Vec::new(),      // line numbers where hunks start and end
+            viewer_hunks: Vec::new(),      // indices of changed lines the belong to hunks
             viewer_mode: ViewerMode::Full, // Viewer mode: Full or Hunks
 
             // Interface

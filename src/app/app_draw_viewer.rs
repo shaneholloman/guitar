@@ -1,5 +1,8 @@
 use crate::{
-    app::{app::{App, Focus, Viewport}, app_default::ViewerMode},
+    app::{
+        app::{App, Focus, Viewport},
+        app_default::ViewerMode,
+    },
     git::queries::diffs::{get_file_at_oid, get_file_at_workdir, get_file_diff_at_oid, get_file_diff_at_workdir},
     helpers::text::wrap_words,
 };
@@ -23,11 +26,7 @@ impl App {
         // Get vertical dimensions
         let active_lines: Vec<&ListItem> = match self.viewer_mode {
             ViewerMode::Full => self.viewer_lines.iter().collect(),
-            ViewerMode::Hunks => self
-                .viewer_hunks
-                .iter()
-                .filter_map(|&i| self.viewer_lines.get(i))
-                .collect(),
+            ViewerMode::Hunks => self.viewer_hunks.iter().filter_map(|&i| self.viewer_lines.get(i)).collect(),
         };
 
         let total_lines = active_lines.len();
@@ -194,7 +193,9 @@ impl App {
                 let text = line.content.trim_end_matches('\n');
 
                 // Detect transition: push hunk navigation if origin changed
-                if let Some(prev) = last_origin && prev != line.origin {
+                if let Some(prev) = last_origin
+                    && prev != line.origin
+                {
                     self.viewer_edges.push(self.viewer_lines.len() - 1);
                 }
                 last_origin = Some(line.origin);
@@ -210,7 +211,6 @@ impl App {
                 // Wrap the line to viewport width
                 let wrapped = wrap_words(format!("{}{}", prefix, text), (self.layout.graph.width as usize).saturating_sub(9));
                 for (idx, line_wrapped) in wrapped.into_iter().enumerate() {
-                    
                     // If line is changed, record its index in viewer_hunks
                     if line.origin != ' ' {
                         self.viewer_hunks.push(self.viewer_lines.len());
