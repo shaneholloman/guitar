@@ -80,12 +80,14 @@ impl App {
         frame.render_widget(list, self.layout.branches);
 
         // Setup the scrollbar
-        let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.branches_scroll.get());
+        let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
+        let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.branches_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("─"))
             .end_symbol(Some(if self.layout_config.is_tags || self.layout_config.is_stashes { "│" } else { "─" }))
             .track_symbol(Some("│"))
             .thumb_symbol(if total_lines > visible_height { "▌" } else { "│" })
+            .track_style(Style::default().fg(self.theme.COLOR_BORDER))
             .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::Branches { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
         // Render the scrollbar

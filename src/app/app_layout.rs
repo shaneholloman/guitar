@@ -1,7 +1,9 @@
 use crate::app::app::{App, Viewport};
 use crate::config::layout::{load_layout_config, save_layout_config};
+use crate::helpers::layout::{LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED, LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED, LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED, LAYOUT_WIDTH_LEFT_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_RIGHT_PANE, add_scrollbar, extend_up, inset_bottom, inset_top, shrink_width};
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Direction, Layout as RatatuiLayout, Rect};
+use ratatui::layout::Constraint;
 use std::cell::Cell;
 
 #[derive(Default)]
@@ -29,157 +31,150 @@ pub struct Layout {
 
 impl App {
     pub fn layout(&mut self, frame: &mut Frame) {
+
         let is_settings = self.viewport == Viewport::Splash || self.viewport == Viewport::Settings;
         let is_inspector = !is_settings && self.layout_config.is_inspector && self.graph_selected != 0;
         let is_status = !is_settings && self.layout_config.is_status;
         let is_right_pane = is_inspector || is_status;
+        let is_left_pane = (self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes) && !is_settings;
 
-        let chunks_vertical = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Vertical)
+        // Process the layout chunks
+
+        // Main separation of the layout into vertical chunks
+        let chunks_vertical = RatatuiLayout::default()
+            .direction(Direction::Vertical)
             .constraints([
-                ratatui::layout::Constraint::Length(if self.layout_config.is_minimal { 0 } else { 1 }),
-                ratatui::layout::Constraint::Percentage(100),
-                ratatui::layout::Constraint::Length(if self.layout_config.is_minimal { 0 } else { 1 }),
+                Constraint::Length(if self.layout_config.is_minimal { 0 } else { 1 }),  // Title bar
+                Constraint::Min(0),                                                     // Main app area
+                Constraint::Length(if self.layout_config.is_minimal { 0 } else { 1 }),  // Status bar
             ])
             .split(frame.area());
 
-        let chunks_title_bar = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Horizontal)
-            .constraints([ratatui::layout::Constraint::Percentage(80), ratatui::layout::Constraint::Percentage(20)])
+        // Title bar
+        let chunks_title_bar = RatatuiLayout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
             .split(chunks_vertical[0]);
 
-        let chunks_horizontal = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Horizontal)
-            .constraints([
-                ratatui::layout::Constraint::Length(if (self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes) && !is_settings { 45 } else { 0 }),
-                ratatui::layout::Constraint::Max(500),
-                ratatui::layout::Constraint::Length(if is_right_pane { 46 } else { 0 }),
-            ])
+        // Separate the main viewport into vertical panes
+        let total_width = chunks_vertical[1].width as u16;
+        let width_left_pane = if is_left_pane { LAYOUT_WIDTH_LEFT_PANE } else { 0 };
+        let width_right_pane = if is_right_pane { LAYOUT_WIDTH_RIGHT_PANE } else { 0 };
+        let min_required = width_left_pane + width_right_pane + LAYOUT_WIDTH_MIN_CENTER;
+        let constraints = if total_width < min_required {
+            let percentage_left_pane = if is_left_pane && is_right_pane { LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED } else if is_left_pane && !is_right_pane { 50 } else { 0 };
+            let percentage_center_pane = if is_left_pane && is_right_pane { LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED } else if !is_left_pane && !is_right_pane { 0 } else { 50 };
+            let percentage_right_pane = if is_right_pane && is_left_pane { LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED } else if is_right_pane && !is_left_pane { 50 } else { 0 };
+            [
+                Constraint::Percentage(percentage_left_pane),                   // Left pane
+                Constraint::Percentage(percentage_center_pane),   // Center pane
+                Constraint::Percentage(percentage_right_pane),                  // Right pane
+            ]
+        } else {[
+            Constraint::Length(width_left_pane),    // Left pane
+            Constraint::Min(0),                     // Center pane
+            Constraint::Length(width_right_pane),   // Right pane
+        ]};
+        let chunks_horizontal = RatatuiLayout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
             .split(chunks_vertical[1]);
 
-        let chunks_pane_left = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Vertical)
-            .constraints([
-                ratatui::layout::Constraint::Percentage(if self.layout_config.is_branches {
-                    if !self.layout_config.is_tags && !self.layout_config.is_stashes {
-                        100
-                    } else if self.layout_config.is_tags && self.layout_config.is_stashes {
-                        33
-                    } else {
-                        50
-                    }
-                } else {
-                    0
-                }),
-                ratatui::layout::Constraint::Percentage(if self.layout_config.is_tags {
-                    if !self.layout_config.is_branches && !self.layout_config.is_stashes {
-                        100
-                    } else if self.layout_config.is_branches && self.layout_config.is_stashes {
-                        33
-                    } else {
-                        50
-                    }
-                } else {
-                    0
-                }),
-                ratatui::layout::Constraint::Percentage(if self.layout_config.is_stashes {
-                    if !self.layout_config.is_branches && !self.layout_config.is_tags {
-                        100
-                    } else if self.layout_config.is_branches && self.layout_config.is_tags {
-                        33
-                    } else {
-                        50
-                    }
-                } else {
-                    0
-                }),
-            ])
+        // Left pane sections
+        let left_sections = [self.layout_config.is_branches, self.layout_config.is_tags, self.layout_config.is_stashes];
+        let active_count = left_sections.iter().filter(|&&v| v).count().max(1);
+        let pct = 100 / active_count as u16;
+        let chunks_pane_left = RatatuiLayout::default()
+            .direction(Direction::Vertical)
+            .constraints(left_sections.map(|active| { Constraint::Percentage(if active { pct } else { 0 }) }))
             .split(chunks_horizontal[0]);
 
-        let chunks_pane_right = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Vertical)
-            .constraints([
-                ratatui::layout::Constraint::Percentage(if is_inspector { if !is_status { 100 } else { 50 } } else { 0 }),
-                ratatui::layout::Constraint::Percentage(if is_status { if !is_inspector { 100 } else { 50 } } else { 0 }),
-            ])
+        // Right pane sections
+        let right_sections = [is_inspector, is_status];
+        let active_count = right_sections.iter().filter(|&&v| v).count().max(1);
+        let pct = 100 / active_count as u16;
+        let chunks_pane_right = RatatuiLayout::default()
+            .direction(Direction::Vertical)
+            .constraints(right_sections.map(|active| { Constraint::Percentage(if active { pct } else { 0 }) }))
             .split(chunks_horizontal[2]);
 
-        let chunks_status = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Vertical)
+        // Status pane subdivisions into top and bottom status sections
+        let chunks_status = RatatuiLayout::default()
+            .direction(Direction::Vertical)
             .constraints([
-                ratatui::layout::Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 100 }),
-                ratatui::layout::Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 0 }),
+                Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 100 }),
+                Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 0 }),
             ])
             .split(chunks_pane_right[1]);
 
-        let chunks_status_bar = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Horizontal)
-            .constraints([ratatui::layout::Constraint::Percentage(80), ratatui::layout::Constraint::Percentage(20)])
+        // Status bar subdivisions into left and right sections
+        let chunks_status_bar = RatatuiLayout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
             .split(chunks_vertical[2]);
 
-        // Branches
-        let mut branches_scrollbar = chunks_pane_left[0];
-        branches_scrollbar.width += 1;
-        let mut branches = chunks_pane_left[0];
-        branches.y += 1;
+        // Process the layout rectangles
 
-        // Tags
-        let mut tags_scrollbar = chunks_pane_left[1];
-        tags_scrollbar.width += 1;
+        // Pane, branches
+        let branches_scrollbar = add_scrollbar(chunks_pane_left[0]);
+        let branches = inset_top(chunks_pane_left[0], 1);
+
+        // Pane, tags
+        let mut tags_scrollbar = add_scrollbar(chunks_pane_left[1]);
         let mut tags = chunks_pane_left[1];
         if !self.layout_config.is_branches {
-            tags.y += 1;
+            tags = inset_top(tags, 1);
         } else {
-            tags_scrollbar.height += 1;
-            tags_scrollbar.y -= 1;
+            tags_scrollbar = extend_up(tags_scrollbar, 1);
         }
 
-        // Stashes
-        let mut stashes_scrollbar = chunks_pane_left[2];
-        stashes_scrollbar.width += 1;
+        // Pane, stashes
+        let mut stashes_scrollbar = add_scrollbar(chunks_pane_left[2]);
         let mut stashes = chunks_pane_left[2];
         if !self.layout_config.is_branches && !self.layout_config.is_tags {
-            stashes.y += 1;
+            stashes = inset_top(stashes, 1);
         } else {
-            stashes_scrollbar.height += 1;
-            stashes_scrollbar.y -= 1;
+            stashes_scrollbar = extend_up(stashes_scrollbar, 1);
         }
 
-        // Graph
+        // Pane, graph
         let graph_scrollbar = chunks_horizontal[1];
-        let mut graph = chunks_horizontal[1];
-        graph.y += 1;
-        graph.height = graph.height.saturating_sub(2);
+        let graph = inset_bottom(
+            inset_top(chunks_horizontal[1], 1),
+            1,
+        );
 
-        // Inspector
+        // Pane, inspector
         let inspector_scrollbar = chunks_pane_right[0];
-        let mut inspector = chunks_pane_right[0];
-        inspector.y += 1;
+        let inspector = inset_top(chunks_pane_right[0], 1);
 
-        // Status top
+        // Pane, status top
         let mut status_top_scrollbar = chunks_status[0];
-        if self.layout_config.is_inspector && self.graph_selected != 0 {
-            status_top_scrollbar.y -= 1;
-            status_top_scrollbar.height += 1;
-        }
         let mut status_top = chunks_status[0];
-        status_top.y = if self.layout_config.is_inspector && self.graph_selected != 0 { status_top.y - 1 } else { status_top.y + 1 };
-        status_top.height = if self.layout_config.is_inspector && self.graph_selected != 0 { status_top.height + 1 } else { status_top.height };
-        status_top.width = status_top.width.saturating_sub(1);
+        let merge_with_inspector = self.layout_config.is_inspector && self.graph_selected != 0;
+        if merge_with_inspector {
+            status_top_scrollbar = extend_up(status_top_scrollbar, 1);
+            status_top = extend_up(status_top, 1);
+        } else {
+            status_top = inset_top(status_top, 1);
+        }
+        status_top = shrink_width(status_top, 1);
 
-        // Status bottom
-        let mut status_bottom_scrollbar = chunks_status[1];
-        status_bottom_scrollbar.y = status_bottom_scrollbar.y.saturating_sub(1);
-        status_bottom_scrollbar.height += 1;
-        let mut status_bottom = chunks_status[1];
-        status_bottom.y = status_bottom.y.saturating_sub(1);
-        status_bottom.height += 1;
-        status_bottom.width = status_bottom.width.saturating_sub(1);
+        // Pane, status bottom
+        let status_bottom_scrollbar = extend_up(chunks_status[1], 1);
+        let mut status_bottom = extend_up(chunks_status[1], 1);
+        status_bottom = shrink_width(status_bottom, 1);
 
         self.layout = Layout {
+
+            // Title bar
             title_left: chunks_title_bar[0],
             title_right: chunks_title_bar[1],
+
+            // Main app area
             app: chunks_vertical[1],
+
+            // Panes
             branches,
             branches_scrollbar,
             tags,
@@ -194,6 +189,8 @@ impl App {
             status_top_scrollbar,
             status_bottom,
             status_bottom_scrollbar,
+
+            // Status bar
             statusbar_left: chunks_status_bar[0],
             statusbar_right: chunks_status_bar[1],
         }
