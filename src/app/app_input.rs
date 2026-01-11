@@ -57,200 +57,226 @@ impl App {
         let key_binding = KeyBinding::new(key_event.code, key_event.modifiers);
         let current_mode = self.mode;
 
-        // Handle text editing within modals
-        match self.focus {
-            Focus::ModalCommit => {
-                match key_event.code {
-                    KeyCode::Esc => {
-                        self.focus = Focus::Viewport;
-                        self.modal_input.clear();
-                    },
-                    KeyCode::Enter => {
-                        if let Some(repo) = &self.repo {
-                            commit_staged(repo, self.modal_input.value(), &self.name, &self.email).expect("Error");
-                            self.modal_input.clear();
-                            self.branches.visible.clear();
-                            self.reload();
-                            self.focus = Focus::Viewport;
-                        }
-                    },
-                    _ => {
-                        self.modal_input.on_key(key_event);
-                    },
-                }
-                return;
-            },
-            Focus::ModalCreateBranch => {
-                match key_event.code {
-                    KeyCode::Esc => {
-                        self.focus = Focus::Viewport;
-                        self.modal_input.clear();
-                    },
-                    KeyCode::Enter => {
-                        if let Some(repo) = &self.repo {
-                            let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-                            match create_branch(repo, self.modal_input.value(), *oid) {
-                                Ok(_) => {
-                                    self.branches.visible.clear();
+        if let Some(mode_map) = self.keymaps.get(&self.mode) && let Some(cmd) = mode_map.get(&key_binding) {
+            if let Some(repo) = &self.repo {
+                
+                // Handle text editing within modals
+                match self.focus {
+                    Focus::ModalCommit => {
+                        match key_event.code {
+                            KeyCode::Esc => {
+                                self.focus = Focus::Viewport;
+                                self.modal_input.clear();
+                            },
+                            KeyCode::Enter => {
+                                if let Some(repo) = &self.repo {
+                                    commit_staged(repo, self.modal_input.value(), &self.name, &self.email).expect("Error");
                                     self.modal_input.clear();
+                                    self.branches.visible.clear();
                                     self.reload();
                                     self.focus = Focus::Viewport;
-                                },
-                                Err(_) => {
-                                    // TODO
-                                },
-                            }
+                                }
+                            },
+                            _ => {
+                                self.modal_input.on_key(key_event);
+                            },
                         }
+                        return;
                     },
-                    _ => {
-                        self.modal_input.on_key(key_event);
+                    Focus::ModalCreateBranch => {
+                        match key_event.code {
+                            KeyCode::Esc => {
+                                self.focus = Focus::Viewport;
+                                self.modal_input.clear();
+                            },
+                            KeyCode::Enter => {
+                                if let Some(repo) = &self.repo {
+                                    let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
+                                    match create_branch(repo, self.modal_input.value(), *oid) {
+                                        Ok(_) => {
+                                            self.branches.visible.clear();
+                                            self.modal_input.clear();
+                                            self.reload();
+                                            self.focus = Focus::Viewport;
+                                        },
+                                        Err(_) => {
+                                            // TODO
+                                        },
+                                    }
+                                }
+                            },
+                            _ => {
+                                self.modal_input.on_key(key_event);
+                            },
+                        }
+                        return;
                     },
+                    Focus::ModalGrep => {
+                        match key_event.code {
+                            KeyCode::Esc => {
+                                self.focus = Focus::Viewport;
+                                self.modal_input.clear();
+                            },
+                            KeyCode::Enter => {
+                                let sha = self.modal_input.value();
+
+                                // Reject obviously invalid prefixes early
+                                if sha.is_empty() || sha.len() > 40 {
+                                    return;
+                                }
+
+                                // Find the correpsonding oid
+                                let oid: Option<Oid> = self.oids.oids.iter().find(|oid| oid.to_string().starts_with(sha)).copied();
+
+                                // In case oid exists
+                                if let Some(oid) = oid {
+                                    // Get the alias
+                                    let oid_alias = self.oids.get_alias_by_oid(oid);
+
+                                    // Find the position in the sorted alias vector
+                                    let next = self.oids.get_sorted_aliases().iter().position(|&alias| alias == oid_alias).unwrap();
+
+                                    // Scroll to line number
+                                    self.graph_selected = next;
+                                    self.modal_input.clear();
+                                    self.focus = Focus::Viewport;
+                                }
+                            },
+                            _ => {
+                                self.modal_input.on_key(key_event);
+                            },
+                        }
+                        return;
+                    },
+                    Focus::ModalTag => {
+                        match key_event.code {
+                            KeyCode::Esc => {
+                                self.focus = Focus::Viewport;
+                                self.modal_input.clear();
+                            },
+                            KeyCode::Enter => {
+                                if let Some(repo) = &self.repo {
+                                    let tag_name = self.modal_input.value();
+
+                                    // Reject obviously invalid prefixes early
+                                    if tag_name.is_empty() {
+                                        return;
+                                    }
+
+                                    let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
+
+                                    // Get the alias
+                                    tag(repo, *oid, tag_name).unwrap();
+
+                                    self.reload();
+                                    self.modal_input.clear();
+                                    self.focus = Focus::Viewport;
+                                }
+                            },
+                            _ => {
+                                self.modal_input.on_key(key_event);
+                            },
+                        }
+                        return;
+                    },
+                    _ => {},
                 }
-                return;
-            },
-            Focus::ModalGrep => {
-                match key_event.code {
-                    KeyCode::Esc => {
-                        self.focus = Focus::Viewport;
-                        self.modal_input.clear();
-                    },
-                    KeyCode::Enter => {
-                        let sha = self.modal_input.value();
 
-                        // Reject obviously invalid prefixes early
-                        if sha.is_empty() || sha.len() > 40 {
-                            return;
-                        }
+                match cmd {
+                    // User Interface
+                    Command::WidenScope => self.on_widen_scope(),
+                    Command::NarrowScope => self.on_narrow_scope(),
+                    Command::FocusNextPane => self.on_focus_next_pane(),
+                    Command::FocusPreviousPane => self.on_focus_prev_pane(),
+                    Command::Select => self.on_select(),
+                    Command::Back => self.on_back(),
+                    Command::Minimize => self.on_minimize(),
+                    Command::ToggleZenMode => self.on_toggle_zen_mode(),
+                    Command::ToggleBranches => self.on_toggle_branches(),
+                    Command::ToggleTags => self.on_toggle_tags(),
+                    Command::ToggleStashes => self.on_toggle_stashes(),
+                    Command::ToggleStatus => self.on_toggle_status(),
+                    Command::ToggleInspector => self.on_toggle_inspector(),
+                    Command::ToggleShas => self.on_toggle_shas(),
+                    // Command::ToggleRecentRepos => self.on_toggle_recent_repos(),
+                    Command::ToggleHelp => self.on_toggle_help(),
+                    Command::ActionMode => self.on_action_mode(),
+                    Command::Exit => self.on_exit(),
 
-                        // Find the correpsonding oid
-                        let oid: Option<Oid> = self.oids.oids.iter().find(|oid| oid.to_string().starts_with(sha)).copied();
+                    // Lists
+                    Command::ScrollPageUp => self.on_scroll_page_up(),
+                    Command::ScrollPageDown => self.on_scroll_page_down(),
+                    Command::ScrollHalfPageUp => self.on_scroll_half_page_up(),
+                    Command::ScrollHalfPageDown => self.on_scroll_half_page_down(),
+                    Command::ScrollUp => self.on_scroll_up(),
+                    Command::ScrollDown => self.on_scroll_down(),
+                    Command::ScrollUpHalf => self.on_scroll_up_half(),
+                    Command::ScrollDownHalf => self.on_scroll_down_half(),
+                    Command::GoToBeginning => self.on_scroll_to_beginning(),
+                    Command::GoToEnd => self.on_scroll_to_end(),
 
-                        // In case oid exists
-                        if let Some(oid) = oid {
-                            // Get the alias
-                            let oid_alias = self.oids.get_alias_by_oid(oid);
+                    // Graph
+                    Command::ScrollUpBranch => self.on_scroll_up_branch(),
+                    Command::ScrollDownBranch => self.on_scroll_down_branch(),
+                    Command::ScrollUpCommit => self.on_scroll_up_commit(),
+                    Command::ScrollDownCommit => self.on_scroll_down_commit(),
+                    Command::Find => self.on_find(),
+                    Command::SoloBranch => self.on_solo_branch(),
+                    Command::ToggleBranch => self.on_toggle_branch(),
 
-                            // Find the position in the sorted alias vector
-                            let next = self.oids.get_sorted_aliases().iter().position(|&alias| alias == oid_alias).unwrap();
+                    // Viewer
+                    Command::ToggleHunkMode => self.on_toggle_hunk_mode(),
 
-                            // Scroll to line number
-                            self.graph_selected = next;
-                            self.modal_input.clear();
-                            self.focus = Focus::Viewport;
-                        }
-                    },
-                    _ => {
-                        self.modal_input.on_key(key_event);
-                    },
+                    // Git
+                    Command::Drop => self.on_drop(),
+                    Command::Pop => self.on_pop(),
+                    Command::Stash => self.on_stash(),
+                    Command::FetchAll => self.on_fetch_all(),
+                    Command::Checkout => self.on_checkout(),
+                    Command::HardReset => self.on_hard_reset(),
+                    Command::MixedReset => self.on_mixed_reset(),
+                    Command::Unstage => self.on_unstage(),
+                    Command::Stage => self.on_stage(),
+                    Command::Commit => self.on_commit(),
+                    Command::ForcePush => self.on_force_push(),
+                    Command::CreateBranch => self.on_create_branch(),
+                    Command::DeleteBranch => self.on_delete_branch(),
+                    Command::Tag => self.on_tag(),
+                    Command::Untag => self.on_untag(),
+                    Command::Cherrypick => self.on_cherrypick(),
+                    Command::Reload => self.on_reload(),
+
+                    _ => {}
                 }
-                return;
-            },
-            Focus::ModalTag => {
-                match key_event.code {
-                    KeyCode::Esc => {
-                        self.focus = Focus::Viewport;
-                        self.modal_input.clear();
-                    },
-                    KeyCode::Enter => {
-                        if let Some(repo) = &self.repo {
-                            let tag_name = self.modal_input.value();
-
-                            // Reject obviously invalid prefixes early
-                            if tag_name.is_empty() {
-                                return;
-                            }
-
-                            let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-
-                            // Get the alias
-                            tag(repo, *oid, tag_name).unwrap();
-
-                            self.reload();
-                            self.modal_input.clear();
-                            self.focus = Focus::Viewport;
-                        }
-                    },
-                    _ => {
-                        self.modal_input.on_key(key_event);
-                    },
+                
+                // Reset mode to normal
+                if current_mode == InputMode::Action {
+                    self.mode = InputMode::Normal;
                 }
-                return;
-            },
-            _ => {},
-        }
 
-        if let Some(mode_map) = self.keymaps.get(&self.mode)
-            && let Some(cmd) = mode_map.get(&key_binding)
-        {
-            match cmd {
-                // User Interface
-                Command::WidenScope => self.on_widen_scope(),
-                Command::NarrowScope => self.on_narrow_scope(),
-                Command::FocusNextPane => self.on_focus_next_pane(),
-                Command::FocusPreviousPane => self.on_focus_prev_pane(),
-                Command::Select => self.on_select(),
-                Command::Back => self.on_back(),
-                Command::Minimize => self.on_minimize(),
-                Command::ToggleZenMode => self.on_toggle_zen_mode(),
-                Command::ToggleBranches => self.on_toggle_branches(),
-                Command::ToggleTags => self.on_toggle_tags(),
-                Command::ToggleStashes => self.on_toggle_stashes(),
-                Command::ToggleStatus => self.on_toggle_status(),
-                Command::ToggleInspector => self.on_toggle_inspector(),
-                Command::ToggleShas => self.on_toggle_shas(),
-                Command::ToggleRecentRepos => self.on_toggle_recent_repos(),
-                Command::ToggleHelp => self.on_toggle_help(),
-                Command::ActionMode => self.on_action_mode(),
-                Command::Exit => self.on_exit(),
+            } else {
 
-                // Lists
-                Command::ScrollPageUp => self.on_scroll_page_up(),
-                Command::ScrollPageDown => self.on_scroll_page_down(),
-                Command::ScrollHalfPageUp => self.on_scroll_half_page_up(),
-                Command::ScrollHalfPageDown => self.on_scroll_half_page_down(),
-                Command::ScrollUp => self.on_scroll_up(),
-                Command::ScrollDown => self.on_scroll_down(),
-                Command::ScrollUpHalf => self.on_scroll_up_half(),
-                Command::ScrollDownHalf => self.on_scroll_down_half(),
-                Command::GoToBeginning => self.on_scroll_to_beginning(),
-                Command::GoToEnd => self.on_scroll_to_end(),
+                match cmd {
 
-                // Graph
-                Command::ScrollUpBranch => self.on_scroll_up_branch(),
-                Command::ScrollDownBranch => self.on_scroll_down_branch(),
-                Command::ScrollUpCommit => self.on_scroll_up_commit(),
-                Command::ScrollDownCommit => self.on_scroll_down_commit(),
-                Command::Find => self.on_find(),
-                Command::SoloBranch => self.on_solo_branch(),
-                Command::ToggleBranch => self.on_toggle_branch(),
+                    // User Interface
+                    Command::Select => self.on_select(),
+                    Command::Exit => self.on_exit(),
 
-                // Viewer
-                Command::ToggleHunkMode => self.on_toggle_hunk_mode(),
+                    // Lists
+                    Command::ScrollPageUp => self.on_scroll_page_up(),
+                    Command::ScrollPageDown => self.on_scroll_page_down(),
+                    Command::ScrollHalfPageUp => self.on_scroll_half_page_up(),
+                    Command::ScrollHalfPageDown => self.on_scroll_half_page_down(),
+                    Command::ScrollUp => self.on_scroll_up(),
+                    Command::ScrollDown => self.on_scroll_down(),
+                    Command::ScrollUpHalf => self.on_scroll_up_half(),
+                    Command::ScrollDownHalf => self.on_scroll_down_half(),
+                    Command::GoToBeginning => self.on_scroll_to_beginning(),
+                    Command::GoToEnd => self.on_scroll_to_end(),
 
-                // Git
-                Command::Drop => self.on_drop(),
-                Command::Pop => self.on_pop(),
-                Command::Stash => self.on_stash(),
-                Command::FetchAll => self.on_fetch_all(),
-                Command::Checkout => self.on_checkout(),
-                Command::HardReset => self.on_hard_reset(),
-                Command::MixedReset => self.on_mixed_reset(),
-                Command::Unstage => self.on_unstage(),
-                Command::Stage => self.on_stage(),
-                Command::Commit => self.on_commit(),
-                Command::ForcePush => self.on_force_push(),
-                Command::CreateBranch => self.on_create_branch(),
-                Command::DeleteBranch => self.on_delete_branch(),
-                Command::Tag => self.on_tag(),
-                Command::Untag => self.on_untag(),
-                Command::Cherrypick => self.on_cherrypick(),
-                Command::Reload => self.on_reload(),
-            }
-        }
-
-        // Reset mode to normal
-        if current_mode == InputMode::Action {
-            self.mode = InputMode::Normal;
+                    _ => {}
+                }
+            }            
         }
     }
 

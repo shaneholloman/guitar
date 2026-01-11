@@ -218,7 +218,8 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     map.insert(KeyBinding::new(Char('?'), KeyModifiers::NONE), Command::ToggleHelp);
 
     // Recent repos
-    map.insert(KeyBinding::new(Char('!'), KeyModifiers::NONE), Command::ToggleRecentRepos);
+    // TODO: enable this once recent repos panel is implemented
+    // map.insert(KeyBinding::new(Char('!'), KeyModifiers::NONE), Command::ToggleRecentRepos);
 
     // Ctrl-A to enter action mode (mnemonic: 'A' for Action)
     // This is where dangerous/destructive operations live
