@@ -85,7 +85,8 @@ pub struct App {
     // General
     pub logo: Vec<Span<'static>>,
     pub path: String,
-    pub recent: Vec<String>,
+    // TODO: Implement recent layouts saving/loading
+    // pub recent: Vec<String>,
     pub repo: Option<Rc<Repository>>,
     pub spinner: Spinner,
     pub keymaps: IndexMap<InputMode, IndexMap<KeyBinding, Command>>,

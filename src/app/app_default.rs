@@ -31,7 +31,8 @@ impl Default for App {
             // General
             logo,
             path: "".to_string(),
-            recent: Vec::new(),
+            // TODO: Implement recent layouts saving/loading
+            // recent: Vec::new(),
             repo: None,
             spinner: Spinner::new(),
             keymaps: IndexMap::new(),
