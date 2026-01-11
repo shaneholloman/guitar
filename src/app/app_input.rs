@@ -57,9 +57,10 @@ impl App {
         let key_binding = KeyBinding::new(key_event.code, key_event.modifiers);
         let current_mode = self.mode;
 
-        if let Some(mode_map) = self.keymaps.get(&self.mode) && let Some(cmd) = mode_map.get(&key_binding) {
+        if let Some(mode_map) = self.keymaps.get(&self.mode)
+            && let Some(cmd) = mode_map.get(&key_binding)
+        {
             if self.repo.is_some() {
-                
                 // Handle text editing within modals
                 match self.focus {
                     Focus::ModalCommit => {
@@ -246,18 +247,15 @@ impl App {
                     Command::Cherrypick => self.on_cherrypick(),
                     Command::Reload => self.on_reload(),
 
-                    _ => {}
+                    _ => {},
                 }
-                
+
                 // Reset mode to normal
                 if current_mode == InputMode::Action {
                     self.mode = InputMode::Normal;
                 }
-
             } else {
-
                 match cmd {
-
                     // User Interface
                     Command::Select => self.on_select(),
                     Command::Exit => self.on_exit(),
@@ -274,9 +272,9 @@ impl App {
                     Command::GoToBeginning => self.on_scroll_to_beginning(),
                     Command::GoToEnd => self.on_scroll_to_end(),
 
-                    _ => {}
+                    _ => {},
                 }
-            }            
+            }
         }
     }
 
