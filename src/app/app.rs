@@ -4,7 +4,7 @@ use crate::{
     git::os::path::try_into_git_repo_root,
     helpers::{
         copy::{STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_FIND_SHA},
-        heatmap::{DAYS, WEEKS, empty_heatmap},
+        heatmap::{DAYS, WEEKS},
         keymap::{Command, KeyBinding},
         layout::LayoutConfig,
     },
@@ -352,7 +352,7 @@ impl App {
             }
 
             // Get user credentials
-            let (name, email) = get_git_user_info(&repo).expect("Error");
+            let (name, email) = get_git_user_info(repo).expect("Error");
             self.name = name.unwrap();
             self.email = email.unwrap();
 
@@ -432,7 +432,7 @@ impl App {
                 }
 
                 // Get uncomitted changes info
-                self.uncommitted = get_filenames_diff_at_workdir(&repo).expect("Error");
+                self.uncommitted = get_filenames_diff_at_workdir(repo).expect("Error");
             }
 
             // Lookup tables
@@ -456,7 +456,7 @@ impl App {
                 self.spinner.stop();
 
                 // Build the heatmap
-                self.heatmap = build_heatmap(&repo, &self.oids.oids);
+                self.heatmap = build_heatmap(repo, &self.oids.oids);
             }
         }
     }

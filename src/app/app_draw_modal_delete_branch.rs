@@ -19,7 +19,7 @@ impl App {
         lines.push(Line::default());
 
         // Render list
-        let current = get_current_branch(&repo);
+        let current = get_current_branch(repo);
         let color = self.branches.colors.get(&alias).unwrap();
         let branches = self.branches.visible.get(&alias).unwrap();
         branches.iter().filter(|branch| current.as_ref() != Some(*branch)).enumerate().for_each(|(idx, branch)| {

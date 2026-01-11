@@ -26,7 +26,7 @@ impl App {
         let available_width = self.layout.graph.width.saturating_sub(1) as usize;
 
         // Credentials
-        let (name, email) = get_git_user_info(&repo).unwrap();
+        let (name, email) = get_git_user_info(repo).unwrap();
 
         // Setup list items
         let mut lines: Vec<Line> = Vec::new();

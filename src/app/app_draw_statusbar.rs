@@ -12,7 +12,7 @@ use ratatui::{
 
 impl App {
     pub fn draw_statusbar(&mut self, frame: &mut Frame, repo: &git2::Repository) {
-        let lines = match get_current_branch(&repo) {
+        let lines = match get_current_branch(repo) {
             Some(branch) => Line::from(vec![Span::styled(format!("  ● {}", branch), Style::default().fg(self.theme.COLOR_GRASS))]),
             None => {
                 let oid = repo.head().unwrap().target().unwrap();

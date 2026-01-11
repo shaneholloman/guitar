@@ -168,13 +168,13 @@ impl App {
         // Decide whether to use committed version or uncommitted (workdir)
         let (original_lines, hunks) = if oid == Oid::zero() {
             (
-                get_file_at_workdir(&repo, &filename),                          // get current file in workdir
-                get_file_diff_at_workdir(&repo, &filename).unwrap_or_default(), // get diff for workdir
+                get_file_at_workdir(repo, &filename),                          // get current file in workdir
+                get_file_diff_at_workdir(repo, &filename).unwrap_or_default(), // get diff for workdir
             )
         } else {
             (
-                get_file_at_oid(&repo, oid, &filename),                          // get file at commit
-                get_file_diff_at_oid(&repo, oid, &filename).unwrap_or_default(), // get diff for commit
+                get_file_at_oid(repo, oid, &filename),                          // get file at commit
+                get_file_diff_at_oid(repo, oid, &filename).unwrap_or_default(), // get diff for commit
             )
         };
 

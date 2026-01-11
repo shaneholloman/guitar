@@ -8,14 +8,12 @@ use crate::{
         app_layout::Layout,
     },
     core::{branches::Branches, buffer::Buffer, oids::Oids, tags::Tags},
-    git::os::path::try_into_git_repo_root,
     git::queries::helpers::UncommittedChanges,
     helpers::{colors::ColorPicker, palette::*, spinner::Spinner},
 };
-use git2::Repository;
 use indexmap::IndexMap;
 use ratatui::{style::Style, text::Span};
-use std::{cell::RefCell, env, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 pub enum ViewerMode {
     Full,

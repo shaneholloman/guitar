@@ -46,7 +46,7 @@ impl App {
         // Messages and metadata
         let message_range = render_message_range(
             &self.theme,
-            &repo,
+            repo,
             &self.oids,
             &self.branches.local,
             &self.branches.visible,
