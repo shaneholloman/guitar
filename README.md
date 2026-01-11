@@ -103,6 +103,7 @@ Scroll Up Branch                                              Shift + {
 Scroll Down Branch                                            Shift + }
 Scroll Up Commit                                                      [
 Scroll Down Commit                                                    ]
+Toggle Zen Mode                                                       z
 Toggle Hunk Mode                                                      m
 Toggle Branches                                                       1
 Toggle Tags                                                           2
