@@ -50,10 +50,7 @@ impl App {
         let visible_weeks = max_weeks_fit.min(total_weeks);
 
         // Right align and keep most recent weeks
-        let week_start = (total_weeks
-            .saturating_sub(visible_weeks)
-            .saturating_add(2))
-            .min(total_weeks);
+        let week_start = (total_weeks.saturating_sub(visible_weeks).saturating_add(2)).min(total_weeks);
 
         // Width used by the heatmap body excluding borders
         let heatmap_width = visible_weeks * cell_width;
@@ -276,7 +273,7 @@ impl App {
 
             // Render the scrollbar
             frame.render_stateful_widget(scrollbar, self.layout.app, &mut scrollbar_state);
-            
+
             return;
         }
 

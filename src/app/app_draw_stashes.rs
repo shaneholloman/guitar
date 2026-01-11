@@ -38,7 +38,11 @@ impl App {
 
         // Get vertical dimensions
         let total_lines = lines.len();
-        let visible_height = if self.layout_config.is_zen { self.layout.stashes.height.saturating_sub(2) as usize } else { self.layout.stashes.height.saturating_sub(if self.layout_config.is_branches || self.layout_config.is_tags { 1 } else { 2 }) as usize };
+        let visible_height = if self.layout_config.is_zen {
+            self.layout.stashes.height.saturating_sub(2) as usize
+        } else {
+            self.layout.stashes.height.saturating_sub(if self.layout_config.is_branches || self.layout_config.is_tags { 1 } else { 2 }) as usize
+        };
 
         // Clamp selection
         if total_lines == 0 {
@@ -69,9 +73,8 @@ impl App {
                 }
             })
             .collect();
-        
-        if self.layout_config.is_zen {
 
+        if self.layout_config.is_zen {
             // Setup the list
             let list = List::new(list_items).block(Block::default().borders(Borders::ALL).padding(padding).border_type(ratatui::widgets::BorderType::Rounded));
 

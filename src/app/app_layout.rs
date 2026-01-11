@@ -1,9 +1,12 @@
 use crate::app::app::{App, Focus, Viewport};
 use crate::config::layout::{load_layout_config, save_layout_config};
-use crate::helpers::layout::{LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED, LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED, LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED, LAYOUT_WIDTH_LEFT_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_RIGHT_PANE, add_scrollbar, extend_up, inset_bottom, inset_top, shrink_width};
+use crate::helpers::layout::{
+    LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED, LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED, LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED, LAYOUT_WIDTH_LEFT_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_RIGHT_PANE,
+    add_scrollbar, extend_up, inset_bottom, inset_top, shrink_width,
+};
 use ratatui::Frame;
-use ratatui::layout::{Direction, Layout as RatatuiLayout, Rect};
 use ratatui::layout::Constraint;
+use ratatui::layout::{Direction, Layout as RatatuiLayout, Rect};
 use std::cell::Cell;
 
 #[derive(Default)]
@@ -31,7 +34,6 @@ pub struct Layout {
 
 impl App {
     pub fn layout(&mut self, frame: &mut Frame) {
-
         let is_zen = self.layout_config.is_zen;
         let is_settings = self.viewport == Viewport::Splash || self.viewport == Viewport::Settings;
         let is_inspector = !is_settings && self.layout_config.is_inspector && self.graph_selected != 0;
@@ -45,17 +47,14 @@ impl App {
         let chunks_vertical = RatatuiLayout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(if self.layout_config.is_minimal { 0 } else { 1 }),  // Title bar
-                Constraint::Min(0),                                                     // Main app area
-                Constraint::Length(if self.layout_config.is_minimal { 0 } else { 1 }),  // Status bar
+                Constraint::Length(if self.layout_config.is_minimal { 0 } else { 1 }), // Title bar
+                Constraint::Min(0),                                                    // Main app area
+                Constraint::Length(if self.layout_config.is_minimal { 0 } else { 1 }), // Status bar
             ])
             .split(frame.area());
 
         // Title bar
-        let chunks_title_bar = RatatuiLayout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
-            .split(chunks_vertical[0]);
+        let chunks_title_bar = RatatuiLayout::default().direction(Direction::Horizontal).constraints([Constraint::Percentage(80), Constraint::Percentage(20)]).split(chunks_vertical[0]);
 
         // Separate the main viewport into vertical panes
         let total_width = chunks_vertical[1].width;
@@ -63,56 +62,63 @@ impl App {
         let width_right_pane = if is_right_pane { LAYOUT_WIDTH_RIGHT_PANE } else { 0 };
         let min_required = width_left_pane + width_right_pane + LAYOUT_WIDTH_MIN_CENTER;
         let constraints = if total_width < min_required {
-            let percentage_left_pane = if is_left_pane && is_right_pane { LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED } else if is_left_pane && !is_right_pane { 50 } else { 0 };
-            let percentage_center_pane = if is_left_pane && is_right_pane { LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED } else if !is_left_pane && !is_right_pane { 0 } else { 50 };
-            let percentage_right_pane = if is_right_pane && is_left_pane { LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED } else if is_right_pane && !is_left_pane { 50 } else { 0 };
+            let percentage_left_pane = if is_left_pane && is_right_pane {
+                LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED
+            } else if is_left_pane && !is_right_pane {
+                50
+            } else {
+                0
+            };
+            let percentage_center_pane = if is_left_pane && is_right_pane {
+                LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED
+            } else if !is_left_pane && !is_right_pane {
+                0
+            } else {
+                50
+            };
+            let percentage_right_pane = if is_right_pane && is_left_pane {
+                LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED
+            } else if is_right_pane && !is_left_pane {
+                50
+            } else {
+                0
+            };
             [
-                Constraint::Percentage(percentage_left_pane),                   // Left pane
-                Constraint::Percentage(percentage_center_pane),   // Center pane
-                Constraint::Percentage(percentage_right_pane),                  // Right pane
+                Constraint::Percentage(percentage_left_pane),   // Left pane
+                Constraint::Percentage(percentage_center_pane), // Center pane
+                Constraint::Percentage(percentage_right_pane),  // Right pane
             ]
-        } else {[
-            Constraint::Length(width_left_pane),    // Left pane
-            Constraint::Min(0),                     // Center pane
-            Constraint::Length(width_right_pane),   // Right pane
-        ]};
-        let chunks_horizontal = RatatuiLayout::default()
-            .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(chunks_vertical[1]);
+        } else {
+            [
+                Constraint::Length(width_left_pane),  // Left pane
+                Constraint::Min(0),                   // Center pane
+                Constraint::Length(width_right_pane), // Right pane
+            ]
+        };
+        let chunks_horizontal = RatatuiLayout::default().direction(Direction::Horizontal).constraints(constraints).split(chunks_vertical[1]);
 
         // Left pane sections
         let left_sections = [self.layout_config.is_branches, self.layout_config.is_tags, self.layout_config.is_stashes];
         let active_count = left_sections.iter().filter(|&&v| v).count().max(1);
         let pct = 100 / active_count as u16;
-        let chunks_pane_left = RatatuiLayout::default()
-            .direction(Direction::Vertical)
-            .constraints(left_sections.map(|active| { Constraint::Percentage(if active { pct } else { 0 }) }))
-            .split(chunks_horizontal[0]);
+        let chunks_pane_left =
+            RatatuiLayout::default().direction(Direction::Vertical).constraints(left_sections.map(|active| Constraint::Percentage(if active { pct } else { 0 }))).split(chunks_horizontal[0]);
 
         // Right pane sections
         let right_sections = [is_inspector, is_status];
         let active_count = right_sections.iter().filter(|&&v| v).count().max(1);
         let pct = 100 / active_count as u16;
-        let chunks_pane_right = RatatuiLayout::default()
-            .direction(Direction::Vertical)
-            .constraints(right_sections.map(|active| { Constraint::Percentage(if active { pct } else { 0 }) }))
-            .split(chunks_horizontal[2]);
+        let chunks_pane_right =
+            RatatuiLayout::default().direction(Direction::Vertical).constraints(right_sections.map(|active| Constraint::Percentage(if active { pct } else { 0 }))).split(chunks_horizontal[2]);
 
         // Status pane subdivisions into top and bottom status sections
         let chunks_status = RatatuiLayout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 100 }),
-                Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 0 }),
-            ])
+            .constraints([Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 100 }), Constraint::Percentage(if self.graph_selected == 0 { 50 } else { 0 })])
             .split(chunks_pane_right[1]);
 
         // Status bar subdivisions into left and right sections
-        let chunks_status_bar = RatatuiLayout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
-            .split(chunks_vertical[2]);
+        let chunks_status_bar = RatatuiLayout::default().direction(Direction::Horizontal).constraints([Constraint::Percentage(80), Constraint::Percentage(20)]).split(chunks_vertical[2]);
 
         // Process the layout rectangles
 
@@ -140,10 +146,7 @@ impl App {
 
         // Pane, graph
         let graph_scrollbar = chunks_horizontal[1];
-        let graph = inset_bottom(
-            inset_top(chunks_horizontal[1], 1),
-            1,
-        );
+        let graph = inset_bottom(inset_top(chunks_horizontal[1], 1), 1);
 
         // Pane, inspector
         let inspector_scrollbar = chunks_pane_right[0];
@@ -169,12 +172,7 @@ impl App {
         if is_zen {
             let zen = chunks_vertical[1];
 
-            let zero = Rect {
-                x: 0,
-                y: 0,
-                width: 0,
-                height: 0,
-            };
+            let zero = Rect { x: 0, y: 0, width: 0, height: 0 };
 
             self.layout = Layout {
                 // Keep title & status bar if you want
@@ -186,7 +184,22 @@ impl App {
                 branches: if matches!(self.focus, Focus::Branches) { zen } else { zero },
                 tags: if matches!(self.focus, Focus::Tags) { zen } else { zero },
                 stashes: if matches!(self.focus, Focus::Stashes) { zen } else { zero },
-                graph: if matches!(self.focus, Focus::Viewport | Focus::ModalCheckout | Focus::ModalSolo | Focus::ModalCommit | Focus::ModalCreateBranch | Focus::ModalDeleteBranch | Focus::ModalGrep | Focus::ModalTag | Focus::ModalDeleteTag) { zen } else { zero },
+                graph: if matches!(
+                    self.focus,
+                    Focus::Viewport
+                        | Focus::ModalCheckout
+                        | Focus::ModalSolo
+                        | Focus::ModalCommit
+                        | Focus::ModalCreateBranch
+                        | Focus::ModalDeleteBranch
+                        | Focus::ModalGrep
+                        | Focus::ModalTag
+                        | Focus::ModalDeleteTag
+                ) {
+                    zen
+                } else {
+                    zero
+                },
                 inspector: if matches!(self.focus, Focus::Inspector) { zen } else { zero },
                 status_top: if matches!(self.focus, Focus::StatusTop) { zen } else { zero },
                 status_bottom: if matches!(self.focus, Focus::StatusBottom) { zen } else { zero },
@@ -209,7 +222,6 @@ impl App {
         }
 
         self.layout = Layout {
-
             // Title bar
             title_left: chunks_title_bar[0],
             title_right: chunks_title_bar[1],

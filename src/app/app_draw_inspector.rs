@@ -112,9 +112,8 @@ impl App {
                 }
             })
             .collect();
-        
+
         if self.layout_config.is_zen {
-            
             // Setup the list
             let list = List::new(list_items).block(Block::default().borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded).padding(padding));
 

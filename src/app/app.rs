@@ -209,7 +209,6 @@ impl App {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
-
         // Compute the layout
         self.layout(frame);
 

@@ -56,6 +56,7 @@ pub mod helpers {
     pub mod copy;
     pub mod heatmap;
     pub mod keymap;
+    pub mod layout;
     pub mod logger;
     pub mod palette;
     pub mod spinner;
@@ -63,7 +64,6 @@ pub mod helpers {
     pub mod text;
     pub mod time;
     pub mod version;
-    pub mod layout;
 }
 
 use crate::app::app::App;

@@ -14,7 +14,7 @@ impl App {
     pub fn draw_status(&mut self, frame: &mut Frame) {
         // Padding
         let padding = ratatui::widgets::Padding { left: 1, right: 0, top: 0, bottom: 0 };
-        
+
         // Flags
         let mut is_staged_changes = false;
         let mut is_unstaged_changes = false;
@@ -26,14 +26,13 @@ impl App {
 
         let mut status_top_empty = false;
         let mut status_bottom_empty = false;
-        
+
         // Calculate maximum available width for text
         let max_status_top_width = self.layout.status_top.width.saturating_sub(5) as usize;
         let max_status_bottom_width = self.layout.status_bottom.width.saturating_sub(5) as usize;
 
         // If viewing uncommitted changes
         if is_showing_uncommitted {
-
             // Staged changes with prefix
             for file in self.uncommitted.staged.modified.iter() {
                 lines_status_top.push(Line::from(vec![
@@ -62,8 +61,10 @@ impl App {
                 for _ in 0..blank_lines_before {
                     lines_status_top.push(Line::from(""));
                 }
-                lines_status_top
-                    .push(Line::from(Span::styled(center_line(&truncate_with_ellipsis("⊘ no staged changes", max_status_top_width), max_status_top_width + 3), Style::default().fg(self.theme.COLOR_GREY_800))));
+                lines_status_top.push(Line::from(Span::styled(
+                    center_line(&truncate_with_ellipsis("⊘ no staged changes", max_status_top_width), max_status_top_width + 3),
+                    Style::default().fg(self.theme.COLOR_GREY_800),
+                )));
             } else {
                 is_staged_changes = true;
             }
@@ -96,8 +97,10 @@ impl App {
                 for _ in 0..blank_lines_before {
                     lines_status_bottom.push(Line::from(""));
                 }
-                lines_status_bottom
-                    .push(Line::from(Span::styled(center_line(&truncate_with_ellipsis("⊘ no unstaged changes", max_status_bottom_width), max_status_bottom_width + 3), Style::default().fg(self.theme.COLOR_GREY_800))));
+                lines_status_bottom.push(Line::from(Span::styled(
+                    center_line(&truncate_with_ellipsis("⊘ no unstaged changes", max_status_bottom_width), max_status_bottom_width + 3),
+                    Style::default().fg(self.theme.COLOR_GREY_800),
+                )));
             } else {
                 is_unstaged_changes = true;
             }
@@ -123,8 +126,10 @@ impl App {
                 for _ in 0..blank_lines_before {
                     lines_status_top.push(Line::from(""));
                 }
-                lines_status_top
-                    .push(Line::from(Span::styled(center_line(&truncate_with_ellipsis("⊘ no staged changes", max_status_top_width), max_status_top_width + 3), Style::default().fg(self.theme.COLOR_GREY_800))));
+                lines_status_top.push(Line::from(Span::styled(
+                    center_line(&truncate_with_ellipsis("⊘ no staged changes", max_status_top_width), max_status_top_width + 3),
+                    Style::default().fg(self.theme.COLOR_GREY_800),
+                )));
             } else {
                 is_staged_changes = true;
             }
@@ -166,12 +171,10 @@ impl App {
                 })
                 .collect();
 
-            
             if self.layout_config.is_zen {
                 // Setup the list
-                let list = List::new(list_items).block(
-                    Block::default().padding(padding).borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded).border_style(Style::default().fg(self.theme.COLOR_BORDER)),
-                );
+                let list = List::new(list_items)
+                    .block(Block::default().padding(padding).borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded).border_style(Style::default().fg(self.theme.COLOR_BORDER)));
 
                 frame.render_widget(list, self.layout.status_top);
 
@@ -186,7 +189,6 @@ impl App {
 
                 // Render the scrollbar
                 frame.render_stateful_widget(scrollbar, self.layout.status_top_scrollbar, &mut scrollbar_state);
-                
             } else {
                 // Setup the list
                 let list = List::new(list_items).block(
@@ -252,11 +254,11 @@ impl App {
                         }
                     })
                     .collect();
-                
-                if self.layout_config.is_zen {
 
+                if self.layout_config.is_zen {
                     // Setup the list
-                    let list = List::new(list_items).block(Block::default().padding(padding).borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded).border_style(Style::default().fg(self.theme.COLOR_BORDER)));
+                    let list = List::new(list_items)
+                        .block(Block::default().padding(padding).borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded).border_style(Style::default().fg(self.theme.COLOR_BORDER)));
 
                     frame.render_widget(list, self.layout.status_bottom);
 

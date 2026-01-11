@@ -8,7 +8,6 @@ use ratatui::{
 
 impl App {
     pub fn draw_graph(&mut self, frame: &mut Frame) {
-        
         // Get vertical dimensions
         let total_lines = self.oids.get_commit_count();
         let visible_height = if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(2) as usize } else { self.layout.graph.height as usize };
@@ -133,7 +132,7 @@ impl App {
                 // Render the scrollbar
                 frame.render_stateful_widget(scrollbar, self.layout.graph_scrollbar, &mut scrollbar_state);
             }
-            
+
             return;
         }
 

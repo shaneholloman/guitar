@@ -61,11 +61,9 @@ impl App {
             .collect();
 
         if self.layout_config.is_zen {
-
             // Setup the list
-            let list = List::new(list_items).block(
-                Block::default().padding(padding).borders(Borders::ALL).border_style(Style::default().fg(self.theme.COLOR_BORDER)).border_type(ratatui::widgets::BorderType::Rounded),
-            );
+            let list = List::new(list_items)
+                .block(Block::default().padding(padding).borders(Borders::ALL).border_style(Style::default().fg(self.theme.COLOR_BORDER)).border_type(ratatui::widgets::BorderType::Rounded));
 
             // Render the list
             frame.render_widget(list, self.layout.graph);
@@ -73,8 +71,8 @@ impl App {
             // Setup the scrollbar
             let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.viewer_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                    .begin_symbol(Some("╮"))
-                    .end_symbol(Some("╯"))
+                .begin_symbol(Some("╮"))
+                .end_symbol(Some("╯"))
                 .track_symbol(Some("│"))
                 .thumb_symbol("▌")
                 .thumb_style(Style::default().fg(if self.focus == Focus::Viewport { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
