@@ -1655,10 +1655,11 @@ impl App {
         self.save_layout();
     }
 
-    pub fn on_toggle_recent_repos(&mut self) {
-        self.viewport = Viewport::Splash;
-        self.focus = Focus::Viewport;
-    }
+    // TODO: Implement recent repos panel
+    // pub fn on_toggle_recent_repos(&mut self) {
+    //     self.viewport = Viewport::Splash;
+    //     self.focus = Focus::Viewport;
+    // }
 
     pub fn on_toggle_help(&mut self) {
         match self.viewport {
