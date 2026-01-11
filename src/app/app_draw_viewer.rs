@@ -104,7 +104,7 @@ impl App {
         frame.render_stateful_widget(scrollbar, self.layout.graph_scrollbar, &mut scrollbar_state);
     }
 
-    pub fn open_viewer(&mut self) {
+    pub fn open_viewer(&mut self, repo: &git2::Repository) {
         match self.focus {
             Focus::StatusTop => {
                 // If a commit is selected in the top graph view
@@ -114,7 +114,7 @@ impl App {
 
                     // Update the viewer to show the file at the selected commit OID
                     let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                    self.update_viewer(*oid);
+                    self.update_viewer(*oid, repo);
                     self.viewport = Viewport::Viewer;
                 } else if self.graph_selected == 0 && self.uncommitted.is_staged {
                     // If HEAD is selected and staged uncommitted changes exist
@@ -132,7 +132,7 @@ impl App {
                     };
 
                     // Update viewer for uncommitted file (Oid::zero indicates workdir)
-                    self.update_viewer(Oid::zero());
+                    self.update_viewer(Oid::zero(), repo);
                     self.viewport = Viewport::Viewer;
                 }
             },
@@ -153,7 +153,7 @@ impl App {
                     };
 
                     // Update viewer for uncommitted file
-                    self.update_viewer(Oid::zero());
+                    self.update_viewer(Oid::zero(), repo);
                     self.viewport = Viewport::Viewer;
                 }
             },
@@ -161,20 +161,20 @@ impl App {
         }
     }
 
-    pub fn update_viewer(&mut self, oid: Oid) {
+    pub fn update_viewer(&mut self, oid: Oid, repo: &git2::Repository) {
         // Clone the current file name
         let filename = self.file_name.clone().unwrap();
 
         // Decide whether to use committed version or uncommitted (workdir)
         let (original_lines, hunks) = if oid == Oid::zero() {
             (
-                get_file_at_workdir(&self.repo, &filename),                          // get current file in workdir
-                get_file_diff_at_workdir(&self.repo, &filename).unwrap_or_default(), // get diff for workdir
+                get_file_at_workdir(&repo, &filename),                          // get current file in workdir
+                get_file_diff_at_workdir(&repo, &filename).unwrap_or_default(), // get diff for workdir
             )
         } else {
             (
-                get_file_at_oid(&self.repo, oid, &filename),                          // get file at commit
-                get_file_diff_at_oid(&self.repo, oid, &filename).unwrap_or_default(), // get diff for commit
+                get_file_at_oid(&repo, oid, &filename),                          // get file at commit
+                get_file_diff_at_oid(&repo, oid, &filename).unwrap_or_default(), // get diff for commit
             )
         };
 

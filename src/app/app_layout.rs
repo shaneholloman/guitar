@@ -1,8 +1,7 @@
 use crate::app::app::{App, Focus, Viewport};
-use crate::config::layout::{load_layout_config, save_layout_config};
 use crate::helpers::layout::{
     LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED, LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED, LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED, LAYOUT_WIDTH_LEFT_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_RIGHT_PANE,
-    add_scrollbar, extend_up, inset_bottom, inset_top, shrink_width,
+    add_scrollbar, extend_up, inset_bottom, inset_top, load_layout_config, save_layout_config, shrink_width,
 };
 use ratatui::Frame;
 use ratatui::layout::Constraint;
@@ -289,5 +288,13 @@ impl App {
 
     pub fn load_layout(&mut self) {
         self.layout_config = load_layout_config();
+    }
+
+    pub fn save_recent(&self) {
+        // save_layout_config(&self.layout_config);
+    }
+
+    pub fn load_recent(&mut self) {
+        // self.recent = load_layout_config();
     }
 }

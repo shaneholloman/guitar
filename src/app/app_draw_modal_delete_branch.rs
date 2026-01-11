@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_delete_branch(&mut self, frame: &mut Frame) {
+    pub fn draw_modal_delete_branch(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         let mut length = 30;
         let mut height = 8;
         let alias = self.oids.get_alias_by_idx(self.graph_selected);
@@ -19,7 +19,7 @@ impl App {
         lines.push(Line::default());
 
         // Render list
-        let current = get_current_branch(&self.repo);
+        let current = get_current_branch(&repo);
         let color = self.branches.colors.get(&alias).unwrap();
         let branches = self.branches.visible.get(&alias).unwrap();
         branches.iter().filter(|branch| current.as_ref() != Some(*branch)).enumerate().for_each(|(idx, branch)| {

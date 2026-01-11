@@ -66,11 +66,13 @@ impl App {
                         self.modal_input.clear();
                     },
                     KeyCode::Enter => {
-                        commit_staged(&self.repo, self.modal_input.value(), &self.name, &self.email).expect("Error");
-                        self.modal_input.clear();
-                        self.branches.visible.clear();
-                        self.reload();
-                        self.focus = Focus::Viewport;
+                        if let Some(repo) = &self.repo {
+                            commit_staged(&repo, self.modal_input.value(), &self.name, &self.email).expect("Error");
+                            self.modal_input.clear();
+                            self.branches.visible.clear();
+                            self.reload();
+                            self.focus = Focus::Viewport;
+                        }
                     },
                     _ => {
                         self.modal_input.on_key(key_event);
@@ -85,17 +87,19 @@ impl App {
                         self.modal_input.clear();
                     },
                     KeyCode::Enter => {
-                        let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-                        match create_branch(&self.repo, self.modal_input.value(), *oid) {
-                            Ok(_) => {
-                                self.branches.visible.clear();
-                                self.modal_input.clear();
-                                self.reload();
-                                self.focus = Focus::Viewport;
-                            },
-                            Err(_) => {
-                                // TODO
-                            },
+                        if let Some(repo) = &self.repo {
+                            let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
+                            match create_branch(&repo, self.modal_input.value(), *oid) {
+                                Ok(_) => {
+                                    self.branches.visible.clear();
+                                    self.modal_input.clear();
+                                    self.reload();
+                                    self.focus = Focus::Viewport;
+                                },
+                                Err(_) => {
+                                    // TODO
+                                },
+                            }
                         }
                     },
                     _ => {
@@ -148,21 +152,23 @@ impl App {
                         self.modal_input.clear();
                     },
                     KeyCode::Enter => {
-                        let tag_name = self.modal_input.value();
+                        if let Some(repo) = &self.repo {
+                            let tag_name = self.modal_input.value();
 
-                        // Reject obviously invalid prefixes early
-                        if tag_name.is_empty() {
-                            return;
+                            // Reject obviously invalid prefixes early
+                            if tag_name.is_empty() {
+                                return;
+                            }
+
+                            let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
+
+                            // Get the alias
+                            tag(&repo, *oid, tag_name).unwrap();
+
+                            self.reload();
+                            self.modal_input.clear();
+                            self.focus = Focus::Viewport;
                         }
-
-                        let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-
-                        // Get the alias
-                        tag(&self.repo, *oid, tag_name).unwrap();
-
-                        self.reload();
-                        self.modal_input.clear();
-                        self.focus = Focus::Viewport;
                     },
                     _ => {
                         self.modal_input.on_key(key_event);
@@ -192,6 +198,7 @@ impl App {
                 Command::ToggleStatus => self.on_toggle_status(),
                 Command::ToggleInspector => self.on_toggle_inspector(),
                 Command::ToggleShas => self.on_toggle_shas(),
+                Command::ToggleRecentRepos => self.on_toggle_recent_repos(),
                 Command::ToggleHelp => self.on_toggle_help(),
                 Command::ActionMode => self.on_action_mode(),
                 Command::Exit => self.on_exit(),
@@ -285,16 +292,20 @@ impl App {
                 self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == alias).unwrap_or(0);
             },
             Focus::StatusTop | Focus::StatusBottom => {
-                self.open_viewer();
-                self.focus = Focus::Viewport;
+                if let Some(repo) = &self.repo.clone() {
+                    self.open_viewer(repo);
+                    self.focus = Focus::Viewport;
+                }
             },
             Focus::ModalCheckout => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let branches = self.branches.visible.get(&alias).cloned().unwrap_or_default();
-                checkout_branch(&self.repo, &mut self.branches.visible, &mut self.branches.local, alias, branches.get(self.modal_checkout_selected as usize).unwrap()).expect("Error");
-                self.modal_checkout_selected = 0;
-                self.focus = Focus::Viewport;
-                self.reload();
+                if let Some(repo) = &self.repo {
+                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                    let branches = self.branches.visible.get(&alias).cloned().unwrap_or_default();
+                    checkout_branch(&repo, &mut self.branches.visible, &mut self.branches.local, alias, branches.get(self.modal_checkout_selected as usize).unwrap()).expect("Error");
+                    self.modal_checkout_selected = 0;
+                    self.focus = Focus::Viewport;
+                    self.reload();
+                }
             },
             Focus::ModalSolo => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
@@ -316,29 +327,33 @@ impl App {
                 self.reload();
             },
             Focus::ModalDeleteBranch => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let branches = self.branches.visible.get(&alias).cloned().unwrap_or_default();
-                let branch = branches.get(self.modal_delete_branch_selected as usize).unwrap();
-                match delete_branch(&self.repo, branch) {
-                    Ok(_) => {
-                        self.branches.visible.clear();
-                        self.modal_delete_branch_selected = 0;
-                        self.focus = Focus::Viewport;
-                        self.reload();
-                    },
-                    Err(_) => {
-                        // TODO
-                    },
+                if let Some(repo) = &self.repo {
+                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                    let branches = self.branches.visible.get(&alias).cloned().unwrap_or_default();
+                    let branch = branches.get(self.modal_delete_branch_selected as usize).unwrap();
+                    match delete_branch(&repo, branch) {
+                        Ok(_) => {
+                            self.branches.visible.clear();
+                            self.modal_delete_branch_selected = 0;
+                            self.focus = Focus::Viewport;
+                            self.reload();
+                        },
+                        Err(_) => {
+                            // TODO
+                        },
+                    }
                 }
             },
             Focus::ModalDeleteTag => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let tags = self.tags.local.get(&alias).cloned().unwrap_or_default();
-                let tag = tags.get(self.modal_delete_tag_selected as usize).unwrap();
-                untag(&self.repo, tag).unwrap();
-                self.modal_delete_tag_selected = 0;
-                self.focus = Focus::Viewport;
-                self.reload();
+                if let Some(repo) = &self.repo {
+                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                    let tags = self.tags.local.get(&alias).cloned().unwrap_or_default();
+                    let tag = tags.get(self.modal_delete_tag_selected as usize).unwrap();
+                    untag(&repo, tag).unwrap();
+                    self.modal_delete_tag_selected = 0;
+                    self.focus = Focus::Viewport;
+                    self.reload();
+                }
             },
             _ => {},
         };
@@ -433,8 +448,10 @@ impl App {
                 self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == alias).unwrap_or(0);
             },
             Focus::StatusTop | Focus::StatusBottom => {
-                self.open_viewer();
-                self.focus = Focus::Viewport;
+                if let Some(repo) = &self.repo.clone() {
+                    self.open_viewer(repo);
+                    self.focus = Focus::Viewport;
+                }
             },
             _ => {},
         }
@@ -477,10 +494,12 @@ impl App {
                 let page = self.layout.graph.height as usize - 1;
                 match self.viewport {
                     Viewport::Graph => {
-                        self.graph_selected = self.graph_selected.saturating_sub(page);
-                        if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
-                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                            self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                        if let Some(repo) = &self.repo {
+                            self.graph_selected = self.graph_selected.saturating_sub(page);
+                            if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                                let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                                self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                            }
                         }
                     },
                     Viewport::Viewer => {
@@ -527,14 +546,16 @@ impl App {
                 let page = self.layout.graph.height as usize - 1;
                 match self.viewport {
                     Viewport::Graph => {
-                        if self.graph_selected + page < self.oids.get_commit_count() {
-                            self.graph_selected += page;
-                        } else {
-                            self.graph_selected = self.oids.get_commit_count() - 1;
-                        }
-                        if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
-                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                            self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                        if let Some(repo) = &self.repo {
+                            if self.graph_selected + page < self.oids.get_commit_count() {
+                                self.graph_selected += page;
+                            } else {
+                                self.graph_selected = self.oids.get_commit_count() - 1;
+                            }
+                            if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                                let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                                self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                            }
                         }
                     },
                     Viewport::Viewer => {
@@ -581,15 +602,17 @@ impl App {
             Focus::Viewport => {
                 match self.viewport {
                     Viewport::Graph => {
-                        if self.graph_selected > 0 {
-                            self.graph_selected -= 1;
-                            if self.graph_selected == 0 && self.focus == Focus::Inspector {
-                                self.focus = Focus::Viewport;
+                        if let Some(repo) = &self.repo {
+                            if self.graph_selected > 0 {
+                                self.graph_selected -= 1;
+                                if self.graph_selected == 0 && self.focus == Focus::Inspector {
+                                    self.focus = Focus::Viewport;
+                                }
                             }
-                        }
-                        if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
-                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                            self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                            if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                                let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                                self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                            }
                         }
                     },
                     Viewport::Viewer => {
@@ -625,13 +648,15 @@ impl App {
                 self.modal_solo_selected = if self.modal_solo_selected - 1 < 0 { branches.len() as i32 - 1 } else { self.modal_solo_selected - 1 };
             },
             Focus::ModalDeleteBranch => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let branches = self.branches.visible.entry(alias).or_default();
-                let length = match get_current_branch(&self.repo) {
-                    Some(current) => branches.iter().filter(|branch| current != **branch).count(),
-                    None => branches.len(),
-                };
-                self.modal_delete_branch_selected = if self.modal_delete_branch_selected - 1 < 0 { length as i32 - 1 } else { self.modal_delete_branch_selected - 1 };
+                if let Some(repo) = &self.repo {
+                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                    let branches = self.branches.visible.entry(alias).or_default();
+                    let length = match get_current_branch(&repo) {
+                        Some(current) => branches.iter().filter(|branch| current != **branch).count(),
+                        None => branches.len(),
+                    };
+                    self.modal_delete_branch_selected = if self.modal_delete_branch_selected - 1 < 0 { length as i32 - 1 } else { self.modal_delete_branch_selected - 1 };
+                }
             },
             Focus::ModalDeleteTag => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
@@ -655,12 +680,14 @@ impl App {
             },
             Focus::Viewport => match self.viewport {
                 Viewport::Graph => {
-                    if self.graph_selected + 1 < self.oids.get_commit_count() {
-                        self.graph_selected += 1;
-                    }
-                    if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
-                        let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                        self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                    if let Some(repo) = &self.repo {
+                        if self.graph_selected + 1 < self.oids.get_commit_count() {
+                            self.graph_selected += 1;
+                        }
+                        if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                            self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                        }
                     }
                 },
                 Viewport::Viewer => {
@@ -694,13 +721,15 @@ impl App {
                 self.modal_solo_selected = if self.modal_solo_selected + 1 > branches.len() as i32 - 1 { 0 } else { self.modal_solo_selected + 1 };
             },
             Focus::ModalDeleteBranch => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let branches = self.branches.visible.entry(alias).or_default();
-                let length = match get_current_branch(&self.repo) {
-                    Some(current) => branches.iter().filter(|branch| current != **branch).count(),
-                    None => branches.len(),
-                };
-                self.modal_delete_branch_selected = if self.modal_delete_branch_selected + 1 > length as i32 - 1 { 0 } else { self.modal_delete_branch_selected + 1 };
+                if let Some(repo) = &self.repo {
+                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                    let branches = self.branches.visible.entry(alias).or_default();
+                    let length = match get_current_branch(&repo) {
+                        Some(current) => branches.iter().filter(|branch| current != **branch).count(),
+                        None => branches.len(),
+                    };
+                    self.modal_delete_branch_selected = if self.modal_delete_branch_selected + 1 > length as i32 - 1 { 0 } else { self.modal_delete_branch_selected + 1 };
+                }
             },
             Focus::ModalDeleteTag => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
@@ -715,10 +744,12 @@ impl App {
         match self.focus {
             Focus::Viewport => {
                 if self.viewport == Viewport::Graph {
-                    self.graph_selected /= 2;
-                    if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
-                        let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                        self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                    if let Some(repo) = &self.repo {
+                        self.graph_selected /= 2;
+                        if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                            self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                        }
                     }
                 }
             },
@@ -732,11 +763,13 @@ impl App {
     pub fn on_scroll_down_half(&mut self) {
         match self.focus {
             Focus::Viewport => {
-                if self.viewport == Viewport::Graph {
-                    self.graph_selected = (self.oids.get_commit_count() - 1).min(self.graph_selected + (self.oids.get_commit_count() - self.graph_selected) / 2);
-                    if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
-                        let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                        self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                if let Some(repo) = &self.repo {
+                    if self.viewport == Viewport::Graph {
+                        self.graph_selected = (self.oids.get_commit_count() - 1).min(self.graph_selected + (self.oids.get_commit_count() - self.graph_selected) / 2);
+                        if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                            self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                        }
                     }
                 }
             },
@@ -774,10 +807,12 @@ impl App {
                 let half = (self.layout.graph.height as usize - 1) / 2;
                 match self.viewport {
                     Viewport::Graph => {
-                        self.graph_selected = self.graph_selected.saturating_sub(half);
-                        if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
-                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                            self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                        if let Some(repo) = &self.repo {
+                            self.graph_selected = self.graph_selected.saturating_sub(half);
+                            if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                                let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                                self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                            }
                         }
                     },
                     Viewport::Viewer => match self.viewer_mode {
@@ -831,12 +866,14 @@ impl App {
                 let half = (self.layout.graph.height.saturating_sub(1) as usize) / 2;
                 match self.viewport {
                     Viewport::Graph => {
-                        let max = self.oids.get_commit_count().saturating_sub(1);
-                        self.graph_selected = (self.graph_selected + half).min(max);
+                        if let Some(repo) = &self.repo {
+                            let max = self.oids.get_commit_count().saturating_sub(1);
+                            self.graph_selected = (self.graph_selected + half).min(max);
 
-                        if self.graph_selected < self.oids.get_commit_count() {
-                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                            self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                            if self.graph_selected < self.oids.get_commit_count() {
+                                let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                                self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                            }
                         }
                     },
                     Viewport::Viewer => match self.viewer_mode {
@@ -887,50 +924,54 @@ impl App {
     }
 
     pub fn on_scroll_up_commit(&mut self) {
-        if self.focus == Focus::Viewport && self.viewport == Viewport::Graph {
-            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+        if let Some(repo) = &self.repo {
+            if self.focus == Focus::Viewport && self.viewport == Viewport::Graph {
+                let oid = self.oids.get_oid_by_idx(self.graph_selected);
 
-            if self.oids.is_zero(oid) {
-                return;
-            }
+                if self.oids.is_zero(oid) {
+                    return;
+                }
 
-            let child_positions: Vec<usize> = self
-                .oids
-                .get_sorted_aliases()
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, &alias)| {
-                    let child_oid = self.oids.get_oid_by_alias(alias);
-                    let commit = self.repo.find_commit(*child_oid).ok()?;
-                    if commit.parent_ids().any(|parent_oid| parent_oid == *oid) { Some(idx) } else { None }
-                })
-                .collect();
+                let child_positions: Vec<usize> = self
+                    .oids
+                    .get_sorted_aliases()
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, &alias)| {
+                        let child_oid = self.oids.get_oid_by_alias(alias);
+                        let commit = repo.find_commit(*child_oid).ok()?;
+                        if commit.parent_ids().any(|parent_oid| parent_oid == *oid) { Some(idx) } else { None }
+                    })
+                    .collect();
 
-            if child_positions.is_empty() {
-            } else {
-                self.graph_selected = child_positions[0];
+                if child_positions.is_empty() {
+                } else {
+                    self.graph_selected = child_positions[0];
+                }
             }
         }
     }
 
     pub fn on_scroll_down_commit(&mut self) {
-        if self.focus == Focus::Viewport && self.viewport == Viewport::Graph {
-            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+        if let Some(repo) = &self.repo {
+            if self.focus == Focus::Viewport && self.viewport == Viewport::Graph {
+                let oid = self.oids.get_oid_by_idx(self.graph_selected);
 
-            if self.oids.is_zero(oid) {
-                self.graph_selected = 1;
-                return;
-            }
+                if self.oids.is_zero(oid) {
+                    self.graph_selected = 1;
+                    return;
+                }
 
-            let commit = self.repo.find_commit(*oid).unwrap();
-            let mut parents = commit.parent_ids();
+                let commit = repo.find_commit(*oid).unwrap();
+                let mut parents = commit.parent_ids();
 
-            if parents.len() == 0 {
-            } else {
-                let parent_oid = parents.next().unwrap();
-                let parent_alias = self.oids.get_alias_by_oid(parent_oid);
-                let next = self.oids.get_sorted_aliases().iter().position(|&alias| alias == parent_alias).unwrap();
-                self.graph_selected = next;
+                if parents.len() == 0 {
+                } else {
+                    let parent_oid = parents.next().unwrap();
+                    let parent_alias = self.oids.get_alias_by_oid(parent_oid);
+                    let next = self.oids.get_sorted_aliases().iter().position(|&alias| alias == parent_alias).unwrap();
+                    self.graph_selected = next;
+                }
             }
         }
     }
@@ -1008,10 +1049,12 @@ impl App {
             },
             Focus::Viewport => match self.viewport {
                 Viewport::Graph => {
-                    self.graph_selected = self.oids.get_commit_count().saturating_sub(1);
-                    if self.graph_selected != 0 {
-                        let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                        self.current_diff = get_filenames_diff_at_oid(&self.repo, *oid);
+                    if let Some(repo) = &self.repo {
+                        self.graph_selected = self.oids.get_commit_count().saturating_sub(1);
+                        if self.graph_selected != 0 {
+                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                            self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                        }
                     }
                 },
                 Viewport::Viewer => {
@@ -1109,47 +1152,53 @@ impl App {
     }
 
     pub fn on_drop(&mut self) {
-        if self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
-            let alias = self.oids.get_alias_by_idx(self.graph_selected);
-            if !self.oids.stashes.contains(&alias) {
-                return;
+        if let Some(repo) = &self.repo {
+            if self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
+                let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                if !self.oids.stashes.contains(&alias) {
+                    return;
+                }
+
+                let path = repo.path().to_path_buf();
+                let mut repo = Repository::open(path).unwrap();
+                let oid = self.oids.get_oid_by_alias(alias);
+
+                // Due to incosistnent git2 api, stashing requires mutalbe repo reference, im too lazy
+                pop(&mut repo, oid, false).unwrap();
+                self.reload();
             }
-
-            let path = self.repo.path().to_path_buf();
-            let mut repo = Repository::open(path).unwrap();
-            let oid = self.oids.get_oid_by_alias(alias);
-
-            // Due to incosistnent git2 api, stashing requires mutalbe repo reference, im too lazy
-            pop(&mut repo, oid, false).unwrap();
-            self.reload();
         }
     }
 
     pub fn on_pop(&mut self) {
-        if self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
-            let alias = self.oids.get_alias_by_idx(self.graph_selected);
-            if !self.oids.stashes.contains(&alias) {
-                return;
+        if let Some(repo) = &self.repo {
+            if self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
+                let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                if !self.oids.stashes.contains(&alias) {
+                    return;
+                }
+
+                let path = repo.path().to_path_buf();
+                let mut repo = Repository::open(path).unwrap();
+                let oid = self.oids.get_oid_by_alias(alias);
+
+                // Due to incosistnent git2 api, stashing requires mutalbe repo reference, im too lazy
+                pop(&mut repo, oid, true).unwrap();
+                self.reload();
             }
-
-            let path = self.repo.path().to_path_buf();
-            let mut repo = Repository::open(path).unwrap();
-            let oid = self.oids.get_oid_by_alias(alias);
-
-            // Due to incosistnent git2 api, stashing requires mutalbe repo reference, im too lazy
-            pop(&mut repo, oid, true).unwrap();
-            self.reload();
         }
     }
 
     pub fn on_stash(&mut self) {
-        if self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
-            let path = self.repo.path().to_path_buf();
-            let mut repo = Repository::open(path).unwrap();
+        if let Some(repo) = &self.repo {
+            if self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
+                let path = repo.path().to_path_buf();
+                let mut repo = Repository::open(path).unwrap();
 
-            // Due to incosistnent git2 api, stashing requires mutalbe repo reference, im too lazy
-            stash(&mut repo).unwrap();
-            self.reload();
+                // Due to incosistnent git2 api, stashing requires mutalbe repo reference, im too lazy
+                stash(&mut repo).unwrap();
+                self.reload();
+            }
         }
     }
 
@@ -1173,145 +1222,155 @@ impl App {
     }
 
     pub fn on_checkout(&mut self) {
-        if self.focus == Focus::Viewport {
-            if self.focus == Focus::Viewport && self.viewport != Viewport::Graph {
-                return;
-            }
+        if let Some(repo) = &self.repo {
+            if self.focus == Focus::Viewport {
+                if self.focus == Focus::Viewport && self.viewport != Viewport::Graph {
+                    return;
+                }
 
-            if self.graph_selected == 0 {
-                self.focus = Focus::Viewport;
-                return;
-            }
+                if self.graph_selected == 0 {
+                    self.focus = Focus::Viewport;
+                    return;
+                }
 
-            let alias = self.oids.get_alias_by_idx(self.graph_selected);
-            let oid = self.oids.get_oid_by_alias(alias);
-            let branches = self.branches.all.entry(alias).or_default();
+                let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                let oid = self.oids.get_oid_by_alias(alias);
+                let branches = self.branches.all.entry(alias).or_default();
 
-            if branches.is_empty() {
-                checkout_head(&self.repo, *oid);
-                self.focus = Focus::Viewport;
-                self.branches.visible.clear();
-                self.reload();
-            } else if branches.len() == 1 {
-                checkout_branch(&self.repo, &mut self.branches.visible, &mut self.branches.local, alias, branches.first().unwrap()).expect("Error");
-                self.focus = Focus::Viewport;
-                self.branches.visible.clear();
-                self.reload();
-            } else {
-                self.focus = Focus::ModalCheckout;
+                if branches.is_empty() {
+                    checkout_head(&repo, *oid);
+                    self.focus = Focus::Viewport;
+                    self.branches.visible.clear();
+                    self.reload();
+                } else if branches.len() == 1 {
+                    checkout_branch(&repo, &mut self.branches.visible, &mut self.branches.local, alias, branches.first().unwrap()).expect("Error");
+                    self.focus = Focus::Viewport;
+                    self.branches.visible.clear();
+                    self.reload();
+                } else {
+                    self.focus = Focus::ModalCheckout;
+                }
             }
         }
     }
 
     pub fn on_hard_reset(&mut self) {
-        if self.focus == Focus::Viewport {
-            if self.focus == Focus::Viewport && self.viewport != Viewport::Graph {
-                return;
+        if let Some(repo) = &self.repo {
+            if self.focus == Focus::Viewport {
+                if self.focus == Focus::Viewport && self.viewport != Viewport::Graph {
+                    return;
+                }
+                let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                reset_to_commit(&repo, *oid, git2::ResetType::Hard).expect("Error");
+                self.branches.visible.clear();
+                self.reload();
+                self.focus = Focus::Viewport;
             }
-            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-            reset_to_commit(&self.repo, *oid, git2::ResetType::Hard).expect("Error");
-            self.branches.visible.clear();
-            self.reload();
-            self.focus = Focus::Viewport;
         }
     }
 
     pub fn on_mixed_reset(&mut self) {
-        if self.focus == Focus::Viewport {
-            if self.focus == Focus::Viewport && self.viewport != Viewport::Graph {
-                return;
+        if let Some(repo) = &self.repo {
+            if self.focus == Focus::Viewport {
+                if self.focus == Focus::Viewport && self.viewport != Viewport::Graph {
+                    return;
+                }
+                let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                reset_to_commit(&repo, *oid, git2::ResetType::Mixed).expect("Error");
+                self.branches.visible.clear();
+                self.reload();
+                self.focus = Focus::Viewport;
             }
-            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-            reset_to_commit(&self.repo, *oid, git2::ResetType::Mixed).expect("Error");
-            self.branches.visible.clear();
-            self.reload();
-            self.focus = Focus::Viewport;
         }
     }
 
     pub fn on_unstage(&mut self) {
-        match self.viewport {
-            Viewport::Settings | Viewport::Viewer => {},
-            _ => {
-                match self.focus {
-                    Focus::Viewport => {
-                        if self.uncommitted.is_staged {
-                            unstage_all(&self.repo).expect("Error");
-                            self.reload();
-                        }
-                    },
-                    Focus::StatusTop => {
-                        let file: String = {
-                            let mut idx = self.status_top_selected;
-                            let modified = &self.uncommitted.staged.modified;
-                            let added = &self.uncommitted.staged.added;
-                            let deleted = &self.uncommitted.staged.deleted;
-                            if idx < modified.len() {
-                                modified[idx].clone()
-                            } else {
-                                idx -= modified.len();
-                                if idx < added.len() {
-                                    added[idx].clone()
+        if let Some(repo) = &self.repo {
+            match self.viewport {
+                Viewport::Settings | Viewport::Viewer => {},
+                _ => {
+                    match self.focus {
+                        Focus::Viewport => {
+                            if self.uncommitted.is_staged {
+                                unstage_all(&repo).expect("Error");
+                                self.reload();
+                            }
+                        },
+                        Focus::StatusTop => {
+                            let file: String = {
+                                let mut idx = self.status_top_selected;
+                                let modified = &self.uncommitted.staged.modified;
+                                let added = &self.uncommitted.staged.added;
+                                let deleted = &self.uncommitted.staged.deleted;
+                                if idx < modified.len() {
+                                    modified[idx].clone()
                                 } else {
-                                    idx -= added.len();
-                                    if idx < deleted.len() {
-                                        deleted[idx].clone()
+                                    idx -= modified.len();
+                                    if idx < added.len() {
+                                        added[idx].clone()
                                     } else {
-                                        // TODO: Handle this case later
-                                        return;
+                                        idx -= added.len();
+                                        if idx < deleted.len() {
+                                            deleted[idx].clone()
+                                        } else {
+                                            // TODO: Handle this case later
+                                            return;
+                                        }
                                     }
                                 }
-                            }
-                        };
-                        unstage_file(&self.repo, Path::new(&file)).expect("Error");
-                        self.reload();
-                    },
-                    _ => {},
-                }
-            },
+                            };
+                            unstage_file(&repo, Path::new(&file)).expect("Error");
+                            self.reload();
+                        },
+                        _ => {},
+                    }
+                },
+            }
         }
     }
 
     pub fn on_stage(&mut self) {
-        match self.viewport {
-            Viewport::Settings | Viewport::Viewer => {},
-            _ => {
-                match self.focus {
-                    Focus::Viewport => {
-                        if self.uncommitted.is_unstaged {
-                            git_add_all(&self.repo).expect("Error");
-                            self.reload();
-                        }
-                    },
-                    Focus::StatusBottom => {
-                        let file: String = {
-                            let mut idx = self.status_bottom_selected;
-                            let modified = &self.uncommitted.unstaged.modified;
-                            let added = &self.uncommitted.unstaged.added;
-                            let deleted = &self.uncommitted.unstaged.deleted;
-                            if idx < modified.len() {
-                                modified[idx].clone()
-                            } else {
-                                idx -= modified.len();
-                                if idx < added.len() {
-                                    added[idx].clone()
+        if let Some(repo) = &self.repo {
+            match self.viewport {
+                Viewport::Settings | Viewport::Viewer => {},
+                _ => {
+                    match self.focus {
+                        Focus::Viewport => {
+                            if self.uncommitted.is_unstaged {
+                                git_add_all(&repo).expect("Error");
+                                self.reload();
+                            }
+                        },
+                        Focus::StatusBottom => {
+                            let file: String = {
+                                let mut idx = self.status_bottom_selected;
+                                let modified = &self.uncommitted.unstaged.modified;
+                                let added = &self.uncommitted.unstaged.added;
+                                let deleted = &self.uncommitted.unstaged.deleted;
+                                if idx < modified.len() {
+                                    modified[idx].clone()
                                 } else {
-                                    idx -= added.len();
-                                    if idx < deleted.len() {
-                                        deleted[idx].clone()
+                                    idx -= modified.len();
+                                    if idx < added.len() {
+                                        added[idx].clone()
                                     } else {
-                                        // TODO: Handle this case later
-                                        return;
+                                        idx -= added.len();
+                                        if idx < deleted.len() {
+                                            deleted[idx].clone()
+                                        } else {
+                                            // TODO: Handle this case later
+                                            return;
+                                        }
                                     }
                                 }
-                            }
-                        };
-                        stage_file(&self.repo, Path::new(&file)).expect("Error");
-                        self.reload();
-                    },
-                    _ => {},
-                }
-            },
+                            };
+                            stage_file(&repo, Path::new(&file)).expect("Error");
+                            self.reload();
+                        },
+                        _ => {},
+                    }
+                },
+            }
         }
     }
 
@@ -1327,18 +1386,20 @@ impl App {
     }
 
     pub fn on_force_push(&mut self) {
-        match self.viewport {
-            Viewport::Settings | Viewport::Viewer => {},
-            _ => {
-                let handle = push_over_ssh(&self.path, "origin", get_current_branch(&self.repo).unwrap().as_str(), true);
-                match handle.join().expect("Thread panicked") {
-                    Ok(_) => {
-                        self.branches.visible.clear();
-                        self.reload();
-                    },
-                    Err(e) => eprintln!("Fetch failed: {}", e),
-                }
-            },
+        if let Some(repo) = &self.repo {
+            match self.viewport {
+                Viewport::Settings | Viewport::Viewer => {},
+                _ => {
+                    let handle = push_over_ssh(&self.path, "origin", get_current_branch(&repo).unwrap().as_str(), true);
+                    match handle.join().expect("Thread panicked") {
+                        Ok(_) => {
+                            self.branches.visible.clear();
+                            self.reload();
+                        },
+                        Err(e) => eprintln!("Fetch failed: {}", e),
+                    }
+                },
+            }
         }
     }
 
@@ -1354,45 +1415,47 @@ impl App {
     }
 
     pub fn on_delete_branch(&mut self) {
-        match self.viewport {
-            Viewport::Settings | Viewport::Viewer => {},
-            _ => {
-                match self.focus {
-                    Focus::Branches => {
-                        let branch = &self.branches.sorted.get(self.branches_selected).unwrap().1;
-                        let proceed = if let Some(current) = get_current_branch(&self.repo) { current != *branch } else { true };
-                        if proceed && delete_branch(&self.repo, branch).is_ok() {
-                            self.branches.visible.clear();
-                            self.reload();
-                        };
-                    },
-                    Focus::Viewport => {
-                        if self.graph_selected != 0 {
-                            let alias = self.oids.get_alias_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-                            let current = get_current_branch(&self.repo);
+        if let Some(repo) = &self.repo {
+            match self.viewport {
+                Viewport::Settings | Viewport::Viewer => {},
+                _ => {
+                    match self.focus {
+                        Focus::Branches => {
+                            let branch = &self.branches.sorted.get(self.branches_selected).unwrap().1;
+                            let proceed = if let Some(current) = get_current_branch(&repo) { current != *branch } else { true };
+                            if proceed && delete_branch(&repo, branch).is_ok() {
+                                self.branches.visible.clear();
+                                self.reload();
+                            };
+                        },
+                        Focus::Viewport => {
+                            if self.graph_selected != 0 {
+                                let alias = self.oids.get_alias_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
+                                let current = get_current_branch(&repo);
 
-                            if let Some(branches) = self.branches.visible.get(&alias) {
-                                // Filter out the current branch, if any
-                                let filtered_branches: Vec<_> = branches.iter().filter(|branch| current.as_ref() != Some(*branch)).collect();
+                                if let Some(branches) = self.branches.visible.get(&alias) {
+                                    // Filter out the current branch, if any
+                                    let filtered_branches: Vec<_> = branches.iter().filter(|branch| current.as_ref() != Some(*branch)).collect();
 
-                                match filtered_branches.len() {
-                                    0 => {},
-                                    1 => {
-                                        if delete_branch(&self.repo, filtered_branches[0]).is_ok() {
-                                            self.branches.visible.clear();
-                                            self.reload();
-                                        };
-                                    },
-                                    _ => {
-                                        self.focus = Focus::ModalDeleteBranch;
-                                    },
+                                    match filtered_branches.len() {
+                                        0 => {},
+                                        1 => {
+                                            if delete_branch(&repo, filtered_branches[0]).is_ok() {
+                                                self.branches.visible.clear();
+                                                self.reload();
+                                            };
+                                        },
+                                        _ => {
+                                            self.focus = Focus::ModalDeleteBranch;
+                                        },
+                                    }
                                 }
                             }
-                        }
-                    },
-                    _ => {},
-                }
-            },
+                        },
+                        _ => {},
+                    }
+                },
+            }
         }
     }
 
@@ -1408,41 +1471,50 @@ impl App {
     }
 
     pub fn on_untag(&mut self) {
-        match self.viewport {
-            Viewport::Settings | Viewport::Viewer => {},
-            _ => match self.focus {
-                Focus::Tags => {
-                    let tag = &self.tags.sorted.get(self.tags_selected).unwrap().1;
-                    untag(&self.repo, tag).unwrap();
-                    self.reload();
-                },
-                Focus::Viewport => {
-                    if self.graph_selected != 0 {
-                        let alias = self.oids.get_alias_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-                        if let Some(tag_names) = self.tags.local.get(&alias) {
-                            match tag_names.len() {
-                                0 => {},
-                                1 => {
-                                    untag(&self.repo, tag_names[0].as_str()).unwrap();
-                                    self.reload();
-                                },
-                                _ => {
-                                    self.focus = Focus::ModalDeleteTag;
-                                },
+        if let Some(repo) = &self.repo {
+            match self.viewport {
+                Viewport::Settings | Viewport::Viewer => {},
+                _ => match self.focus {
+                    Focus::Tags => {
+                        let tag = &self.tags.sorted.get(self.tags_selected).unwrap().1;
+                        untag(&repo, tag).unwrap();
+                        self.reload();
+                    },
+                    Focus::Viewport => {
+                        if self.graph_selected != 0 {
+                            let alias = self.oids.get_alias_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
+                            if let Some(tag_names) = self.tags.local.get(&alias) {
+                                match tag_names.len() {
+                                    0 => {},
+                                    1 => {
+                                        untag(&repo, tag_names[0].as_str()).unwrap();
+                                        self.reload();
+                                    },
+                                    _ => {
+                                        self.focus = Focus::ModalDeleteTag;
+                                    },
+                                }
                             }
                         }
-                    }
+                    },
+                    _ => {},
                 },
-                _ => {},
-            },
+            }
         }
     }
 
     pub fn on_cherrypick(&mut self) {
         if self.viewport == Viewport::Graph && self.focus == Focus::Viewport && self.graph_selected != 0 {
-            let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-            cherry_pick_commit(&self.repo, *oid, Some("message"), true).unwrap();
-            self.reload();
+            if let Some(repo) = &self.repo {
+                let idx = if self.graph_selected == 0 { 1 } else { self.graph_selected };
+                let oid = self.oids.get_oid_by_idx(idx);
+
+                // Perform cherry-pick
+                cherry_pick_commit(repo, *oid, Some("message"), true).unwrap();
+
+                // Reload after operation
+                self.reload();
+            }
         }
     }
 
@@ -1548,6 +1620,11 @@ impl App {
             }
         }
         self.save_layout();
+    }
+
+    pub fn on_toggle_recent_repos(&mut self) {
+        self.viewport = Viewport::Splash;
+        self.focus = Focus::Viewport;
     }
 
     pub fn on_toggle_help(&mut self) {

@@ -13,7 +13,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_inspector(&mut self, frame: &mut Frame) {
+    pub fn draw_inspector(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         // Padding
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
 
@@ -31,7 +31,7 @@ impl App {
             // Query commit info
             let alias = self.oids.get_alias_by_idx(self.graph_selected);
             let oid = self.oids.get_oid_by_alias(alias);
-            let commit = self.repo.find_commit(*oid).unwrap();
+            let commit = repo.find_commit(*oid).unwrap();
             let author = commit.author();
             let committer = commit.committer();
             let summary = commit.summary().unwrap_or("⊘ no summary").to_string();

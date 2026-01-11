@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_graph(&mut self, frame: &mut Frame) {
+    pub fn draw_graph(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         // Get vertical dimensions
         let total_lines = self.oids.get_commit_count();
         let visible_height = if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(2) as usize } else { self.layout.graph.height as usize };
@@ -31,7 +31,7 @@ impl App {
         buffer.decompress(start, end + 1);
 
         // Get head
-        let head_oid = self.repo.head().unwrap().target().unwrap();
+        let head_oid = repo.head().unwrap().target().unwrap();
         let head_oid_alias = self.oids.get_alias_by_oid(head_oid);
 
         // Rendered lines
@@ -46,7 +46,7 @@ impl App {
         // Messages and metadata
         let message_range = render_message_range(
             &self.theme,
-            &self.repo,
+            &repo,
             &self.oids,
             &self.branches.local,
             &self.branches.visible,
