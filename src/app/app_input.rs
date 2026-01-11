@@ -58,7 +58,7 @@ impl App {
         let current_mode = self.mode;
 
         if let Some(mode_map) = self.keymaps.get(&self.mode) && let Some(cmd) = mode_map.get(&key_binding) {
-            if let Some(repo) = &self.repo {
+            if let Some(_) = &self.repo {
                 
                 // Handle text editing within modals
                 match self.focus {
