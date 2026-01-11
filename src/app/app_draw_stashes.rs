@@ -13,7 +13,7 @@ use ratatui::{
 use ratatui::{layout::Rect, widgets::Paragraph};
 
 impl App {
-    pub fn draw_stashes(&mut self, frame: &mut Frame) {
+    pub fn draw_stashes(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         // Padding
         let padding = ratatui::widgets::Padding { left: if self.layout_config.is_zen { 1 } else { 2 }, right: 0, top: 0, bottom: 0 };
 
@@ -25,7 +25,7 @@ impl App {
         let mut lines: Vec<Line<'_>> = Vec::new();
         for stash_alias in &self.oids.stashes {
             let oid = self.oids.get_oid_by_alias(*stash_alias);
-            let commit = self.repo.find_commit(*oid).unwrap();
+            let commit = repo.find_commit(*oid).unwrap();
             let message = commit.summary().unwrap_or("⊘ no message").to_string();
 
             // Text

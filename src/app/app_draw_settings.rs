@@ -18,7 +18,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_settings(&mut self, frame: &mut Frame) {
+    pub fn draw_settings(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         // Padding
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
 
@@ -26,7 +26,7 @@ impl App {
         let available_width = self.layout.graph.width.saturating_sub(1) as usize;
 
         // Credentials
-        let (name, email) = get_git_user_info(&self.repo).unwrap();
+        let (name, email) = get_git_user_info(repo).unwrap();
 
         // Setup list items
         let mut lines: Vec<Line> = Vec::new();

@@ -11,11 +11,11 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_statusbar(&mut self, frame: &mut Frame) {
-        let lines = match get_current_branch(&self.repo) {
+    pub fn draw_statusbar(&mut self, frame: &mut Frame, repo: &git2::Repository) {
+        let lines = match get_current_branch(repo) {
             Some(branch) => Line::from(vec![Span::styled(format!("  ● {}", branch), Style::default().fg(self.theme.COLOR_GRASS))]),
             None => {
-                let oid = self.repo.head().unwrap().target().unwrap();
+                let oid = repo.head().unwrap().target().unwrap();
                 Line::from(vec![Span::styled(format!("  detached head: #{:.6}", oid), Style::default().fg(self.theme.COLOR_TEXT))])
             },
         };

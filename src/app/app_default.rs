@@ -1,6 +1,6 @@
-use crate::config::layout::load_layout_config;
 use crate::helpers::heatmap::empty_heatmap;
 use crate::helpers::keymap::InputMode;
+use crate::helpers::layout::load_layout_config;
 use crate::{app::input::TextInput, core::stashes::Stashes};
 use crate::{
     app::{
@@ -8,14 +8,12 @@ use crate::{
         app_layout::Layout,
     },
     core::{branches::Branches, buffer::Buffer, oids::Oids, tags::Tags},
-    git::os::path::try_into_git_repo_root,
     git::queries::helpers::UncommittedChanges,
     helpers::{colors::ColorPicker, palette::*, spinner::Spinner},
 };
-use git2::Repository;
 use indexmap::IndexMap;
 use ratatui::{style::Style, text::Span};
-use std::{cell::RefCell, env, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 pub enum ViewerMode {
     Full,
@@ -24,21 +22,18 @@ pub enum ViewerMode {
 
 impl Default for App {
     fn default() -> Self {
-        let args: Vec<String> = env::args().collect();
-        let path = if args.len() > 1 { &args[1] } else { &".".to_string() };
         let theme = Theme::default();
         let color = Rc::new(RefCell::new(ColorPicker::from_theme(&theme)));
-        let canonical_path = std::fs::canonicalize(path).expect("Invalid repo path");
-        let absolute_path: PathBuf = try_into_git_repo_root(&canonical_path).unwrap_or(canonical_path);
-        let repo = Rc::new(Repository::open(absolute_path.clone()).expect("Could not open repo"));
         let heatmap = empty_heatmap();
         let logo = vec![Span::styled("  guita", Style::default().fg(theme.COLOR_GRASS)), Span::styled("╭", Style::default().fg(theme.COLOR_GREEN))];
 
         App {
             // General
             logo,
-            path: absolute_path.display().to_string(),
-            repo,
+            path: "".to_string(),
+            // TODO: Implement recent layouts saving/loading
+            // recent: Vec::new(),
+            repo: None,
             spinner: Spinner::new(),
             keymaps: IndexMap::new(),
             mode: InputMode::Normal,

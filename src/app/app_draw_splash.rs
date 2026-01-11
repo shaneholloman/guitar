@@ -18,7 +18,7 @@ impl App {
 
         // Get vertical dimensions
         let total_lines = self.viewer_lines.len();
-        let visible_height = self.layout.graph.height.saturating_sub(2) as usize;
+        let visible_height = if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(4) as usize } else { self.layout.graph.height.saturating_sub(2) as usize };
 
         // Clamp selection
         if total_lines == 0 {
@@ -77,6 +77,11 @@ impl App {
         list_items.push(ListItem::from(Line::default()));
         list_items.push(ListItem::from(Line::from(vec![Span::styled("made with ♡".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered()));
         list_items.push(ListItem::from(Line::from(vec![Span::styled("https://github.com/asinglebit/guitar".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered()));
+
+        if self.repo.is_none() {
+            list_items.push(ListItem::from(Line::default()));
+            list_items.push(ListItem::from(Line::from(vec![Span::styled("! please run from within a valid git repository !".to_string(), Style::default().fg(self.theme.COLOR_ORANGE))]).centered()));
+        }
 
         // Setup the list
         let list = List::new(list_items).block(Block::default().padding(padding));
