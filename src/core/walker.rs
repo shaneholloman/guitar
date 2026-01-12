@@ -8,7 +8,7 @@ use crate::{
     },
     git::queries::commits::{get_sorted_oids, get_tag_oids, get_tip_oids},
 };
-use git2::{Oid, Repository};
+use git2::{Repository};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 // Context for walking and rendering commits
@@ -115,10 +115,14 @@ impl Walker {
         })
     }
 
-    // Walk through "amount" commits, update buffers and render lines
+    // Walk through batch of commits, update buffers and render lines
     pub fn walk(&mut self) -> bool {
-        // Determine current HEAD oid
-        let head_oid = self.repo.borrow().head().unwrap().target().unwrap();
+
+        // Repo borrow
+        let repo = self.repo.borrow();
+
+        // Determine the current HEAD oid
+        let head_oid = repo.head().unwrap().target().unwrap();
 
         // Get the alias
         let head_alias = self.oids.get_alias_by_oid(head_oid);
@@ -138,7 +142,6 @@ impl Walker {
         // Insert stashes into sorted_batch right after their parent commit
         for &stash_alias in &stashes {
             let stash_oid = self.oids.get_oid_by_alias(stash_alias);
-            let repo = self.repo.borrow();
             let stash_commit = repo.find_commit(*stash_oid).unwrap();
 
             if let Some(parent_oid) = stash_commit.parent_ids().next() {
@@ -152,26 +155,30 @@ impl Walker {
             }
         }
 
+        // One mutable borrow per walk
+        let mut buffer = self.buffer.borrow_mut(); 
+
         // Go through the commits, inferring the graph
         for &alias in sorted_batch.iter() {
             let mut merger_alias: u32 = NONE;
             let oid = self.oids.get_oid_by_alias(alias);
-            let repo = self.repo.borrow();
             let commit = repo.find_commit(*oid).unwrap();
-            let parents: Vec<Oid> = commit.parent_ids().collect();
+
+            // Get the first and second parents
+            let mut parents_iter = commit.parent_ids();
+            let parent_a_oid = parents_iter.next();
+            let parent_b_oid = parents_iter.next();
 
             // Get parent aliases
             let (parent_a, parent_b) = if stashes.contains(&alias) {
                 (
-                    // For stash commits, only the first parent is used
-                    parents.first().map(|p| self.oids.get_alias_by_oid(*p)).unwrap_or(NONE),
+                    parent_a_oid.map(|p| self.oids.get_alias_by_oid(p)).unwrap_or(NONE),
                     NONE,
                 )
             } else {
                 (
-                    // For normal commits, use both parents if they exist
-                    parents.first().map(|p| self.oids.get_alias_by_oid(*p)).unwrap_or(NONE),
-                    parents.get(1).map(|p| self.oids.get_alias_by_oid(*p)).unwrap_or(NONE),
+                    parent_a_oid.map(|p| self.oids.get_alias_by_oid(p)).unwrap_or(NONE),
+                    parent_b_oid.map(|p| self.oids.get_alias_by_oid(p)).unwrap_or(NONE),
                 )
             };
 
@@ -179,9 +186,9 @@ impl Walker {
             let chunk = Chunk::commit(alias, parent_a, parent_b);
 
             // Update
-            self.buffer.borrow_mut().update(chunk);
-
-            for (lane_idx, chunk) in (&self.buffer.borrow().curr).into_iter().enumerate() {
+            buffer.update(chunk);
+            
+            for (lane_idx, chunk) in buffer.curr.iter().enumerate() {
                 if !chunk.is_dummy() && alias == chunk.alias {
                     if self.branches_local.contains_key(&alias) || self.branches_remote.contains_key(&alias) {
                         self.branches_lanes.insert(alias, lane_idx);
@@ -197,7 +204,7 @@ impl Walker {
 
                     if chunk.parent_a != NONE && chunk.parent_b != NONE {
                         let mut is_merger_found = false;
-                        for chunk_nested in &self.buffer.borrow().curr {
+                        for chunk_nested in buffer.curr.iter() {
                             if chunk_nested.parent_a != NONE && chunk_nested.parent_b == NONE && chunk.parent_b == chunk_nested.parent_a {
                                 is_merger_found = true;
                                 break;
@@ -210,19 +217,19 @@ impl Walker {
                 }
             }
 
-            // Now we can borrow mutably
+            // Handle mergers
             if merger_alias != NONE {
-                self.buffer.borrow_mut().merger(merger_alias);
+                buffer.merger(merger_alias);
             }
 
-            // Serialize
+            // Register alias in oids
             self.oids.append_sorted_alias(alias);
         }
 
         // Indicate whether repeats are needed
         // Too lazy to make an off by one mistake here, zero is fine
         if sorted_batch.is_empty() {
-            self.buffer.borrow_mut().backup();
+            buffer.backup();
             return false;
         }
 
