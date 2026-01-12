@@ -38,32 +38,45 @@ impl App {
         let mut lines: Vec<Line> = Vec::new();
         self.splash_selections = Vec::new();
 
-        let dummies = if self.layout.app.width < 80 {
-            (visible_height / 2).saturating_sub((3 + 1 - 3) / 2)
+        // How many rows the actual content will take
+        let content_rows =
+            if self.spinner.is_running() {
+                1
+            } else if self.recent.is_empty() && self.repo.is_none() {
+                5
+            } else if self.recent.is_empty() {
+                3
+            } else {
+                2 + self.recent.len()
+            };
+
+        // Logo height by terminal width
+        let logo_rows = if self.layout.app.width < 80 {
+            1
         } else if self.layout.app.width < 120 {
-            (visible_height / 2).saturating_sub((3 + 9 - 3) / 2)
+            9
         } else {
-            (visible_height / 2).saturating_sub((3 + 11 - 3) / 2)
+            11
         };
+
+        // Total visible height
+        let visible = visible_height;
+
+        // Total splash height
+        let splash_rows = logo_rows + content_rows;
+
+        // Center vertically, clamp to 0
+        let dummies = visible
+            .saturating_sub(splash_rows)
+            .saturating_div(2);
 
         for _ in 0..dummies {
             lines.push(Line::default());
         }
 
         if self.layout.app.width < 80 {
-            lines.push(Line::default());
-            lines.push(Line::default());
-            lines.push(Line::default());
-            lines.push(Line::default());
-            lines.push(Line::default());
             lines.push(Line::from(Span::styled("guita╭".to_string(), Style::default().fg(self.theme.COLOR_GRASS))).centered());
-            lines.push(Line::default());
-            lines.push(Line::default());
-            lines.push(Line::default());
-            lines.push(Line::default());
-            lines.push(Line::default());
         } else if self.layout.app.width < 120 {
-            lines.push(Line::default());
             lines.push(Line::from(Span::styled("                    :#   :#                 ".to_string(), Style::default().fg(self.theme.COLOR_GRASS))).centered());
             lines.push(Line::from(Span::styled("                         L#                 ".to_string(), Style::default().fg(self.theme.COLOR_GRASS))).centered());
             lines.push(Line::from(Span::styled("  .##5#^.  .#   .#  :C  #C6#   #?##:        ".to_string(), Style::default().fg(self.theme.COLOR_GRASS))).centered());
@@ -73,7 +86,6 @@ impl App {
             lines.push(Line::from(Span::styled("  .#B~6G!  .#6#~G.  #5   ~##  .##Y~#.  !#   ".to_string(), Style::default().fg(self.theme.COLOR_GREEN))).centered());
             lines.push(Line::from(Span::styled("      .##                              !B   ".to_string(), Style::default().fg(self.theme.COLOR_GREEN))).centered());
             lines.push(Line::from(Span::styled("     ~G#                               ~?   ".to_string(), Style::default().fg(self.theme.COLOR_GREEN))).centered());
-            lines.push(Line::default());
         } else {
             lines.push(Line::from(Span::styled("                                 :GG~        .?Y.                                ".to_string(), Style::default().fg(self.theme.COLOR_GRASS))).centered());
             lines.push(Line::from(Span::styled("       ....        ..      ..   .....      . ^BG: ..       .....                 ".to_string(), Style::default().fg(self.theme.COLOR_GRASS))).centered());
@@ -89,46 +101,51 @@ impl App {
         }
 
         lines.push(Line::default());
-        if self.recent.is_empty() {
-            lines.push(Line::from(vec![Span::styled("made with ♡".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
-            lines.push(Line::default());
-            lines.push(Line::from(vec![Span::styled("https://github.com/asinglebit/guitar".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
-            if self.repo.is_none() {
-                lines.push(Line::default());
-                lines.push(Line::from(vec![Span::styled("! not a valid git repository !".to_string(), Style::default().fg(self.theme.COLOR_ORANGE))]).centered());
-            }
+        if self.spinner.is_running() {
+            let icon_spinner = format!("{} ", self.spinner.get_char());
+            lines.push(Line::from(vec![Span::styled(format!("{} loading...", icon_spinner), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
         } else {
-            lines.push(Line::from(vec![Span::styled("recent repositories:".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
-            lines.push(Line::default());
-            self.recent.iter().for_each(|path| {
-                self.splash_selections.push(lines.len());
-                let style = if Some(path) == self.path.as_ref() { self.theme.COLOR_GRASS } else { self.theme.COLOR_TEXT };
-                lines.push(Line::from(Span::styled(path.clone(), Style::default().fg(style))).centered());
-            });
-        }
-
-        // Snap to nearest selectable line if needed
-        if !self.splash_selections.contains(&self.splash_selected) {
-            // Find nearest selectable line above or below
-            let mut nearest = None;
-
-            // Moving down
-            if self.last_input_direction == Some(Direction::Down) {
-                nearest = self.splash_selections.iter().copied().find(|&i| i > self.splash_selected);
+            if self.recent.is_empty() {
+                lines.push(Line::from(vec![Span::styled("made with ♡".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
+                lines.push(Line::default());
+                lines.push(Line::from(vec![Span::styled("https://github.com/asinglebit/guitar".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
+                if self.repo.is_none() {
+                    lines.push(Line::default());
+                    lines.push(Line::from(vec![Span::styled("! not a valid git repository !".to_string(), Style::default().fg(self.theme.COLOR_ORANGE))]).centered());
+                }
+            } else {
+                lines.push(Line::from(vec![Span::styled("recent repositories:".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
+                lines.push(Line::default());
+                self.recent.iter().for_each(|path| {
+                    self.splash_selections.push(lines.len());
+                    let style = if Some(path) == self.path.as_ref() { self.theme.COLOR_GRASS } else { self.theme.COLOR_TEXT };
+                    lines.push(Line::from(Span::styled(path.clone(), Style::default().fg(style))).centered());
+                });
             }
 
-            // Moving up
-            if nearest.is_none() && self.last_input_direction == Some(Direction::Up) {
-                nearest = self.splash_selections.iter().rev().copied().find(|&i| i < self.splash_selected);
-            }
+            // Snap to nearest selectable line if needed
+            if !self.splash_selections.contains(&self.splash_selected) {
+                // Find nearest selectable line above or below
+                let mut nearest = None;
 
-            // Fallback to nearest by distance if neither direction flag is set
-            if nearest.is_none() {
-                nearest = self.splash_selections.iter().min_by_key(|&&i| i.abs_diff(self.splash_selected)).copied();
-            }
+                // Moving down
+                if self.last_input_direction == Some(Direction::Down) {
+                    nearest = self.splash_selections.iter().copied().find(|&i| i > self.splash_selected);
+                }
 
-            if let Some(target) = nearest {
-                self.splash_selected = target;
+                // Moving up
+                if nearest.is_none() && self.last_input_direction == Some(Direction::Up) {
+                    nearest = self.splash_selections.iter().rev().copied().find(|&i| i < self.splash_selected);
+                }
+
+                // Fallback to nearest by distance if neither direction flag is set
+                if nearest.is_none() {
+                    nearest = self.splash_selections.iter().min_by_key(|&&i| i.abs_diff(self.splash_selected)).copied();
+                }
+
+                if let Some(target) = nearest {
+                    self.splash_selected = target;
+                }
             }
         }
 
@@ -141,10 +158,10 @@ impl App {
                 let mut item = line.clone();
 
                 if item.spans.is_empty() {
-                    item.spans.push(Span::raw(" "));
+                    item.spans.push(Span::raw(""));
                 }
 
-                if absolute_idx == self.splash_selected && self.focus == Focus::Viewport {
+                if !self.spinner.is_running() && absolute_idx == self.splash_selected && self.focus == Focus::Viewport {
                     let mut spans = Vec::new();
                     spans.push(Span::styled("⏵ ", Style::default().fg(self.theme.COLOR_GRASS)));
                     spans.extend(item.spans.clone());

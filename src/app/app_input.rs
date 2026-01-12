@@ -1610,9 +1610,33 @@ impl App {
             },
             Focus::Viewport => match self.viewport {
                 Viewport::Graph => {
+                    if self.spinner.is_running() {
+                        return;
+                    }
                     self.viewport = Viewport::Splash;
                     self.focus = Focus::Viewport;
+
+                    // Start with the first selectable line
+                    let mut selected = self.splash_selections.first().copied().unwrap_or(0);
+
+                    // If current repo path exists in recent, add its position
+                    if let Some(path) = &self.path {
+                        if let Some(pos) = self.recent.iter().position(|p| p == path) {
+                            selected = selected.saturating_add(pos);
+                        }
+                    }
+
+                    self.splash_selected = selected;
                 },
+                Viewport::Splash => {
+                    if self.spinner.is_running() {
+                        return;
+                    }
+                    self.viewer_selected = 0;
+                    self.viewport = Viewport::Graph;
+                    self.focus = Focus::Viewport;
+                    self.file_name = None;
+                }
                 _ => {
                     self.viewer_selected = 0;
                     self.viewport = Viewport::Graph;
