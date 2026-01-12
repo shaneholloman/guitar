@@ -184,3 +184,5 @@ Running it from a non repo folder will crash the process. I will fix it sometime
 ![5](https://github.com/user-attachments/assets/15e4630f-a141-4724-9d35-1b8601006598)
 ![4](https://github.com/user-attachments/assets/10389ec5-6780-4bcb-85dc-67f9e012ed63)
 ![3](https://github.com/user-attachments/assets/a408af0c-ef85-4692-914b-81562d3873e4)
+![untitled](https://github.com/user-attachments/assets/72d09d11-86cb-4356-a3dd-93684abc9b19)
+
