@@ -14,7 +14,7 @@
  .!?JJJ?!:                                                           75?      
   </br>
 terminal based cross-platform git client 
-made with ♡ by @asinglebit
+made with ♡
   </pre>
 </div>
 
