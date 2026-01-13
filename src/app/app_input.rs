@@ -306,24 +306,42 @@ impl App {
                 _ => {},
             },
             Focus::Branches => {
+                if let Some(repo) = &self.repo {
                 self.viewport = Viewport::Graph;
                 self.focus = Focus::Viewport;
                 let alias = self.branches.sorted.get(self.branches_selected).unwrap().0;
                 self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias).unwrap_or(0);
+                if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                    let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                    self.current_diff = get_filenames_diff_at_oid(repo, *oid);
+                }
+            }
             },
             Focus::Tags => {
+                if let Some(repo) = &self.repo {
                 self.viewport = Viewport::Graph;
                 self.focus = Focus::Viewport;
                 if let Some(alias) = self.tags.sorted.get(self.tags_selected) {
                     self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias.0).unwrap_or(0);
+                    if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                        let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                        self.current_diff = get_filenames_diff_at_oid(repo, *oid);
+                    }
                 }
+            }
             },
             Focus::Stashes => {
+                if let Some(repo) = &self.repo {
                 self.viewport = Viewport::Graph;
                 self.focus = Focus::Viewport;
                 if let Some(alias) = self.oids.stashes.get(self.stashes_selected) {
                     self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == alias).unwrap_or(0);
+                    if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                        let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                        self.current_diff = get_filenames_diff_at_oid(repo, *oid);
+                    }
                 }
+            }
             },
             Focus::StatusTop | Focus::StatusBottom => {
                 if let Some(repo) = &self.repo.clone() {
@@ -473,24 +491,45 @@ impl App {
                 self.focus = Focus::StatusTop;
             },
             Focus::Branches => {
+
+                if let Some(repo) = &self.repo {
                 self.viewport = Viewport::Graph;
                 self.focus = Focus::Viewport;
                 let alias = self.branches.sorted.get(self.branches_selected).unwrap().0;
                 self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias).unwrap_or(0);
+                if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                    let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                    self.current_diff = get_filenames_diff_at_oid(repo, *oid);
+                }
+            }
             },
             Focus::Tags => {
+
+                if let Some(repo) = &self.repo {
                 self.viewport = Viewport::Graph;
                 self.focus = Focus::Viewport;
                 if let Some(alias) = self.tags.sorted.get(self.tags_selected) {
                     self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias.0).unwrap_or(0);
+                    if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                        let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                        self.current_diff = get_filenames_diff_at_oid(repo, *oid);
+                    }
                 }
+            }
             },
             Focus::Stashes => {
+
+                if let Some(repo) = &self.repo {
                 self.viewport = Viewport::Graph;
                 self.focus = Focus::Viewport;
                 if let Some(alias) = self.oids.stashes.get(self.stashes_selected) {
                     self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == alias).unwrap_or(0);
+                    if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                        let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                        self.current_diff = get_filenames_diff_at_oid(repo, *oid);
+                    }
                 }
+            }
             },
             Focus::StatusTop | Focus::StatusBottom => {
                 if let Some(repo) = &self.repo.clone() {
