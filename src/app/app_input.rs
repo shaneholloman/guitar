@@ -1378,7 +1378,7 @@ impl App {
                     self.focus = Focus::ModalCheckout;
                 }
             },
-            _ => return, // other focus modes don't allow checkout
+            _ => (), // other focus modes don't allow checkout
         }
     }
 
