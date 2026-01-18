@@ -1,4 +1,3 @@
-use crate::core::oids::Oids;
 use git2::{BranchType, Oid, Repository, Revwalk};
 use im::HashSet;
 use std::cell::RefCell;
