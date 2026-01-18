@@ -1,5 +1,5 @@
 use crate::git::actions::resetting::reset_file;
-use crate::helpers::keymap::{load_or_init_keymaps, Command, KeyBinding};
+use crate::helpers::keymap::{Command, KeyBinding, load_or_init_keymaps};
 use crate::{
     app::{
         app::{App, Direction, Focus, Viewport},
@@ -1095,19 +1095,59 @@ impl App {
     }
 
     pub fn on_scroll_up_branch(&mut self) {
-        if self.focus == Focus::Viewport && self.viewport == Viewport::Graph {
-            let next = *self.branches.indices.iter().filter(|&k| k < &self.graph_selected).max().unwrap_or(&self.graph_selected);
+        if self.focus != Focus::Viewport || self.viewport != Viewport::Graph {
+            return;
+        }
+
+        // Collect the line indices of aliases that have visible branches
+        let mut visible_indices: Vec<usize> = self
+            .branches
+            .all
+            .iter()
+            .filter_map(|(&alias, all_branches)| {
+                let relevant_branches: Vec<&String> = all_branches.iter().filter(|b| self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(*b)).collect();
+                if relevant_branches.is_empty() {
+                    None
+                } else {
+                    // Lookup the line in indices
+                    self.branches.indices.get(alias as usize).copied()
+                }
+            })
+            .collect();
+
+        // Sort ascending (line order)
+        visible_indices.sort_unstable();
+
+        // Find the largest visible line index that is less than current selection
+        if let Some(&next) = visible_indices.iter().rev().find(|&&idx| idx < self.graph_selected) {
             self.graph_selected = next;
-        };
+        }
     }
 
     pub fn on_scroll_down_branch(&mut self) {
-        if self.focus == Focus::Viewport && self.viewport == Viewport::Graph {
-            let next = *self.branches.indices.iter().find(|&k| k > &self.graph_selected).unwrap_or(&self.graph_selected);
-            self.graph_selected = next;
-        };
-    }
+        if self.focus != Focus::Viewport || self.viewport != Viewport::Graph {
+            return;
+        }
 
+        // Collect the line indices of aliases that have visible branches
+        let mut visible_indices: Vec<usize> = self
+            .branches
+            .all
+            .iter()
+            .filter_map(|(&alias, all_branches)| {
+                let relevant_branches: Vec<&String> = all_branches.iter().filter(|b| self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(*b)).collect();
+                if relevant_branches.is_empty() { None } else { self.branches.indices.get(alias as usize).copied() }
+            })
+            .collect();
+
+        // Sort ascending (line order)
+        visible_indices.sort_unstable();
+
+        // Find the smallest visible line index that is greater than current selection
+        if let Some(&next) = visible_indices.iter().find(|&&idx| idx > self.graph_selected) {
+            self.graph_selected = next;
+        }
+    }
     pub fn on_scroll_up_commit(&mut self) {
         if let Some(repo) = &self.repo
             && self.focus == Focus::Viewport

@@ -186,10 +186,10 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     // Graph-specific navigation (Vim-style)
 
     // '{' for branch navigation, larger conceptual jumps to a newer branch
-    map.insert(KeyBinding::new(Char('{'), KeyModifiers::SHIFT), Command::ScrollUpBranch);
+    map.insert(KeyBinding::new(Char('{'), KeyModifiers::NONE), Command::ScrollUpBranch);
 
     // '}' for branch navigation, larger conceptual jumps to an older branch
-    map.insert(KeyBinding::new(Char('}'), KeyModifiers::SHIFT), Command::ScrollDownBranch);
+    map.insert(KeyBinding::new(Char('}'), KeyModifiers::NONE), Command::ScrollDownBranch);
 
     // '[' for commit navigation, smaller jumps to a newer commit in the topology
     map.insert(KeyBinding::new(Char('['), KeyModifiers::NONE), Command::ScrollUpCommit);
