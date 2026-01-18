@@ -29,7 +29,6 @@ pub fn reset_to_commit(repo: &Repository, target: Oid, reset_type: ResetType) ->
 
 // Resets a file to the state in HEAD (unstages it and discards working directory changes)
 pub fn reset_file(repo: &Repository, path: &Path) -> Result<(), Error> {
-
     // Remove from index if staged
     let mut index = repo.index()?;
     index.remove_path(path)?;
@@ -41,10 +40,7 @@ pub fn reset_file(repo: &Repository, path: &Path) -> Result<(), Error> {
     let tree = commit.tree()?;
 
     // Checkout the file from the tree
-    repo.checkout_tree(
-        tree.as_object(),
-        Some(git2::build::CheckoutBuilder::new().force().path(path)),
-    )?;
-    
+    repo.checkout_tree(tree.as_object(), Some(git2::build::CheckoutBuilder::new().force().path(path)))?;
+
     Ok(())
 }

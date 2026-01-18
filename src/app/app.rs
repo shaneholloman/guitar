@@ -352,7 +352,6 @@ impl App {
 
         // Only proceed if we successfully opened a repo
         if let Some(repo) = &self.repo {
-            
             // Add the repo path to the list of recent repositories if not present already
             if !self.recent.iter().any(|v| v == &absolute_path) {
                 self.recent.push(absolute_path.clone());

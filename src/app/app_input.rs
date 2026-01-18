@@ -1353,7 +1353,7 @@ impl App {
                 self.focus = Focus::Viewport;
                 self.branches.visible.clear();
                 self.reload(None);
-            }
+            },
             Focus::Viewport => {
                 // Only allow checkout from graph if a non-zero line is selected
                 if self.viewport != Viewport::Graph || self.graph_selected == 0 {
@@ -1377,7 +1377,7 @@ impl App {
                 } else {
                     self.focus = Focus::ModalCheckout;
                 }
-            }
+            },
             _ => return, // other focus modes don't allow checkout
         }
     }
@@ -1394,7 +1394,7 @@ impl App {
                     self.branches.visible.clear();
                     self.reload(None);
                     self.focus = Focus::Viewport;
-                }
+                },
                 Focus::StatusTop | Focus::StatusBottom => {
                     if let Some(file_name) = self.get_selected_file_name() {
                         let path = Path::new(&file_name);
@@ -1402,8 +1402,8 @@ impl App {
                         self.branches.visible.clear();
                         self.reload(None);
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
     }

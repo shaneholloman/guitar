@@ -1,5 +1,5 @@
-use git2::{Error, Oid, Repository, build::CheckoutBuilder};
 use git2::CherrypickOptions;
+use git2::{Error, Oid, Repository, build::CheckoutBuilder};
 
 pub fn cherry_pick_commit(
     repo: &Repository,

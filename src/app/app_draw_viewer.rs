@@ -127,7 +127,7 @@ impl App {
                 } else {
                     None
                 }
-            }
+            },
             Focus::StatusBottom => {
                 if self.graph_selected == 0 && self.uncommitted.is_unstaged {
                     // File from unstaged uncommitted changes
@@ -145,7 +145,7 @@ impl App {
                 } else {
                     None
                 }
-            }
+            },
             _ => None,
         }
     }

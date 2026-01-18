@@ -1,5 +1,5 @@
-use git2::{Cred, FetchOptions, RemoteCallbacks, Repository};
 use git2::FetchPrune;
+use git2::{Cred, FetchOptions, RemoteCallbacks, Repository};
 use std::thread;
 
 pub fn fetch_over_ssh(repo_path: &str, remote_name: &str) -> thread::JoinHandle<Result<(), git2::Error>> {
