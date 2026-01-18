@@ -1399,6 +1399,8 @@ impl App {
                     if let Some(file_name) = self.get_selected_file_name() {
                         let path = Path::new(&file_name);
                         let _ = reset_file(repo, path);
+                        self.branches.visible.clear();
+                        self.reload(None);
                     }
                 }
                 _ => {}
