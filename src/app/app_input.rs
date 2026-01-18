@@ -1341,36 +1341,47 @@ impl App {
     }
 
     pub fn on_checkout(&mut self) {
-        if let Some(repo) = &self.repo
-            && self.focus == Focus::Viewport
-        {
-            if self.focus == Focus::Viewport && self.viewport != Viewport::Graph {
-                return;
-            }
+        let Some(repo) = &self.repo else { return };
 
-            if self.graph_selected == 0 {
-                self.focus = Focus::Viewport;
-                return;
+        match self.focus {
+            Focus::Branches => {
+                // Always allow checkout from branches view
             }
-
-            let alias = self.oids.get_alias_by_idx(self.graph_selected);
-            let oid = self.oids.get_oid_by_alias(alias);
-            let branches = self.branches.all.entry(alias).or_default();
-
-            if branches.is_empty() {
-                checkout_head(repo, *oid);
-                self.focus = Focus::Viewport;
-                self.branches.visible.clear();
-                self.reload(None);
-            } else if branches.len() == 1 {
-                checkout_branch(repo, &mut self.branches.visible, &mut self.branches.local, alias, branches.first().unwrap()).expect("Error");
-                self.focus = Focus::Viewport;
-                self.branches.visible.clear();
-                self.reload(None);
-            } else {
-                self.focus = Focus::ModalCheckout;
+            Focus::Viewport => {
+                // Only allow checkout from graph if a non-zero line is selected
+                if self.viewport != Viewport::Graph || self.graph_selected == 0 {
+                    return;
+                }
             }
+            _ => return, // other focus modes don't allow checkout
         }
+
+        // Get commit alias & oid
+        let alias = self.oids.get_alias_by_idx(self.graph_selected);
+        let oid = self.oids.get_oid_by_alias(alias);
+
+        let branches = self.branches.all.entry(alias).or_default();
+
+        if branches.is_empty() {
+            checkout_head(repo, *oid);
+        } else if branches.len() == 1 {
+            checkout_branch(
+                repo,
+                &mut self.branches.visible,
+                &mut self.branches.local,
+                alias,
+                branches.first().unwrap(),
+            )
+            .expect("Error");
+        } else {
+            self.focus = Focus::ModalCheckout;
+            return;
+        }
+
+        // Reset state after checkout
+        self.focus = Focus::Viewport;
+        self.branches.visible.clear();
+        self.reload(None);
     }
 
     pub fn on_hard_reset(&mut self) {
