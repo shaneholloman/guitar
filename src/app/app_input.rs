@@ -1,5 +1,5 @@
 use crate::git::actions::resetting::reset_file;
-use crate::helpers::keymap::{Command, KeyBinding, load_or_init_keymaps};
+use crate::helpers::keymap::{load_or_init_keymaps, Command, KeyBinding};
 use crate::{
     app::{
         app::{App, Direction, Focus, Viewport},
@@ -294,10 +294,12 @@ impl App {
                 Viewport::Settings => {
                     if let Some(position) = self.settings_selections.iter().position(|&x| x == self.settings_selected) {
                         match position {
-                            6 => self.theme = Theme::classic(),
-                            7 => self.theme = Theme::ansi(),
-                            8 => self.theme = Theme::monochrome(),
-                            _ => {},
+                            7 => self.theme = Theme::classic(),
+                            8 => self.theme = Theme::ansi(),
+                            9 => self.theme = Theme::monochrome(),
+                            _ => {
+                                return;
+                            },
                         }
                         self.reload(None);
                     }
@@ -385,7 +387,6 @@ impl App {
                         self.branches.visible_branch_names.insert(branch.clone());
                     }
                 }
-
                 self.modal_solo_selected = 0;
                 self.focus = Focus::Viewport;
                 self.reload(None);
