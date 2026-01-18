@@ -1,4 +1,4 @@
-use git2::{build::CheckoutBuilder, BranchType, Cred, Error, ErrorCode, FetchOptions, Oid, PushOptions, RemoteCallbacks, Repository, ResetType, Signature, StatusOptions};
+use git2::{BranchType, Cred, Error, ErrorCode, FetchOptions, Oid, PushOptions, RemoteCallbacks, Repository, ResetType, Signature, StatusOptions, build::CheckoutBuilder};
 use git2::{CherrypickOptions, FetchPrune, StashApplyOptions, StashFlags};
 use std::{collections::HashMap, thread};
 

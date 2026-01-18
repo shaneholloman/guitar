@@ -1,15 +1,25 @@
+use crate::helpers::keymap::{Command, KeyBinding, load_or_init_keymaps};
 use crate::{
     app::{
         app::{App, Direction, Focus, Viewport},
         app_default::ViewerMode,
     },
     git::{
-        actions::{branching::{create_branch, delete_branch}, checkout::{checkout_branch, checkout_head}, cherrypicking::cherry_pick_commit, committing::commit_staged, fetching::fetch_over_ssh, pushing::push_over_ssh, resetting::reset_to_commit, staging::{stage_all, stage_file, unstage_all, unstage_file}, stashing::{pop, stash}, tagging::{tag, untag}}, queries::{commits::get_current_branch, diffs::get_filenames_diff_at_oid}
+        actions::{
+            branching::{create_branch, delete_branch},
+            checkout::{checkout_branch, checkout_head},
+            cherrypicking::cherry_pick_commit,
+            committing::commit_staged,
+            fetching::fetch_over_ssh,
+            pushing::push_over_ssh,
+            resetting::reset_to_commit,
+            staging::{stage_all, stage_file, unstage_all, unstage_file},
+            stashing::{pop, stash},
+            tagging::{tag, untag},
+        },
+        queries::{commits::get_current_branch, diffs::get_filenames_diff_at_oid},
     },
     helpers::{keymap::InputMode, palette::Theme},
-};
-use crate::{
-    helpers::keymap::{load_or_init_keymaps, Command, KeyBinding},
 };
 use git2::{Oid, Repository};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
@@ -1655,9 +1665,10 @@ impl App {
 
                     // If current repo path exists in recent, add its position
                     if let Some(path) = &self.path
-                        && let Some(pos) = self.recent.iter().position(|p| p == path) {
-                            selected = selected.saturating_add(pos);
-                        }
+                        && let Some(pos) = self.recent.iter().position(|p| p == path)
+                    {
+                        selected = selected.saturating_add(pos);
+                    }
 
                     self.splash_selected = selected;
                 },

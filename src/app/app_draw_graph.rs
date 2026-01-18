@@ -1,9 +1,9 @@
 use crate::app::app::{App, Focus};
 use crate::core::renderers::{render_buffer_range, render_graph_range, render_message_range, render_sha_range};
 use ratatui::{
+    Frame,
     style::Style,
     widgets::{Block, Borders, Cell as WidgetCell, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table},
-    Frame,
 };
 
 impl App {

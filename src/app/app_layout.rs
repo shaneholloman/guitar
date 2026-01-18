@@ -1,11 +1,11 @@
 use crate::app::app::{App, Focus, Viewport};
 use crate::helpers::layout::{
-    add_scrollbar, extend_up, inset_bottom, inset_top, load_layout_config, save_layout_config, shrink_width, LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED, LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED,
-    LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED, LAYOUT_WIDTH_LEFT_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_RIGHT_PANE,
+    LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED, LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED, LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED, LAYOUT_WIDTH_LEFT_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_RIGHT_PANE,
+    add_scrollbar, extend_up, inset_bottom, inset_top, load_layout_config, save_layout_config, shrink_width,
 };
+use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::layout::{Direction, Layout as RatatuiLayout, Rect};
-use ratatui::Frame;
 use std::cell::Cell;
 
 #[derive(Default)]
