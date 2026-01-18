@@ -1,10 +1,10 @@
 use crate::{app::app::App, git::queries::commits::get_current_branch};
 use ratatui::{
+    Frame,
     layout::{Alignment, Rect},
     style::Style,
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Widget},
-    Frame,
 };
 
 impl App {
