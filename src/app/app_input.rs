@@ -11,7 +11,7 @@ use crate::{
 };
 use crate::{
     git::actions::commits::{cherry_pick_commit, pop, stage_file, stash, tag, unstage_file, untag},
-    helpers::keymap::{Command, KeyBinding, load_or_init_keymaps},
+    helpers::keymap::{load_or_init_keymaps, Command, KeyBinding},
 };
 use git2::{Oid, Repository};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
@@ -1398,7 +1398,7 @@ impl App {
     pub fn on_unstage(&mut self) {
         if let Some(repo) = &self.repo {
             match self.viewport {
-                Viewport::Settings | Viewport::Viewer => {},
+                Viewport::Settings => {},
                 _ => {
                     match self.focus {
                         Focus::Viewport => {
@@ -1443,7 +1443,7 @@ impl App {
     pub fn on_stage(&mut self) {
         if let Some(repo) = &self.repo {
             match self.viewport {
-                Viewport::Settings | Viewport::Viewer => {},
+                Viewport::Settings => {},
                 _ => {
                     match self.focus {
                         Focus::Viewport => {
