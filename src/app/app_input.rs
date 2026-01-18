@@ -1,6 +1,5 @@
 use crate::git::actions::resetting::reset_file;
 use crate::helpers::keymap::{load_or_init_keymaps, Command, KeyBinding};
-use crate::logf;
 use crate::{
     app::{
         app::{App, Direction, Focus, Viewport},
