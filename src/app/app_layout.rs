@@ -1,11 +1,11 @@
 use crate::app::app::{App, Focus, Viewport};
 use crate::helpers::layout::{
-    LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED, LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED, LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED, LAYOUT_WIDTH_LEFT_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_RIGHT_PANE,
-    add_scrollbar, extend_up, inset_bottom, inset_top, load_layout_config, save_layout_config, shrink_width,
+    add_scrollbar, extend_up, inset_bottom, inset_top, load_layout_config, save_layout_config, shrink_width, LAYOUT_PERCENTAGE_CENTER_PANE_CRAMPED, LAYOUT_PERCENTAGE_LEFT_PANE_CRAMPED,
+    LAYOUT_PERCENTAGE_RIGHT_PANE_CRAMPED, LAYOUT_WIDTH_LEFT_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_RIGHT_PANE,
 };
-use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::layout::{Direction, Layout as RatatuiLayout, Rect};
+use ratatui::Frame;
 use std::cell::Cell;
 
 #[derive(Default)]
@@ -170,14 +170,15 @@ impl App {
 
         if is_zen {
             let zen = chunks_vertical[1];
-
             let zero = Rect { x: 0, y: 0, width: 0, height: 0 };
 
             self.layout = Layout {
-                // Keep title & status bar if you want
+                // Title and status
+                app: zen,
                 title_left: chunks_title_bar[0],
                 title_right: chunks_title_bar[1],
-                app: zen,
+                statusbar_left: chunks_status_bar[0],
+                statusbar_right: chunks_status_bar[1],
 
                 // Only the focused pane gets space
                 branches: if matches!(self.focus, Focus::Branches) { zen } else { zero },
@@ -203,18 +204,29 @@ impl App {
                 status_top: if matches!(self.focus, Focus::StatusTop) { zen } else { zero },
                 status_bottom: if matches!(self.focus, Focus::StatusBottom) { zen } else { zero },
 
-                // Kill all scrollbars in zen
-                branches_scrollbar: zero,
-                tags_scrollbar: zero,
-                stashes_scrollbar: zero,
-                graph_scrollbar: zero,
-                inspector_scrollbar: zero,
-                status_top_scrollbar: zero,
-                status_bottom_scrollbar: zero,
-
-                // Keep status bar if you want
-                statusbar_left: chunks_status_bar[0],
-                statusbar_right: chunks_status_bar[1],
+                // Scrollbars
+                branches_scrollbar: if matches!(self.focus, Focus::Branches) { zen } else { zero },
+                tags_scrollbar: if matches!(self.focus, Focus::Tags) { zen } else { zero },
+                stashes_scrollbar: if matches!(self.focus, Focus::Stashes) { zen } else { zero },
+                graph_scrollbar: if matches!(
+                    self.focus,
+                    Focus::Viewport
+                        | Focus::ModalCheckout
+                        | Focus::ModalSolo
+                        | Focus::ModalCommit
+                        | Focus::ModalCreateBranch
+                        | Focus::ModalDeleteBranch
+                        | Focus::ModalGrep
+                        | Focus::ModalTag
+                        | Focus::ModalDeleteTag
+                ) {
+                    zen
+                } else {
+                    zero
+                },
+                inspector_scrollbar: if matches!(self.focus, Focus::Inspector) { zen } else { zero },
+                status_top_scrollbar: if matches!(self.focus, Focus::StatusTop) { zen } else { zero },
+                status_bottom_scrollbar: if matches!(self.focus, Focus::StatusBottom) { zen } else { zero },
             };
 
             return;
