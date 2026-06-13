@@ -174,6 +174,12 @@ guitar ../path/to/your/repo
 
 Or alternatively, alias the executable and then call it from a repo folder directly.
 
+To reset saved config, layout, keymap, and recent repositories in `~/.config/guitar`, run:
+
+```bash
+guitar --reset
+```
+
 Running it from a non repo folder will crash the process. I will fix it sometime later...
 
 ### Screenshots
@@ -185,4 +191,3 @@ Running it from a non repo folder will crash the process. I will fix it sometime
 ![4](https://github.com/user-attachments/assets/10389ec5-6780-4bcb-85dc-67f9e012ed63)
 ![3](https://github.com/user-attachments/assets/a408af0c-ef85-4692-914b-81562d3873e4)
 ![untitled](https://github.com/user-attachments/assets/72d09d11-86cb-4356-a3dd-93684abc9b19)
-

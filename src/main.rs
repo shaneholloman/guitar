@@ -1,4 +1,4 @@
-use std::{env, io};
+use std::{env, fs, io, path::PathBuf};
 mod app {
     #[allow(clippy::module_inception)]
     pub mod app;
@@ -75,14 +75,39 @@ pub mod helpers {
 
 use crate::{app::app::App, helpers::version::VERSION};
 
+const RESET_CONFIG: &str = "--reset";
+const VERSION_LONG: &str = "--version";
+const VERSION_SHORT: &str = "-v";
+
+fn guitar_config_dir() -> io::Result<PathBuf> {
+    let mut path = dirs::config_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Could not find config directory"))?;
+    path.push("guitar");
+    Ok(path)
+}
+
+fn reset_saved_config() -> io::Result<()> {
+    let path = guitar_config_dir()?;
+    if path.is_dir() {
+        fs::remove_dir_all(&path)?;
+    } else if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    println!("Reset saved guitar config at {}", path.display());
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
     // Check args for meta queries
     let args: Vec<String> = env::args().collect();
 
     // Return version if requested and then quit
-    if args.iter().any(|a| a == "--version" || a == "-v") {
+    if args.iter().any(|a| a == VERSION_LONG || a == VERSION_SHORT) {
         println!("{VERSION}");
         return Ok(());
+    }
+
+    if args.iter().any(|a| a == RESET_CONFIG) {
+        reset_saved_config()?;
     }
 
     let mut terminal = ratatui::init();

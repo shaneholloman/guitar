@@ -338,9 +338,7 @@ impl App {
         } else if let Some(path) = self.path.clone() {
             path
         } else {
-            let args: Vec<String> = env::args().collect();
-            let path = if args.len() > 1 { &args[1] } else { &".".to_string() };
-            path.to_string()
+            env::args().skip(1).find(|arg| !arg.starts_with('-')).unwrap_or_else(|| ".".to_string())
         };
         let canonical_path = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from("."));
         let absolute_path: PathBuf = try_into_git_repo_root(&canonical_path).unwrap_or(canonical_path.clone());
