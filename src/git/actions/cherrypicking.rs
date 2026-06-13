@@ -4,27 +4,24 @@ use git2::{Error, Oid, Repository, build::CheckoutBuilder};
 pub fn cherry_pick_commit(
     repo: &Repository,
     commit_oid: Oid,
-    message: Option<&str>, // optional override for commit message
-    allow_conflicts: bool, // true -> force working dir changes
+    message: Option<&str>, // Optional override for the new commit message.
+    allow_conflicts: bool, // When true, accept our side of conflicted index entries.
 ) -> Result<Oid, Error> {
-    // Find the commit to cherry-pick
     let commit = repo.find_commit(commit_oid)?;
 
-    // Get current HEAD commit
+    // The current HEAD becomes the parent of the synthesized cherry-pick commit.
     let head_commit = repo.head()?.peel_to_commit()?;
 
-    // Prepare cherry-pick options
     let mut cherrypick_opts = CherrypickOptions::new();
 
-    // Perform cherry-pick
+    // Libgit2 applies the patch into the index; this function commits it afterward.
     repo.cherrypick(&commit, Some(&mut cherrypick_opts))?;
 
-    // Get the index after cherry-pick
     let mut index = repo.index()?;
 
-    // If conflicts exist
     if index.has_conflicts() {
         if allow_conflicts {
+            // Keep the existing side for conflicts so the command can finish without a merge UI.
             let conflicts: Vec<_> = index.conflicts()?.flatten().filter_map(|e| e.our).collect();
             for conflict in conflicts {
                 index.add(&conflict)?;
@@ -34,23 +31,19 @@ pub fn cherry_pick_commit(
         }
     }
 
-    // Write tree
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
 
-    // Create commit signature
     let sig = repo.signature()?;
 
-    // Commit message
+    // Reuse the source message unless a caller supplied a contextual one.
     let commit_message = message.unwrap_or_else(|| commit.message().unwrap_or("Cherry-pick commit"));
 
-    // Determine parents: HEAD
     let parents = [&head_commit];
 
-    // Create the new commit
     let new_commit_oid = repo.commit(Some("HEAD"), &sig, &sig, commit_message, &tree, &parents)?;
 
-    // Update working directory
+    // Make the working tree match the committed index after the cherry-pick write.
     repo.checkout_head(Some(CheckoutBuilder::default().allow_conflicts(allow_conflicts).force()))?;
 
     Ok(new_commit_oid)

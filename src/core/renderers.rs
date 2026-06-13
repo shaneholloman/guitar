@@ -23,21 +23,20 @@ use ratatui::{
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+// Render graph symbols for the visible alias range using precomputed lane snapshots.
 pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<String>>, history: &Vector<Vector<Chunk>>, head_alias: u32, start: usize, end: usize) -> Vec<Line<'static>> {
     let mut layers = layers!(Rc::new(RefCell::new(ColorPicker::from_theme(theme))));
     let mut lines: Vec<Line> = Vec::new();
 
-    // Go through the sorted commits, inferring the graph
+    // Sorted aliases and history snapshots use global row indices, while history is windowed.
     let sorted_aliases = oids.get_sorted_aliases();
     for (global_idx, alias) in sorted_aliases.iter().enumerate().take(end).skip(start) {
-        // Get commit oid
         let oid = oids.get_oid_by_alias(*alias);
 
-        // Clear the render line
         layers.clear();
         let mut spans = vec![Span::raw(" ")];
 
-        // Iterate over the buffer chunks, rendering the graph line
+        // These flags coordinate lane rendering with merge overlays on the same row.
         let mut is_commit_found = false;
         let mut is_merged_before = false;
         let mut lane_idx = 0;
@@ -50,14 +49,14 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
         let last = history.get(delta).unwrap();
 
         if oids.is_zero(oid) {
+            // The zero OID is the synthetic uncommitted row at the top of the graph.
             lines.push(Line::from(Span::styled(" ◌", Style::default().fg(theme.COLOR_GREY_400))));
             continue;
         }
 
-        // Find branching lanes
+        // Dummies that replace live lanes indicate where an upward branch connector is needed.
         let mut branching_lanes: Vec<usize> = Vec::new();
         for (lane_idx, chunk) in last.iter().enumerate() {
-            // Dummy in the end, chunk exists ont the same lane in prev
             if chunk.is_dummy()
                 && let Some(prev_snapshot) = prev
                 && let Some(prev) = prev_snapshot.get(lane_idx)
@@ -67,7 +66,6 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                 continue;
             }
 
-            // Dummy in the end, while nothing existed on the same lane in the prev
             if chunk.is_dummy()
                 && let Some(prev_snapshot) = prev
                 && prev_snapshot.get(lane_idx).is_none()
@@ -99,7 +97,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                 if let Some(prev_snapshot) = prev {
                     match prev_snapshot.get(lane_idx) {
                         Some(prev) => {
-                            // Dummy in the end, chunk exists ont the same lane in prev
+                            // A dummy over a previously active parent lane draws the branch upward.
                             if (prev.parent_a != NONE && prev.parent_b == NONE) || (prev.parent_a == NONE && prev.parent_b != NONE) {
                                 layers.commit(SYM_EMPTY, lane_idx);
                                 layers.commit(SYM_EMPTY, lane_idx);
@@ -113,7 +111,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                             }
                         },
                         None => {
-                            // Dummy in the end, while nothing existed on the same lane in the prev
+                            // New dummy space after the previous row also represents a closing branch.
                             layers.commit(SYM_EMPTY, lane_idx);
                             layers.commit(SYM_EMPTY, lane_idx);
                             layers.pipe(SYM_BRANCH_UP, lane_idx);
@@ -124,6 +122,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
             } else if *alias == chunk.alias {
                 is_commit_found = true;
                 let is_two_parents = chunk.parent_a != NONE && chunk.parent_b != NONE;
+                // Branch and stash commits get distinct markers before falling back to plain commits.
                 if is_two_parents && !(all.contains_key(alias)) {
                     layers.commit(SYM_MERGE, lane_idx);
                 } else if all.contains_key(alias) {
@@ -137,7 +136,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                 layers.pipe(SYM_EMPTY, lane_idx);
                 layers.pipe(SYM_EMPTY, lane_idx);
 
-                // Check if commit is being merged into
+                // Merge rows may need a horizontal overlay connecting this lane to another lane.
                 let mut is_mergee_found = false;
                 let mut is_drawing = false;
                 if is_two_parents {
@@ -174,14 +173,14 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                                 layers.merge(SYM_EMPTY, merger_idx);
                                 layers.merge(SYM_EMPTY, merger_idx);
                             } else {
-                                // Before the commit
+                                // Before the commit, look for the lane where the merge edge starts.
                                 if !is_merger_found {
                                     layers.merge(SYM_EMPTY, merger_idx);
                                     layers.merge(SYM_EMPTY, merger_idx);
                                 } else if ((chunk_nested.parent_a != NONE && chunk_nested.parent_b == NONE) || (chunk_nested.parent_a == NONE && chunk_nested.parent_b != NONE))
                                     && (chunk.parent_a == chunk_nested.parent_a || chunk.parent_b == chunk_nested.parent_a)
                                 {
-                                    // We need to find if the merger is further to the left than on the next lane
+                                    // Start the edge from the merger lane, then fill until the commit lane.
                                     if chunk_nested_idx == merger_idx {
                                         layers.merge(SYM_MERGE_RIGHT_FROM, merger_idx);
                                     } else {
@@ -208,7 +207,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                                 }
                             }
                         } else {
-                            // After the commit
+                            // After the commit, keep drawing until the merge edge reaches its source.
                             if is_merger_found && !is_merged_before {
                                 if ((chunk_nested.parent_a != NONE && chunk_nested.parent_b == NONE) || (chunk_nested.parent_a == NONE && chunk_nested.parent_b != NONE))
                                     && (chunk.parent_a == chunk_nested.parent_a || chunk.parent_b == chunk_nested.parent_a)
@@ -229,7 +228,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                     }
 
                     if !is_merger_found {
-                        // Count how many dummies in the end to get the real last element, append there
+                        // If the second parent is off-screen, route the merge edge to the last live lane.
                         let mut idx = last.len() - 1;
                         let mut trailing_dummies = 0;
                         for (i, c) in last.iter().enumerate().rev() {
@@ -241,7 +240,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                             }
                         }
 
-                        // Meet some corner cases against the previous buffer line - if there are further branches
+                        // Previous trailing dummies prevent the edge from overshooting collapsed lanes.
                         if let Some(prev) = prev {
                             let mut prev_trailing_dummies = 0;
                             for (_, c) in prev.iter().enumerate().rev() {
@@ -260,7 +259,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                             layers.merge(SYM_BRANCH_DOWN, idx + 1);
                             layers.merge(SYM_EMPTY, idx + 1);
                         } else if trailing_dummies > 0 {
-                            // Calculate how many lanes before we reach the branch character
+                            // Fill the horizontal span before placing the merge endpoint.
                             for _ in lane_idx..idx {
                                 layers.merge(SYM_HORIZONTAL, idx + 1);
                                 layers.merge(SYM_HORIZONTAL, idx + 1);
@@ -269,7 +268,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
                             layers.merge(SYM_MERGE_LEFT_FROM, idx + 1);
                             layers.merge(SYM_EMPTY, idx + 1);
                         } else {
-                            // Calculate how many lanes before we reach the branch character
+                            // No trailing dummy means the edge bends down into a still-active lane.
                             for _ in lane_idx..idx {
                                 layers.merge(SYM_HORIZONTAL, idx + 1);
                                 layers.merge(SYM_HORIZONTAL, idx + 1);
@@ -283,6 +282,7 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
             } else {
                 layers.commit(SYM_EMPTY, lane_idx);
                 layers.commit(SYM_EMPTY, lane_idx);
+                // The first lane above HEAD is dotted to show uncommitted changes hang from HEAD.
                 if (chunk.parent_a == head_alias || chunk.parent_b == head_alias) && lane_idx == 0 {
                     layers.pipe_custom(SYM_VERTICAL_DOTTED, lane_idx, theme.COLOR_GREY_500);
                 } else if chunk.parent_a == NONE && chunk.parent_b == NONE {
@@ -307,10 +307,9 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
             layers.pipe(SYM_EMPTY, lane_idx);
         }
 
-        // Blend layers into the graph
+        // Blend commit, merge, and pipe layers into the final row.
         layers.bake(&mut spans);
 
-        // Render
         lines.push(Line::from(spans));
     }
 
@@ -318,10 +317,11 @@ pub fn render_graph_range(theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<Str
     lines
 }
 
+// Remove graph lane pairs that are visually empty across every rendered row.
 pub fn remove_empty_columns(lines: &mut Vec<Line<'_>>) {
     let mut non_empty_counts: HashMap<usize, usize> = HashMap::new();
 
-    // Count non-empty "pairs" of spans per column
+    // Graph lanes occupy two spans, so pruning must happen in span pairs.
     for line in lines.iter() {
         let spans = &line.spans;
         let mut idx = 0;
@@ -332,14 +332,13 @@ pub fn remove_empty_columns(lines: &mut Vec<Line<'_>>) {
             if a.content != " " && a.content != "─" || b.content != " " && b.content != "─" {
                 *x += 1;
             }
-            idx += 2; // move to next pair
+            idx += 2;
         }
     }
 
-    // Find indices (first span of pair) that are empty in all rows
+    // Missing entries are not empty; only recorded zero-count pairs are removed.
     let empty_indices: HashSet<usize> = non_empty_counts.iter().filter_map(|(&idx, &count)| if count == 0 { Some(idx) } else { None }).collect();
 
-    // Rebuild each line without empty span pairs
     for line in lines.iter_mut() {
         let mut new_spans: Vec<Span> = Vec::with_capacity(line.spans.len());
         let mut idx = 0;
@@ -350,7 +349,7 @@ pub fn remove_empty_columns(lines: &mut Vec<Line<'_>>) {
             }
             idx += 2;
         }
-        // Handle odd span at the end if exists
+        // Preserve any leading or trailing single span outside lane pairs.
         if idx < line.spans.len() {
             new_spans.push(line.spans[idx].clone());
         }
@@ -406,6 +405,7 @@ pub fn render_buffer_range(theme: &Theme, oids: &Oids, history: &Vector<Vector<C
     lines
 }
 
+// Render abbreviated object IDs aligned to graph rows.
 pub fn render_sha_range(theme: &Theme, oids: &Oids, start: usize, end: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
@@ -432,7 +432,7 @@ pub fn render_message_range(
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line> = Vec::new();
 
-    // Go through the commits, inferring the graph
+    // The message column combines refs, stash markers, and commit summary text.
     for global_idx in start..end {
         let alias = oids.get_alias_by_idx(global_idx);
         let mut spans = Vec::new();
@@ -441,7 +441,7 @@ pub fn render_message_range(
             let oid = oids.get_oid_by_alias(alias);
             let commit = repo.find_commit(*oid).unwrap();
 
-            // Dynamically collect all branches for this alias
+            // Branch labels respect the active branch filter to match the rendered graph.
             if let Some(branch_list) = all_branches.get(&alias) {
                 for branch in branch_list {
                     if visible_branch_names.contains(branch) || visible_branch_names.is_empty() {
@@ -456,7 +456,7 @@ pub fn render_message_range(
 
             if let Some(tags) = tags.get(&alias) {
                 for tag in tags {
-                    // Render tags
+                    // Tags are always local refs, so they render independent of branch filters.
                     if tags.iter().any(|b| b == tag) {
                         spans.push(Span::styled(format!("{} {} ", SYM_TAG, tag), Style::default().fg(if let Some(color) = tag_colors.get(&alias) { *color } else { theme.COLOR_TEXT })));
                     }
@@ -471,6 +471,7 @@ pub fn render_message_range(
 
             lines.push(Line::from(spans));
         } else {
+            // Alias NONE renders the uncommitted summary instead of a commit message.
             let color = if global_idx == selected { theme.COLOR_GREY_500 } else { theme.COLOR_GREY_600 };
             if uncommitted.modified_count > 0 {
                 spans.push(Span::styled("~ ", Style::default().fg(theme.COLOR_BLUE)));
@@ -495,27 +496,27 @@ pub fn render_keybindings(theme: &Theme, keymap: &IndexMap<KeyBinding, Command>,
     keymap
         .iter()
         .map(|(kb, cmd)| {
-            // Build key string
+            // Build a human-readable key label from crossterm key parts.
             let mut key_string = modifiers_to_string(kb.modifiers);
             if !key_string.is_empty() {
                 key_string = format!("{} + ", key_string);
             }
             key_string.push_str(&keycode_to_visual_string(kb.code));
 
-            // Command string
+            // Command enum names double as display labels after spacing.
             let mut cmd_string = format!("{:?}", cmd);
             cmd_string = pascal_to_spaced(&cmd_string);
 
-            // Calculate available space for filler
+            // Fill the middle so shortcuts line up on the right edge.
             let key_len = key_string.len();
             let cmd_len = cmd_string.len();
             let filler = " ";
             let mut filler_fill = 0;
             if width > key_len + cmd_len {
-                filler_fill = (width - key_len - cmd_len).saturating_sub(4); // -2 for spaces
+                filler_fill = (width - key_len - cmd_len).saturating_sub(4);
             }
 
-            let fillers = filler.repeat(filler_fill.max(1)); // at least one
+            let fillers = filler.repeat(filler_fill.max(1));
             Line::from(Span::styled(truncate_with_ellipsis(format!(" {} {} {} ", cmd_string, fillers, key_string).as_str(), width), Style::default().fg(theme.COLOR_TEXT)))
                 .alignment(ratatui::layout::Alignment::Center)
         })

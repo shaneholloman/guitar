@@ -7,6 +7,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[derive(Eq, Hash, PartialEq, Clone)]
 pub enum LayerTypes {
+    // Earlier variants win when layers are baked into visible spans.
     Commits = 0,
     Merges = 1,
     Pipes = 2,
@@ -24,11 +25,12 @@ impl LayerBuilder {
     }
 
     pub fn add(&mut self, layer: LayerTypes, symbol: String, lane_idx: usize, custom: Option<Color>) {
+        // Lane color is the default, but callers can override for special markers.
         self.layers.entry(layer).or_default().push((symbol, custom.unwrap_or(self.color.borrow().get_lane(lane_idx))));
     }
 }
 
-// Context struct holding mutable reference to LayerBuilder
+// Small facade used by the graph renderer to collect symbols per visual layer.
 #[derive(Clone)]
 pub struct LayersContext {
     pub builder: LayerBuilder,
@@ -51,7 +53,7 @@ impl LayersContext {
         self.builder.add(LayerTypes::Pipes, sym.to_string(), lane, Some(color));
     }
     pub fn bake(&mut self, spans: &mut Vec<Span>) {
-        // Trim trailing empty symbols for each layer
+        // Trim unused right-side columns before compositing layers.
         for layer in [LayerTypes::Commits, LayerTypes::Merges, LayerTypes::Pipes] {
             if let Some(tokens) = self.builder.layers.get_mut(&layer) {
                 while tokens.last().is_some_and(|(sym, _)| sym.trim().is_empty()) {
@@ -60,20 +62,18 @@ impl LayersContext {
             }
         }
 
-        // Determine max length across all layers
+        // Composite up to the widest layer so sparse merge lines still render.
         let max_len = [LayerTypes::Commits, LayerTypes::Merges, LayerTypes::Pipes].iter().filter_map(|layer| self.builder.layers.get(layer)).map(|tokens| tokens.len()).max().unwrap_or(0);
 
-        // For each token
         for token_index in 0..max_len {
             let mut symbol = " ";
             let mut color: Color = Color::Black;
 
-            // For each layer
+            // First non-empty layer at this column wins.
             for layer in [LayerTypes::Commits, LayerTypes::Merges, LayerTypes::Pipes] {
                 if let Some(tokens) = self.builder.layers.get(&layer)
                     && token_index < tokens.len()
                 {
-                    // If the layer has a token at this index
                     if let Some((_symbol, _color)) = tokens.get(token_index)
                         && _symbol.trim() != ""
                     {
@@ -88,7 +88,7 @@ impl LayersContext {
     }
 }
 
-// Macro to create a context and execute a block with it
+// Convenience macro keeps render_graph_range readable while creating a fresh layer context.
 #[macro_export]
 macro_rules! layers {
     ($color:expr) => {{

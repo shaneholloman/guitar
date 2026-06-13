@@ -98,10 +98,10 @@ fn reset_saved_config() -> io::Result<()> {
 }
 
 fn main() -> io::Result<()> {
-    // Check args for meta queries
+    // Meta flags are handled before ratatui takes over the terminal.
     let args: Vec<String> = env::args().collect();
 
-    // Return version if requested and then quit
+    // Version output must stay plain so scripts can consume it.
     if args.iter().any(|a| a == VERSION_LONG || a == VERSION_SHORT) {
         println!("{VERSION}");
         return Ok(());

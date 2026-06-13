@@ -84,7 +84,7 @@ pub enum Direction {
     Up,
 }
 pub struct App {
-    // General
+    // Global application state and user-facing configuration.
     pub logo: Vec<Span<'static>>,
     pub path: Option<String>,
     pub recent: Vec<String>,
@@ -96,25 +96,25 @@ pub struct App {
     pub theme: Theme,
     pub heatmap: [[usize; WEEKS]; DAYS],
 
-    // User
+    // Git identity used when creating commits.
     pub name: String,
     pub email: String,
 
-    // Walker utilities
+    // Background history walker and graph rendering helpers.
     pub color: Rc<RefCell<ColorPicker>>,
     pub buffer: RefCell<Buffer>,
     pub walker_rx: Option<std::sync::mpsc::Receiver<WalkerOutput>>,
     pub walker_cancel: Option<Arc<AtomicBool>>,
     pub walker_handle: Option<std::thread::JoinHandle<()>>,
 
-    // Walker data
+    // Repository metadata consumed by graph, branch, tag, and stash panes.
     pub oids: Oids,
     pub branches: Branches,
     pub tags: Tags,
     pub stashes: Stashes,
     pub uncommitted: UncommittedChanges,
 
-    // Cache
+    // Cached file and diff data for the currently selected graph or status row.
     pub current_diff: Vec<FileChange>,
     pub file_name: Option<String>,
     pub viewer_lines: Vec<ListItem<'static>>,
@@ -122,15 +122,15 @@ pub struct App {
     pub viewer_hunks: Vec<usize>,
     pub viewer_mode: ViewerMode,
 
-    // Interface
+    // Last computed terminal rectangles.
     pub layout: Layout,
 
-    // Focus
+    // Persistent layout switches and current interaction target.
     pub layout_config: LayoutConfig,
     pub viewport: Viewport,
     pub focus: Focus,
 
-    // Branches
+    // Pane selections and scroll offsets.
     pub branches_selected: usize,
     pub branches_scroll: Cell<usize>,
 
@@ -169,7 +169,7 @@ pub struct App {
     pub status_bottom_selected: usize,
     pub status_bottom_scroll: Cell<usize>,
 
-    // Modal checkout
+    // Modal selections and text input buffers.
     pub modal_checkout_selected: i32,
 
     // Modal solo
@@ -188,34 +188,32 @@ pub struct App {
     pub modal_error_message: String,
     pub modal_error_return_focus: Focus,
 
-    // Exit
+    // Main loop shutdown flag.
     pub is_exit: bool,
 }
 
 impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
-        // Enable faster Escape detection in supported terminals
+        // Ask supported terminals to distinguish Esc from modified key sequences.
         enable_raw_mode()?;
         execute!(stdout(), PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES))?;
 
-        // Load the app and initialize state
+        // Load persisted state before the first repository scan.
         self.load_recent();
         self.load_layout();
         self.load_keymap();
         self.reload(None);
 
-        // Main loop
         while !self.is_exit {
             if event::poll(Duration::from_millis(50)).unwrap_or(false) {
                 self.handle_events()?;
             }
 
-            // Handle background processes
+            // Pull at most one walker update per tick to keep redraws responsive.
             if let Some(repo) = &self.repo.clone() {
                 self.sync(repo);
             }
 
-            // Draw the user interface
             terminal.draw(|frame| self.draw(frame))?;
         }
 
@@ -223,7 +221,7 @@ impl App {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
-        // Compute the layout
+        // Layout must be recomputed every frame because terminal size and focus can change.
         self.layout(frame);
 
         let is_splash = self.viewport == Viewport::Splash;
@@ -236,9 +234,9 @@ impl App {
             self.layout.app,
         );
 
-        // Only proceed with repo-dependent views if we have a repo
+        // Repo-dependent panes render only after a repository has opened successfully.
         if let Some(repo) = &self.repo.clone() {
-            // Viewport
+            // The central viewport is mutually exclusive, while side panes can be toggled.
             match self.viewport {
                 Viewport::Graph => {
                     self.draw_graph(frame, repo);
@@ -254,12 +252,11 @@ impl App {
                 },
             }
 
-            // Main layout
             if !is_splash {
                 self.draw_title(frame);
             }
 
-            // Panes
+            // Side panes are hidden on splash/settings because those views own the frame.
             match self.viewport {
                 Viewport::Splash => {},
                 Viewport::Settings => {},
@@ -282,12 +279,11 @@ impl App {
                 },
             }
 
-            // Status bar
             if !is_splash {
                 self.draw_statusbar(frame, repo);
             }
 
-            // Modals
+            // Modals render last so they overlay panes without changing pane layout.
             match self.focus {
                 Focus::ModalCheckout => {
                     self.draw_modal_checkout(frame);
@@ -324,10 +320,10 @@ impl App {
     }
 
     pub fn reload(&mut self, override_path: Option<String>) {
-        // Preserve visible branches
+        // Preserve branch filters across reloads because reload also follows git actions.
         let visible_branch_names = self.branches.visible_branch_names.clone();
 
-        // Reset
+        // Clear derived data; the walker will repopulate it asynchronously.
         self.heatmap = empty_heatmap();
         self.current_diff = Vec::new();
         self.viewer_lines = Vec::new();
@@ -337,10 +333,9 @@ impl App {
         self.tags = Tags::default();
         self.stashes = Stashes::default();
 
-        // Restore visibility
         self.branches.visible_branch_names = visible_branch_names;
 
-        // Determine repo path
+        // Prefer an explicit path, then the current path, then the first non-flag CLI arg.
         let path = if let Some(path) = override_path {
             path
         } else if let Some(path) = self.path.clone() {
@@ -351,7 +346,7 @@ impl App {
         let canonical_path = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from("."));
         let absolute_path: PathBuf = try_into_git_repo_root(&canonical_path).unwrap_or(canonical_path.clone());
 
-        // Try to open the repository, fallback to None
+        // Failure keeps the app usable by falling back to the splash screen.
         let repo = match Repository::open(&absolute_path) {
             Ok(r) => Some(Rc::new(r)),
             Err(_) => None,
@@ -361,43 +356,42 @@ impl App {
         self.path = Some(absolute_path.clone());
         self.repo = repo;
 
-        // Only proceed if we successfully opened a repo
+        // Repository-specific state starts only after Repository::open succeeds.
         if let Some(repo) = &self.repo {
-            // Add the repo path to the list of recent repositories if not present already
+            // Recent paths are append-only here; the splash screen controls selection.
             if !self.recent.iter().any(|v| v == &absolute_path) {
                 self.recent.push(absolute_path.clone());
             }
 
             save_recent(&self.recent);
 
-            // Update colors
+            // ColorPicker owns lane color rotation, so reset it with every fresh graph.
             self.color = Rc::new(RefCell::new(ColorPicker::from_theme(&self.theme)));
 
-            // Update logo
+            // The logo uses theme colors and is rebuilt when the theme changes.
             self.logo = vec![Span::styled("  guita", Style::default().fg(self.theme.COLOR_GRASS)), Span::styled("╭", Style::default().fg(self.theme.COLOR_GREEN))];
 
-            // Cancel any existing walker thread immediately
+            // Cancel the previous walker before spawning a new one for this repository state.
             if let Some(cancel_flag) = &self.walker_cancel {
                 cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
             }
 
-            // Try to join previous walker handle if present (best-effort, non-blocking)
+            // Join the old worker off-thread so reload never stalls the UI loop.
             if let Some(handle) = self.walker_handle.take() {
-                // detach by spawning a thread that joins to avoid blocking reload
                 std::thread::spawn(move || {
                     let _ = handle.join();
                 });
             }
 
-            // Get user credentials
+            // Commit actions require a concrete identity, so missing config is treated as fatal.
             let (name, email) = get_git_user_info(repo).expect("Couldn't get user credentials");
             self.name = name.unwrap();
             self.email = email.unwrap();
 
-            // Restart the spinner
+            // The spinner reflects walker activity, not individual git network commands.
             self.spinner.start();
 
-            // Create a new cancellation flag and channel
+            // Each reload gets a fresh channel so stale walker results cannot be received.
             let cancel = Arc::new(AtomicBool::new(false));
             let cancel_clone = cancel.clone();
             self.walker_cancel = Some(cancel);
@@ -405,26 +399,21 @@ impl App {
             let (tx, rx) = channel();
             self.walker_rx = Some(rx);
 
-            // Copy the repo path and visible branches
+            // Move only serializable state into the worker thread.
             let visible_branch_names = self.branches.visible_branch_names.clone();
 
-            // Spawn a thread that computes something; it will check cancel flag between iterations
+            // The worker streams partial graph state so large repositories become usable quickly.
             let handle = thread::spawn(move || {
-                // Create the walker
                 let mut walk_ctx = Walker::new(absolute_path, 10000, visible_branch_names).expect("Error");
                 let mut is_first = true;
 
-                // Walker loop
                 loop {
-                    // Breaker
                     if cancel_clone.load(std::sync::atomic::Ordering::SeqCst) {
                         break;
                     }
 
-                    // Parse a chunk
                     let is_again = walk_ctx.walk();
 
-                    // Send the message to the main thread
                     if tx
                         .send(WalkerOutput {
                             oids: walk_ctx.oids.clone(),
@@ -440,11 +429,9 @@ impl App {
                         })
                         .is_err()
                     {
-                        // Receiver dropped, stop
                         break;
                     }
 
-                    // Break the loop if walker finished
                     if !is_again {
                         break;
                     } else {
@@ -461,44 +448,37 @@ impl App {
         if let Some(rx) = &self.walker_rx
             && let Ok(result) = rx.try_recv()
         {
-            // Crude check to see if this is a first iteration
+            // First batch is the moment the graph can replace the splash screen.
             if result.is_first {
-                // Transition from the splash screen on startup
                 if self.viewport == Viewport::Splash {
                     self.viewport = Viewport::Graph;
                 }
 
-                // Get uncomitted changes info
+                // Workdir state is cheap enough to refresh once at the start of a reload.
                 self.uncommitted = get_filenames_diff_at_workdir(repo).expect("Couldn't get the file diff");
             }
 
-            // Lookup tables
+            // Swap all walker-owned data together so panes stay in sync.
             self.oids = result.oids;
 
-            // Buffer
             self.buffer = result.buffer;
 
-            // Update branches
             self.branches.feed(&self.oids, &self.color, &result.branches_lanes, result.branches_local, result.branches_remote);
 
-            // Update tags
             self.tags.feed(&self.oids, &self.color, &result.tags_lanes, result.tags_local);
 
-            // Update stashes
             self.stashes.feed(&self.color, &result.stashes_lanes);
 
-            // Try reposition selection
+            // Keep the selected commit's file list fresh as more history arrives.
             if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
                 let oid = self.oids.get_oid_by_idx(self.graph_selected);
                 self.current_diff = get_filenames_diff_at_oid(repo, *oid);
             }
 
-            // We parsed the entire repository
+            // Heatmap waits for the full walk so its counts include every loaded commit.
             if !result.is_again {
-                // Stop the spinner
                 self.spinner.stop();
 
-                // Build the heatmap
                 self.heatmap = build_heatmap(repo, &self.oids.oids);
             }
         }

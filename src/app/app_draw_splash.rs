@@ -9,35 +9,32 @@ use ratatui::{
 impl App {
     #[rustfmt::skip]
     pub fn draw_splash(&mut self, frame: &mut Frame) {
-        // Padding
+        // Splash owns the full app rectangle and centers its content.
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
 
-        // Calculate maximum available width for text
+        // Keep the width calculation visible for future splash text truncation.
         let available_width = self.layout.graph.width.saturating_sub(1) as usize;
         let _max_text_width = available_width.saturating_sub(2);
 
-        // Get vertical dimensions
+        // Reuse viewer scroll fields because splash behaves like a simple list.
         let total_lines = self.viewer_lines.len();
         let visible_height = if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(4) as usize } else { self.layout.graph.height.saturating_sub(2) as usize };
 
-        // Clamp selection
         if total_lines == 0 {
             self.viewer_selected = 0;
         } else if self.viewer_selected >= total_lines {
             self.viewer_selected = total_lines.saturating_sub(1);
         }
 
-        // Trap selection
         self.trap_selection(self.viewer_selected, &self.viewer_scroll, total_lines, visible_height);
 
-        // Calculate scroll
         let start = self.viewer_scroll.get().min(total_lines.saturating_sub(visible_height));
         let _end = (start + visible_height).min(total_lines);
 
-        // Setup list items
+        // Lines are assembled manually so the logo and recent list share centering.
         let mut lines: Vec<Line> = Vec::new();
 
-        // How many rows the actual content will take
+        // Content height varies between loading, empty recent list, and recent repositories.
         let content_rows =
             if self.spinner.is_running() {
                 1
@@ -49,7 +46,7 @@ impl App {
                 2 + self.recent.len()
             };
 
-        // Logo height by terminal width
+        // Logo detail scales down for narrow terminals.
         let logo_rows = if self.layout.app.width < 80 {
             1
         } else if self.layout.app.width < 120 {
@@ -58,13 +55,11 @@ impl App {
             11
         };
 
-        // Total visible height
         let visible = visible_height;
 
-        // Total splash height
         let splash_rows = logo_rows + content_rows;
 
-        // Center vertically, clamp to 0
+        // Add blank rows above the splash body to center it vertically.
         let dummies = visible
             .saturating_sub(splash_rows)
             .saturating_div(2);
@@ -114,7 +109,7 @@ impl App {
         } else {
             lines.push(Line::from(vec![Span::styled("recent repositories:".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
             lines.push(Line::default());
-            // Repository lines
+            // Recent repositories are selectable only when loading has finished.
             self.recent.iter().enumerate().for_each(|(i, path)| {
                 let style = if Some(path) == self.path.as_ref() {
                     self.theme.COLOR_GRASS
@@ -124,7 +119,7 @@ impl App {
 
                 let mut line = Line::from(Span::styled(path.clone(), Style::default().fg(style))).centered();
 
-                // Add selection highlighting
+                // Brackets make the current splash selection visible without changing row width too much.
                 if i == self.splash_selected && self.focus == Focus::Viewport && !self.spinner.is_running() {
                     let mut spans = Vec::new();
                     spans.push(Span::styled("⏵ ", Style::default().fg(self.theme.COLOR_GRASS)));
@@ -137,12 +132,10 @@ impl App {
             });
         }
 
-        // Convert to ListItems for rendering
+        // Convert the assembled splash lines into the list widget expected by ratatui.
         let list_items: Vec<ListItem> = lines.into_iter().map(ListItem::from).collect();
-        // Setup the list
         let list = List::new(list_items).block(Block::default().padding(padding));
 
-        // Render the list
         frame.render_widget(list, self.layout.app);
     }
 }

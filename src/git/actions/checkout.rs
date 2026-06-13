@@ -3,15 +3,14 @@ use im::HashSet;
 use std::collections::HashMap;
 
 pub fn checkout_head(repo: &Repository, oid: Oid) -> Result<(), git2::Error> {
-    // Find the commit object
     let commit = repo.find_commit(oid)?;
 
-    // Set HEAD to the commit (detached)
+    // Detached checkout is used when a commit has no branch pointing at it.
     repo.set_head_detached(commit.id())?;
 
-    // Checkout the commit
     repo.checkout_head(Some(
-        CheckoutBuilder::default().allow_conflicts(true).force(), // optional: force overwrite local changes
+        // Force keeps the UI action decisive, matching a hard checkout of the selected commit.
+        CheckoutBuilder::default().allow_conflicts(true).force(),
     ))?;
 
     Ok(())
@@ -25,7 +24,7 @@ pub fn checkout_branch(repo: &Repository, visible_branch_names: &mut HashSet<Str
         repo.checkout_head(Some(CheckoutBuilder::default().allow_conflicts(true).force()))
     }
 
-    // Already local
+    // Local branches can be checked out directly and only need visibility refreshed.
     if repo.find_branch(branch_name, BranchType::Local).is_ok() {
         if !visible_branch_names.is_empty() {
             visible_branch_names.insert(branch_name.to_string());
@@ -33,7 +32,7 @@ pub fn checkout_branch(repo: &Repository, visible_branch_names: &mut HashSet<Str
         return checkout(repo, branch_name);
     }
 
-    // Remote case: origin/foo
+    // Remote names arrive as origin/foo; the local branch should be called foo.
     if let Some((_remote, branch)) = branch_name.split_once('/') {
         if repo.find_branch(branch, BranchType::Local).is_ok() {
             if !visible_branch_names.is_empty() {
@@ -49,10 +48,10 @@ pub fn checkout_branch(repo: &Repository, visible_branch_names: &mut HashSet<Str
             let mut local_branch = repo.branch(branch, &commit, false)?;
             local_branch.set_upstream(Some(branch_name))?;
 
-            // Track locally
+            // Mirror the newly created branch in the in-memory branch map until reload rebuilds it.
             local.entry(alias).or_default().push(branch.to_string());
 
-            // Make visible (UI)
+            // Preserve the current branch filter by adding the branch we just materialized.
             if !visible_branch_names.is_empty() {
                 visible_branch_names.insert(branch.to_string());
             }

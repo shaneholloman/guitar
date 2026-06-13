@@ -9,10 +9,10 @@ pub struct Stashes {
 
 impl Stashes {
     pub fn feed(&mut self, color: &Rc<RefCell<ColorPicker>>, stashes_lanes: &HashMap<u32, usize>) {
-        // Initialize
+        // Rebuild colors because stash lanes can shift as history loads.
         self.colors = HashMap::new();
 
-        // Set tag colors
+        // Stash colors follow the lane where the synthetic stash row appears.
         for (oidi, &lane_idx) in stashes_lanes.iter() {
             self.colors.insert(*oidi, color.borrow().get_lane(lane_idx));
         }

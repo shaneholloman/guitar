@@ -1,20 +1,21 @@
 use crate::helpers::text::{decode, sanitize};
 use git2::{Diff, DiffFormat::Patch, ObjectType, Repository};
 use std::collections::HashSet;
-// Structure representing all uncommitted changes in the repository
+
+// Snapshot of uncommitted state split the same way the status panes are drawn.
 #[derive(Debug, Default, Clone)]
 pub struct UncommittedChanges {
-    pub unstaged: FileChanges, // Changes in the working directory not yet staged
-    pub staged: FileChanges,   // Changes that have been staged
-    pub modified_count: usize, // Number of modified files (deduplicated)
-    pub added_count: usize,    // Number of added files (deduplicated)
-    pub deleted_count: usize,  // Number of deleted files (deduplicated)
-    pub is_clean: bool,        // True if there are no changes
-    pub is_staged: bool,       // True if there are staged changes
-    pub is_unstaged: bool,     // True if there are unstaged changes
+    pub unstaged: FileChanges, // Working tree changes not yet staged.
+    pub staged: FileChanges,   // Index changes ready to commit.
+    pub modified_count: usize, // Unique modified paths across staged and unstaged.
+    pub added_count: usize,    // Unique added paths across staged and unstaged.
+    pub deleted_count: usize,  // Unique deleted paths across staged and unstaged.
+    pub is_clean: bool,        // True when both staged and unstaged lists are empty.
+    pub is_staged: bool,       // True when the index has at least one change.
+    pub is_unstaged: bool,     // True when the workdir has at least one change.
 }
 
-// Structure representing a set of file changes (added, modified, deleted)
+// File buckets are kept separate so status actions can address a stable row group.
 #[derive(Debug, Default, Clone)]
 pub struct FileChanges {
     pub modified: Vec<String>,
@@ -22,14 +23,14 @@ pub struct FileChanges {
     pub deleted: Vec<String>,
 }
 
-// Represents a single file change (filename + status)
+// One file row in a commit diff.
 #[derive(Debug)]
 pub struct FileChange {
     pub filename: String,
     pub status: FileStatus,
 }
 
-// Enumeration describing the type of file change
+// Change kinds normalized from libgit2 deltas for display.
 #[derive(Debug, Clone, Copy)]
 pub enum FileStatus {
     Added,
@@ -39,39 +40,36 @@ pub enum FileStatus {
     Other,
 }
 
-// Represents a line change within a diff hunk
+// One rendered patch line with its libgit2 origin marker.
 #[derive(Debug)]
 pub struct LineChange {
-    pub origin: char,    // '+', '-', or ' ' indicating added, removed, or context
-    pub content: String, // Line text content
+    pub origin: char,    // Added, removed, or context marker.
+    pub content: String, // Sanitized line text.
 }
 
-// Represents a diff hunk (header and its line changes)
+// A patch hunk plus its parsed header.
 #[derive(Debug)]
 pub struct Hunk {
     pub header: HunkHeader,
-    pub lines: Vec<LineChange>, // All line changes in this hunk
+    pub lines: Vec<LineChange>, // All patch lines belonging to this hunk.
 }
 
-// Represents a diff hunk header, whose raw byte format is:
-// @@ -k,l +n,m @@ optional context string
+// Parsed form of a unified diff hunk header.
 #[derive(Debug)]
 pub struct HunkHeader {
-    pub old_start: u32, // -k
-    pub old_lines: u32, // l
-    pub new_start: u32, // +n
-    pub new_lines: u32, // m
-    // We may eventually want to use the optional context part of the header,
-    // in which case we'd need to parse it out from raw_header.
-    pub raw_header: String, // The entire header as a string
+    pub old_start: u32,     // First old-side line number.
+    pub old_lines: u32,     // Number of old-side lines.
+    pub new_start: u32,     // First new-side line number.
+    pub new_lines: u32,     // Number of new-side lines.
+    pub raw_header: String, // Full header, including optional function context.
 }
 
-// Deduplicate and count unique filenames from two lists
+// Count unique filenames across staged and unstaged buckets.
 pub fn deduplicate(a: &[String], b: &[String]) -> usize {
     a.iter().chain(b).collect::<HashSet<_>>().len()
 }
 
-// Recursively traverse a Git tree and collect all file entries
+// Recursively flatten a tree into added file rows, used for root commits and tree deltas.
 pub fn walk_tree(repo: &Repository, tree: &git2::Tree, base: &str, changes: &mut Vec<FileChange>) {
     for entry in tree.iter() {
         if let Some(name) = entry.name() {
@@ -92,13 +90,12 @@ pub fn walk_tree(repo: &Repository, tree: &git2::Tree, base: &str, changes: &mut
     }
 }
 
-// Convert a Git diff into structured hunks and line changes
+// Convert libgit2 patch callbacks into the viewer's hunk model.
 pub fn diff_to_hunks(diff: Diff) -> Result<Vec<Hunk>, git2::Error> {
     let mut hunks = Vec::new();
 
-    // Print diff in patch format and collect hunks
+    // Patch format gives both hunk headers and individual lines in one pass.
     diff.print(Patch, |_, hunk_opt, line| {
-        // Start a new hunk if encountered
         if let Some(hunk) = hunk_opt {
             hunks.push(Hunk {
                 header: HunkHeader {
@@ -112,7 +109,7 @@ pub fn diff_to_hunks(diff: Diff) -> Result<Vec<Hunk>, git2::Error> {
             });
         }
 
-        // Add line to the most recent hunk
+        // Lines arrive after their hunk header, so append to the latest hunk.
         if let Some(last) = hunks.last_mut() {
             last.lines.push(LineChange { origin: line.origin(), content: sanitize(decode(line.content())).to_string() });
         }

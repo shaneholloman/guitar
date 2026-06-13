@@ -12,28 +12,26 @@ use ratatui::{
 
 impl App {
     pub fn draw_status(&mut self, frame: &mut Frame) {
-        // Padding
+        // Status panes keep icons close to the border and filenames flush after them.
         let padding = ratatui::widgets::Padding { left: 1, right: 0, top: 0, bottom: 0 };
 
-        // Flags
+        // Top is staged or commit diff; bottom exists only for unstaged uncommitted changes.
         let mut is_staged_changes = false;
         let mut is_unstaged_changes = false;
         let is_showing_uncommitted = self.graph_selected == 0;
 
-        // Lines
         let mut lines_status_top: Vec<Line<'_>> = Vec::new();
         let mut lines_status_bottom: Vec<Line<'_>> = Vec::new();
 
         let mut status_top_empty = false;
         let mut status_bottom_empty = false;
 
-        // Calculate maximum available width for text
+        // Width leaves room for the change symbol and a little border padding.
         let max_status_top_width = self.layout.status_top.width.saturating_sub(5) as usize;
         let max_status_bottom_width = self.layout.status_bottom.width.saturating_sub(5) as usize;
 
-        // If viewing uncommitted changes
+        // The pseudo-row splits uncommitted files into staged and unstaged panes.
         if is_showing_uncommitted {
-            // Staged changes with prefix
             for file in self.uncommitted.staged.modified.iter() {
                 lines_status_top.push(Line::from(vec![
                     Span::styled("~ ", Style::default().fg(self.theme.COLOR_BLUE)),
@@ -53,7 +51,7 @@ impl App {
                 ]));
             }
 
-            // Handle no changes
+            // Empty states are vertically padded to stay centered in short panes.
             if lines_status_top.is_empty() {
                 status_top_empty = true;
                 let visible_height = if self.layout_config.is_zen { self.layout.status_bottom.height.saturating_sub(2) as usize } else { self.layout.status_bottom.height as usize };
@@ -69,7 +67,6 @@ impl App {
                 is_staged_changes = true;
             }
 
-            // Unstaged changes with prefix
             for file in self.uncommitted.unstaged.modified.iter() {
                 lines_status_bottom.push(Line::from(vec![
                     Span::styled("~ ", Style::default().fg(self.theme.COLOR_BLUE)),
@@ -89,7 +86,7 @@ impl App {
                 ]));
             }
 
-            // Handle no changes
+            // Empty states are vertically padded to stay centered in short panes.
             if lines_status_bottom.is_empty() {
                 status_bottom_empty = true;
                 let visible_height = if self.layout_config.is_zen { self.layout.status_top.height.saturating_sub(2) as usize } else { self.layout.status_top.height as usize };
@@ -105,7 +102,7 @@ impl App {
                 is_unstaged_changes = true;
             }
         } else {
-            // Assemble lines
+            // Commit rows use the selected commit's file diff in the top pane only.
             for file_change in self.current_diff.iter() {
                 let (symbol, color) = match file_change.status {
                     FileStatus::Added => ("+ ", self.theme.COLOR_GREEN),
@@ -118,7 +115,7 @@ impl App {
                 lines_status_top.push(Line::from(vec![Span::styled(symbol, Style::default().fg(color)), Span::styled(display_filename, Style::default().fg(self.theme.COLOR_TEXT))]));
             }
 
-            // Handle no changes
+            // Empty commits and unresolved diff failures share the same quiet state.
             if lines_status_top.is_empty() {
                 status_top_empty = true;
                 let visible_height = if self.layout_config.is_zen { self.layout.status_top.height.saturating_sub(2) as usize } else { self.layout.status_top.height as usize };
@@ -135,27 +132,24 @@ impl App {
             }
         }
 
-        // Render status top
+        // Top status pane shows staged files on the pseudo-row or commit file changes otherwise.
         {
-            // Get vertical dimensions
+            // Shared pane list pattern: clamp selection, trap scroll, then slice visible rows.
             let total_lines = lines_status_top.len();
             let visible_height = self.layout.status_top.height.saturating_sub(2) as usize;
 
-            // Clamp selection
             if total_lines == 0 {
                 self.status_top_selected = 0;
             } else if self.status_top_selected >= total_lines {
                 self.status_top_selected = total_lines.saturating_sub(1);
             }
 
-            // Trap selection
             self.trap_selection(self.status_top_selected, &self.status_top_scroll, total_lines, visible_height);
 
-            // Calculate scroll
             let start = self.status_top_scroll.get().min(total_lines.saturating_sub(visible_height));
             let end = (start + visible_height).min(total_lines);
 
-            // Setup list items
+            // Selection is disabled for synthetic empty-state rows.
             let list_items: Vec<ListItem> = lines_status_top[start..end]
                 .iter()
                 .enumerate()
@@ -172,13 +166,12 @@ impl App {
                 .collect();
 
             if self.layout_config.is_zen {
-                // Setup the list
+                // Zen mode frames the pane as a full standalone list.
                 let list = List::new(list_items)
                     .block(Block::default().padding(padding).borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded).border_style(Style::default().fg(self.theme.COLOR_BORDER)));
 
                 frame.render_widget(list, self.layout.status_top);
 
-                // Setup the scrollbar
                 let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.status_top_scroll.get());
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(Some("╮"))
@@ -187,10 +180,9 @@ impl App {
                     .thumb_symbol(if total_lines > visible_height { "▌" } else { "│" })
                     .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::StatusTop { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
-                // Render the scrollbar
                 frame.render_stateful_widget(scrollbar, self.layout.status_top_scrollbar, &mut scrollbar_state);
             } else {
-                // Setup the list
+                // Normal mode lets inspector/status share border segments.
                 let list = List::new(list_items).block(
                     Block::default()
                         .padding(padding)
@@ -200,7 +192,6 @@ impl App {
 
                 frame.render_widget(list, self.layout.status_top);
 
-                // Setup the scrollbar
                 let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.status_top_scroll.get());
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(if self.layout_config.is_inspector && self.graph_selected != 0 { Some("│") } else { Some("╮") })
@@ -209,33 +200,29 @@ impl App {
                     .thumb_symbol(if total_lines > visible_height { "▌" } else { "│" })
                     .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::StatusTop { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
-                // Render the scrollbar
                 frame.render_stateful_widget(scrollbar, self.layout.status_top_scrollbar, &mut scrollbar_state);
             }
         }
 
-        // Render status bottom
+        // Bottom status pane is reserved for unstaged files on the pseudo-row.
         {
             if is_showing_uncommitted {
-                // Get vertical dimensions
+                // Shared pane list pattern: clamp selection, trap scroll, then slice visible rows.
                 let total_lines = lines_status_bottom.len();
                 let visible_height = self.layout.status_bottom.height.saturating_sub(2) as usize;
 
-                // Clamp selection
                 if total_lines == 0 {
                     self.status_bottom_selected = 0;
                 } else if self.status_bottom_selected >= total_lines {
                     self.status_bottom_selected = total_lines.saturating_sub(1);
                 }
 
-                // Trap selection
                 self.trap_selection(self.status_bottom_selected, &self.status_bottom_scroll, total_lines, visible_height);
 
-                // Calculate scroll
                 let start = self.status_bottom_scroll.get().min(total_lines.saturating_sub(visible_height));
                 let end = (start + visible_height).min(total_lines);
 
-                // Setup list items
+                // Selection is disabled for synthetic empty-state rows.
                 let list_items: Vec<ListItem> = lines_status_bottom[start..end]
                     .iter()
                     .enumerate()
@@ -256,13 +243,12 @@ impl App {
                     .collect();
 
                 if self.layout_config.is_zen {
-                    // Setup the list
+                    // Zen mode frames the pane as a full standalone list.
                     let list = List::new(list_items)
                         .block(Block::default().padding(padding).borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded).border_style(Style::default().fg(self.theme.COLOR_BORDER)));
 
                     frame.render_widget(list, self.layout.status_bottom);
 
-                    // Setup the scrollbar
                     let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.status_bottom_scroll.get());
                     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                         .begin_symbol(Some("╮"))
@@ -271,18 +257,16 @@ impl App {
                         .thumb_symbol(if total_lines > visible_height { "▌" } else { "│" })
                         .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::StatusBottom { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
-                    // Render the scrollbar
                     frame.render_stateful_widget(scrollbar, self.layout.status_bottom_scrollbar, &mut scrollbar_state);
 
                     return;
                 }
 
-                // Setup the list
+                // Normal mode top border separates staged and unstaged lists.
                 let list = List::new(list_items).block(Block::default().padding(padding).borders(Borders::TOP).border_style(Style::default().fg(self.theme.COLOR_BORDER)));
 
                 frame.render_widget(list, self.layout.status_bottom);
 
-                // Setup the scrollbar
                 let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.status_bottom_scroll.get());
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(Some("│"))
@@ -291,7 +275,6 @@ impl App {
                     .thumb_symbol(if total_lines > visible_height { "▌" } else { "│" })
                     .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::StatusBottom { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
-                // Render the scrollbar
                 frame.render_stateful_widget(scrollbar, self.layout.status_bottom_scrollbar, &mut scrollbar_state);
             }
         }

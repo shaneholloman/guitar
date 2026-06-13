@@ -9,6 +9,7 @@ use ratatui::{
 
 impl App {
     pub fn draw_modal_error(&mut self, frame: &mut Frame) {
+        // Error text wraps to a readable width and then drives modal size.
         let max_modal_width = (frame.area().width as f32 * 0.8) as usize;
         let text_width = max_modal_width.saturating_sub(10).clamp(1, 70);
         let wrapped_message = wrap_words(self.modal_error_message.clone(), text_width);
@@ -29,6 +30,7 @@ impl App {
         let y = frame.area().y + (frame.area().height.saturating_sub(modal_height)) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);
 
+        // Paint a plain overlay before clearing the modal rectangle.
         let bg_block = Block::default().style(Style::default().fg(self.theme.COLOR_BORDER));
         bg_block.render(frame.area(), frame.buffer_mut());
         frame.render_widget(Clear, modal_area);

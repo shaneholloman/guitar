@@ -15,8 +15,10 @@ pub enum DeltaOp {
 
 #[derive(Default, Clone)]
 pub struct Buffer {
+    // Each snapshot describes the active graph lanes after one commit is processed.
     pub history: Vector<Vector<Chunk>>,
     pub curr: Vector<Chunk>,
+    // Deltas keep memory bounded while still allowing visible ranges to be reconstructed.
     pub deltas: Vector<Delta>,
     pub checkpoints: OrdMap<usize, Vector<Chunk>>,
     pub delta: Delta,
@@ -31,7 +33,7 @@ impl Buffer {
     pub fn update(&mut self, chunk: Chunk) {
         self.backup();
 
-        // Erase all trailing dummy chunks in the end of the buffer, if any
+        // Trailing dummy lanes carry no future topology and can be removed immediately.
         while let Some(last_idx) = self.curr.len().checked_sub(1) {
             if !self.curr[last_idx].is_dummy() {
                 break;
@@ -40,7 +42,7 @@ impl Buffer {
             self.delta.ops.push_back(DeltaOp::Remove { index: last_idx });
         }
 
-        // If we have a planned merge later on
+        // Planned mergers split a lane so the second parent can draw toward its target later.
         if let Some(merger_idx) = self.curr.iter().position(|inner| self.mergers.iter().any(|alias| *alias == inner.alias)) {
             if let Some(merger_pos) = self.mergers.iter().position(|alias| *alias == self.curr[merger_idx].alias) {
                 self.mergers.remove(merger_pos);
@@ -57,15 +59,14 @@ impl Buffer {
             self.delta.ops.push_back(DeltaOp::Insert { index: self.curr.len() - 1, item: clone });
         }
 
-        // Replace or append buffer chunk
+        // Prefer replacing the parent lane; append only when the commit starts a new lane.
         if let Some(first_idx) = self.curr.iter().position(|inner| inner.parent_a == chunk.alias) {
             let old_alias = chunk.alias;
 
-            // Replace chunk
             self.curr[first_idx] = chunk.clone();
             self.delta.ops.push_back(DeltaOp::Replace { index: first_idx, new: chunk });
 
-            // Place dummies in case of branching
+            // Clear consumed parent pointers so inactive branch lanes collapse into dummies.
             for (i, inner) in self.curr.iter_mut().enumerate() {
                 if inner.alias == old_alias {
                     continue;
@@ -107,13 +108,12 @@ impl Buffer {
     pub fn decompress(&mut self, start: usize, end: usize) {
         self.history.clear();
 
-        // Find the nearest checkpoint, rewrite this later to binary search
+        // Start from the nearest checkpoint before the requested range.
         let checkpoint_idx = self.checkpoints.keys().rev().find(|&&idx| idx <= start).copied();
 
-        // Start from the checkpoint snapshot, or empty
         let mut curr = checkpoint_idx.and_then(|idx| self.checkpoints.get(&idx)).cloned().unwrap_or_default();
 
-        // Determine the first delta to apply
+        // Replay only the deltas needed to produce the requested visible range.
         let begin = checkpoint_idx.map_or(0, |idx| idx + 1);
         let end = end.min(self.deltas.len());
 

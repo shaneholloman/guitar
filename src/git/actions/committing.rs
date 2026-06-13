@@ -5,15 +5,12 @@ pub fn commit_staged(repo: &Repository, message: &str, name: &str, email: &str) 
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
 
-    // Determine parent commit
+    // A normal commit uses HEAD as its parent; an unborn branch creates the root commit.
     let parent_commit = match repo.head() {
-        Ok(head_ref) => {
-            // Try to peel to commit
-            head_ref.peel_to_commit().ok()
-        },
+        Ok(head_ref) => head_ref.peel_to_commit().ok(),
         Err(e) => {
             if e.code() == ErrorCode::UnbornBranch {
-                None // empty repo, initial commit
+                None
             } else {
                 return Err(e);
             }
@@ -25,7 +22,6 @@ pub fn commit_staged(repo: &Repository, message: &str, name: &str, email: &str) 
     let commit_oid = if let Some(parent) = parent_commit {
         repo.commit(Some("HEAD"), &signature, &signature, message, &tree, &[&parent])?
     } else {
-        // Initial commit
         repo.commit(Some("HEAD"), &signature, &signature, message, &tree, &[])?
     };
 

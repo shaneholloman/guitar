@@ -1,45 +1,43 @@
 use ratatui::crossterm::event::KeyModifiers;
 
-// Truncate a string to a maximum width and appends "..." if it was cut off
+// Truncate from the end using "..." while counting characters rather than bytes.
 pub fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
     if text.chars().count() <= max_width {
         return text.to_string();
     }
 
-    // If max width is very small, just fill with dots
+    // Very narrow fields cannot fit both content and a full ellipsis.
     if max_width <= 3 {
         return ".".repeat(max_width);
     }
 
-    // Take first (max_width - 3) characters and append ellipsis
     let truncated: String = text.chars().take(max_width - 3).collect();
     format!("{truncated}...")
 }
 
-/// Truncate a string from the start to fit `max_width`, prepending "..." if truncated
+// Truncate from the start so important filename suffixes remain visible.
 pub fn truncate_start_with_ellipsis(text: &str, max_width: usize) -> String {
     let len = text.chars().count();
     if len <= max_width {
         return text.to_string();
     }
 
-    // If max width is very small, just fill with dots
+    // Very narrow fields cannot fit both content and a full ellipsis.
     if max_width <= 3 {
         return ".".repeat(max_width);
     }
 
-    // Take the last (max_width - 3) characters and prepend ellipsis
     let truncated: String = text.chars().skip(len - (max_width - 3)).collect();
     format!("...{truncated}")
 }
 
-// Wrap text by character count without regard to word boundaries
+// Wrap by character count for long tokens such as hashes or paths.
 pub fn wrap_chars(content: String, max_width: usize) -> Vec<String> {
     let mut wrapped_lines = Vec::new();
 
     for line in content.split('\n') {
         if line.is_empty() {
-            // Preserve empty lines
+            // Preserve intentional blank lines in commit messages and file content.
             wrapped_lines.push(String::new());
             continue;
         }
@@ -57,8 +55,7 @@ pub fn wrap_chars(content: String, max_width: usize) -> Vec<String> {
 
     wrapped_lines
 }
-// Wrap text by words, preserving spaces and indentation
-// Fall back to wrap_chars() when a word is longer than max_width
+// Wrap by words while preserving whitespace and indentation.
 pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
     if max_width == 0 {
         return vec![content.to_string()];
@@ -78,7 +75,7 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
 
         while let Some(c) = chars.next() {
             if c.is_whitespace() {
-                // Collect consecutive whitespace
+                // Keep whitespace runs together so indentation does not collapse.
                 let mut space = String::from(c);
                 while let Some(&next_c) = chars.peek() {
                     if next_c.is_whitespace() {
@@ -88,7 +85,7 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
                     }
                 }
 
-                // If spaces overflow line width, start new line
+                // Overflowing whitespace starts the next line with the same indentation.
                 if current_width + space.chars().count() > max_width {
                     wrapped_lines.push(current_line);
                     current_line = space.clone();
@@ -98,7 +95,7 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
                     current_width += space.chars().count();
                 }
             } else {
-                // Collect a word
+                // Consume a full word before deciding whether it fits on this line.
                 let mut word = String::from(c);
                 while let Some(&next_c) = chars.peek() {
                     if !next_c.is_whitespace() {
@@ -108,7 +105,7 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
                     }
                 }
 
-                // Fallback: long word exceeds max_width → wrap by characters
+                // Long words fall back to character wrapping so lines never overflow.
                 if word.chars().count() > max_width {
                     if !current_line.is_empty() {
                         wrapped_lines.push(current_line);
@@ -121,7 +118,7 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
                     continue;
                 }
 
-                // If word doesn't fit, push current line and start new one
+                // A word that does not fit starts a fresh line.
                 if current_width + word.chars().count() > max_width {
                     if !current_line.is_empty() {
                         wrapped_lines.push(current_line);
@@ -135,14 +132,14 @@ pub fn wrap_words(content: String, max_width: usize) -> Vec<String> {
             }
         }
 
-        // Push the final line
+        // Push the line being accumulated after the input line is exhausted.
         wrapped_lines.push(current_line);
     }
 
     wrapped_lines
 }
 
-// Center a single line of text within a given width by adding leading spaces
+// Center a line with left padding only, matching terminal text rendering.
 pub fn center_line(line: &str, width: usize) -> String {
     if line.chars().count() >= width {
         line.to_string()
@@ -152,42 +149,42 @@ pub fn center_line(line: &str, width: usize) -> String {
     }
 }
 
-// Attempt to decode raw byte data into a string, handling UTF-8 and UTF-16 (LE/BE)
+// Decode blobs from common encodings before the viewer sanitizes control characters.
 pub fn decode(bytes: &[u8]) -> String {
     if bytes.starts_with(&[0xFF, 0xFE]) {
-        // UTF-16 Little Endian with BOM
+        // UTF-16 little endian with BOM.
         let utf16: Vec<u16> = bytes[2..].chunks(2).map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
         String::from_utf16(&utf16).unwrap_or_default()
     } else if bytes.starts_with(&[0xFE, 0xFF]) {
-        // UTF-16 Big Endian with BOM
+        // UTF-16 big endian with BOM.
         let utf16: Vec<u16> = bytes[2..].chunks(2).map(|c| u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
         String::from_utf16(&utf16).unwrap_or_default()
     } else if bytes.len() > 1 && bytes[1] == 0 {
-        // Likely UTF-16 LE without BOM
+        // A zero second byte is a practical signal for UTF-16 little endian text.
         let utf16: Vec<u16> = bytes.chunks(2).map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
         String::from_utf16(&utf16).unwrap_or_default()
     } else {
-        // Default: UTF-8 or fallback to lossy decode
+        // Lossy UTF-8 keeps binary-ish content from crashing the viewer.
         String::from_utf8_lossy(bytes).to_string()
     }
 }
 
-// Clean and normalizes a string
+// Normalize text for terminal display and strip non-newline control characters.
 pub fn sanitize(string: String) -> String {
     string
         .replace("\r\n", "\n")
-        .replace("\r", "\n") // Convert Windows/Mac newlines to '\n'
+        .replace("\r", "\n") // Normalize old Mac newlines.
         .chars()
         .flat_map(|character| match character {
-            '\t' => "    ".chars().collect::<Vec<_>>(),    // Expand tabs
-            '\n' => vec!['\n'],                            // keep newlines
-            character if character.is_control() => vec![], // remove other control chars
-            _ => vec![character],                          // Keep the rest of the characters
+            '\t' => "    ".chars().collect::<Vec<_>>(),    // Expand tabs to stable columns.
+            '\n' => vec!['\n'],                            // Preserve line boundaries.
+            character if character.is_control() => vec![], // Drop non-printing controls.
+            _ => vec![character],                          // Keep printable content.
         })
         .collect()
 }
 
-// A helper to convert KeyModifiers to string
+// Convert crossterm modifiers into the keybinding label format.
 pub fn modifiers_to_string(mods: KeyModifiers) -> String {
     let mut parts = Vec::new();
     if mods.contains(KeyModifiers::CONTROL) {

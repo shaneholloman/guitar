@@ -7,6 +7,7 @@ pub enum Markers {
 
 pub const NONE: u32 = u32::MAX;
 
+// A lane entry points at the commit alias currently occupying that graph lane.
 #[derive(Clone)]
 pub struct Chunk {
     pub alias: u32,

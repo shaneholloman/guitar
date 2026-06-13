@@ -14,13 +14,13 @@ pub fn stage_all(repo: &Repository) -> Result<(), Error> {
 
             match entry.status() {
                 s if s.is_wt_deleted() || s.is_index_deleted() => {
-                    // Stage deletions (whether from working dir or already staged)
+                    // A deleted tracked file is staged by removing its index entry.
                     if index.get_path(path, 0).is_some() {
                         index.remove_path(path)?;
                     }
                 },
                 _ => {
-                    // Stage new or modified files
+                    // New and modified files both enter the index through add_path.
                     index.add_path(path)?;
                 },
             }
@@ -32,16 +32,15 @@ pub fn stage_all(repo: &Repository) -> Result<(), Error> {
 }
 
 pub fn unstage_all(repo: &Repository) -> Result<(), git2::Error> {
-    // Get HEAD commit
     let head = match repo.head() {
         Ok(head) => head.peel_to_commit()?,
         Err(_) => {
-            // If no HEAD exists (fresh repo), there's nothing to unstage
+            // A fresh repository has no HEAD to reset back to.
             return Ok(());
         },
     };
 
-    // Perform mixed reset - keeps working directory changes but resets index to HEAD
+    // Mixed reset keeps workdir changes while returning the whole index to HEAD.
     repo.reset(&head.into_object(), ResetType::Mixed, None)?;
 
     Ok(())
@@ -50,11 +49,11 @@ pub fn unstage_all(repo: &Repository) -> Result<(), git2::Error> {
 pub fn stage_file(repo: &Repository, path: &std::path::Path) -> Result<(), git2::Error> {
     let mut index = repo.index()?;
 
-    // If the file exists, add it (new or modified)
     if path.exists() {
+        // Existing paths represent new or modified files.
         index.add_path(path)?;
     } else {
-        // File deleted: remove from index
+        // Missing paths represent deletes, which are staged by removing index entries.
         index.remove_path(path)?;
     }
 
@@ -66,7 +65,7 @@ pub fn unstage_file(repo: &Repository, path: &std::path::Path) -> Result<(), git
     let head = match repo.head() {
         Ok(h) => h.peel_to_commit()?,
         Err(_) => {
-            // No HEAD (initial commit case)
+            // Without HEAD, unstage means remove the path from the initial index.
             let mut index = repo.index()?;
             index.remove_path(path)?;
             index.write()?;
@@ -74,7 +73,7 @@ pub fn unstage_file(repo: &Repository, path: &std::path::Path) -> Result<(), git
         },
     };
 
-    // Reset only this path in the index
+    // reset_default updates the index pathspec without touching working tree contents.
     repo.reset_default(Some(&head.into_object()), [path])?;
     Ok(())
 }
