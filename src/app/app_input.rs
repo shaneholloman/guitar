@@ -62,11 +62,33 @@ impl App {
         Ok(())
     }
 
+    pub fn show_error(&mut self, message: impl Into<String>) {
+        if self.focus != Focus::ModalError {
+            self.modal_error_return_focus = self.focus;
+        }
+        self.modal_error_message = message.into();
+        self.focus = Focus::ModalError;
+    }
+
+    fn close_error_modal(&mut self) {
+        self.focus = self.modal_error_return_focus;
+        self.modal_error_message.clear();
+    }
+
     pub fn handle_key_event(&mut self, key_event: KeyEvent) {
+        // Commands are looked up by the keymap for the current input mode.
         let key_binding = KeyBinding::new(key_event.code, key_event.modifiers);
         let current_mode = self.mode;
 
-        // Handle text editing within modals
+        if self.focus == Focus::ModalError {
+            if matches!(key_event.code, KeyCode::Enter | KeyCode::Esc) {
+                self.close_error_modal();
+            }
+            self.mode = InputMode::Normal;
+            return;
+        }
+
+        // Text-entry modals own all key handling until they submit or cancel.
         match self.focus {
             Focus::ModalCommit => {
                 match key_event.code {
@@ -76,10 +98,14 @@ impl App {
                     },
                     KeyCode::Enter => {
                         if let Some(repo) = &self.repo {
-                            commit_staged(repo, self.modal_input.value(), &self.name, &self.email).expect("Error");
-                            self.modal_input.clear();
-                            self.reload(None);
-                            self.focus = Focus::Viewport;
+                            match commit_staged(repo, self.modal_input.value(), &self.name, &self.email) {
+                                Ok(_) => {
+                                    self.modal_input.clear();
+                                    self.reload(None);
+                                    self.focus = Focus::Viewport;
+                                },
+                                Err(error) => self.show_error(format!("Commit failed: {error}")),
+                            }
                         }
                     },
                     _ => {
@@ -103,9 +129,7 @@ impl App {
                                     self.reload(None);
                                     self.focus = Focus::Viewport;
                                 },
-                                Err(_) => {
-                                    // TODO
-                                },
+                                Err(error) => self.show_error(format!("Create branch failed: {error}")),
                             }
                         }
                     },
@@ -124,23 +148,20 @@ impl App {
                     KeyCode::Enter => {
                         let sha = self.modal_input.value();
 
-                        // Reject obviously invalid prefixes early
+                        // Git object prefixes cannot be empty or longer than a full SHA-1.
                         if sha.is_empty() || sha.len() > 40 {
                             return;
                         }
 
-                        // Find the correpsonding oid
+                        // Match against already loaded OIDs; unloaded history cannot be jumped to yet.
                         let oid: Option<Oid> = self.oids.oids.iter().find(|oid| oid.to_string().starts_with(sha)).copied();
 
-                        // In case oid exists
                         if let Some(oid) = oid {
-                            // Get the alias
                             let oid_alias = self.oids.get_alias_by_oid(oid);
 
-                            // Find the position in the sorted alias vector
+                            // Jump the graph selection to the row for the matched alias.
                             let next = self.oids.get_sorted_aliases().iter().position(|&alias| alias == oid_alias).unwrap();
 
-                            // Scroll to line number
                             self.graph_selected = next;
                             self.modal_input.clear();
                             self.focus = Focus::Viewport;
@@ -162,19 +183,21 @@ impl App {
                         if let Some(repo) = &self.repo {
                             let tag_name = self.modal_input.value();
 
-                            // Reject obviously invalid prefixes early
+                            // Empty tag names would fail in git anyway and leave the modal unchanged.
                             if tag_name.is_empty() {
                                 return;
                             }
 
                             let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
 
-                            // Get the alias
-                            tag(repo, *oid, tag_name).unwrap();
-
-                            self.reload(None);
-                            self.modal_input.clear();
-                            self.focus = Focus::Viewport;
+                            match tag(repo, *oid, tag_name) {
+                                Ok(_) => {
+                                    self.reload(None);
+                                    self.modal_input.clear();
+                                    self.focus = Focus::Viewport;
+                                },
+                                Err(error) => self.show_error(format!("Create tag failed: {error}")),
+                            }
                         }
                     },
                     _ => {
@@ -191,7 +214,7 @@ impl App {
         {
             if !(self.viewport == Viewport::Splash && self.focus == Focus::Viewport) {
                 match cmd {
-                    // User Interface
+                    // User interface commands change focus, panes, modes, and top-level views.
                     Command::WidenScope => self.on_widen_scope(),
                     Command::NarrowScope => self.on_narrow_scope(),
                     Command::FocusNextPane => self.on_focus_next_pane(),
@@ -210,7 +233,7 @@ impl App {
                     Command::ActionMode => self.on_action_mode(),
                     Command::Exit => self.on_exit(),
 
-                    // Lists
+                    // List commands share selection semantics across panes.
                     Command::ScrollPageUp => self.on_scroll_page_up(),
                     Command::ScrollPageDown => self.on_scroll_page_down(),
                     Command::ScrollHalfPageUp => self.on_scroll_half_page_up(),
@@ -222,7 +245,7 @@ impl App {
                     Command::GoToBeginning => self.on_scroll_to_beginning(),
                     Command::GoToEnd => self.on_scroll_to_end(),
 
-                    // Graph
+                    // Graph commands understand commit topology and branch filters.
                     Command::ScrollUpBranch => self.on_scroll_up_branch(),
                     Command::ScrollDownBranch => self.on_scroll_down_branch(),
                     Command::ScrollUpCommit => self.on_scroll_up_commit(),
@@ -231,10 +254,10 @@ impl App {
                     Command::SoloBranch => self.on_solo_branch(),
                     Command::ToggleBranch => self.on_toggle_branch(),
 
-                    // Viewer
+                    // Viewer commands change how diffs are navigated.
                     Command::ToggleHunkMode => self.on_toggle_hunk_mode(),
 
-                    // Git
+                    // Git commands mutate repository state and usually reload afterward.
                     Command::Drop => self.on_drop(),
                     Command::Pop => self.on_pop(),
                     Command::Stash => self.on_stash(),
@@ -256,13 +279,13 @@ impl App {
                 }
             } else {
                 match cmd {
-                    // User Interface
+                    // Splash allows only navigation and opening a selected recent repo.
                     Command::NarrowScope => self.on_narrow_scope(),
                     Command::Select => self.on_select(),
                     Command::Back => self.on_back(),
                     Command::Exit => self.on_exit(),
 
-                    // Lists
+                    // List navigation keeps the recent-repository picker usable.
                     Command::ScrollPageUp => self.on_scroll_page_up(),
                     Command::ScrollPageDown => self.on_scroll_page_down(),
                     Command::ScrollHalfPageUp => self.on_scroll_half_page_up(),
@@ -279,7 +302,7 @@ impl App {
             }
         }
 
-        // Reset mode to normal
+        // Action mode is single-shot so destructive commands require a fresh prefix.
         if current_mode == InputMode::Action {
             self.mode = InputMode::Normal;
         }
@@ -361,7 +384,7 @@ impl App {
                 if let Some(repo) = &self.repo {
                     let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                    // Get visible branches for this alias, fallback to all if empty
+                    // Restrict choices to the active branch filter unless no filter is active.
                     let visible_branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
                         self.branches.all.get(&alias).cloned().unwrap_or_default()
                     } else {
@@ -369,34 +392,34 @@ impl App {
                     };
 
                     if let Some(branch_name) = visible_branch_names.get(self.modal_checkout_selected as usize) {
-                        checkout_branch(repo, &mut self.branches.visible_branch_names, &mut self.branches.local, alias, branch_name).expect("Failed to checkout branch");
-
-                        self.modal_checkout_selected = 0;
-                        self.focus = Focus::Viewport;
-                        self.reload(None);
+                        match checkout_branch(repo, &mut self.branches.visible_branch_names, &mut self.branches.local, alias, branch_name) {
+                            Ok(_) => {
+                                self.modal_checkout_selected = 0;
+                                self.focus = Focus::Viewport;
+                                self.reload(None);
+                            },
+                            Err(error) => self.show_error(format!("Checkout failed: {error}")),
+                        }
                     }
                 }
             },
             Focus::ModalSolo => {
-                // Get the currently selected commit alias
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                // Get visible branches for this alias, fallback to all if visible set is empty
+                // Solo choices mirror what the graph currently considers visible.
                 let visible_branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
                     self.branches.all.get(&alias).cloned().unwrap_or_default()
                 } else {
                     self.branches.visible_branch_names.iter().filter(|b| self.branches.all.get(&alias).is_some_and(|all| all.contains(b))).cloned().collect()
                 };
 
-                // Pick the branch at modal_solo_selected index
+                // Selecting an already soloed branch clears the filter back to all branches.
                 if let Some(branch) = visible_branch_names.get(self.modal_solo_selected as usize) {
                     let is_already_solo = self.branches.visible_branch_names.len() == 1 && self.branches.visible_branch_names.contains(branch);
 
                     if is_already_solo {
-                        // Show all branches again
                         self.branches.visible_branch_names.clear();
                     } else {
-                        // Solo this branch
                         self.branches.visible_branch_names.clear();
                         self.branches.visible_branch_names.insert(branch.clone());
                     }
@@ -411,14 +434,13 @@ impl App {
                 if let Some(repo) = &self.repo {
                     let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                    // Get visible branches for this alias, fallback to all if visible set is empty
+                    // Deletion choices mirror graph visibility so hidden branches stay untouched.
                     let visible_branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
                         self.branches.all.get(&alias).cloned().unwrap_or_default()
                     } else {
                         self.branches.visible_branch_names.iter().filter(|b| self.branches.all.get(&alias).is_some_and(|all| all.contains(b))).cloned().collect()
                     };
 
-                    // Pick the branch at modal_delete_branch_selected index
                     if let Some(branch) = visible_branch_names.get(self.modal_delete_branch_selected as usize) {
                         match delete_branch(repo, branch) {
                             Ok(_) => {
@@ -427,9 +449,7 @@ impl App {
                                 self.focus = Focus::Viewport;
                                 self.reload(None);
                             },
-                            Err(_) => {
-                                // TODO: show error or notification
-                            },
+                            Err(error) => self.show_error(format!("Delete branch failed: {error}")),
                         }
                     }
                 }
@@ -438,11 +458,16 @@ impl App {
                 if let Some(repo) = &self.repo {
                     let alias = self.oids.get_alias_by_idx(self.graph_selected);
                     let tags = self.tags.local.get(&alias).cloned().unwrap_or_default();
-                    let tag = tags.get(self.modal_delete_tag_selected as usize).unwrap();
-                    untag(repo, tag).unwrap();
-                    self.modal_delete_tag_selected = 0;
-                    self.focus = Focus::Viewport;
-                    self.reload(None);
+                    if let Some(tag) = tags.get(self.modal_delete_tag_selected as usize) {
+                        match untag(repo, tag) {
+                            Ok(_) => {
+                                self.modal_delete_tag_selected = 0;
+                                self.focus = Focus::Viewport;
+                                self.reload(None);
+                            },
+                            Err(error) => self.show_error(format!("Delete tag failed: {error}")),
+                        }
+                    }
                 }
             },
             _ => {},
@@ -769,7 +794,7 @@ impl App {
             Focus::ModalCheckout => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                // Get branch names: visible first, fallback to all if empty
+                // Modal navigation wraps over the same branch list the modal displays.
                 let branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
                     self.branches.all.get(&alias).cloned().unwrap_or_default()
                 } else {
@@ -786,7 +811,7 @@ impl App {
             Focus::ModalSolo => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                // Get branch names: visible first, fallback to all if empty
+                // Modal navigation wraps over the same branch list the modal displays.
                 let branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
                     self.branches.all.get(&alias).cloned().unwrap_or_default()
                 } else {
@@ -804,14 +829,13 @@ impl App {
                 if let Some(repo) = &self.repo {
                     let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                    // Get branch names: visible first, fallback to all if empty
+                    // Current branch is filtered out after visibility so it cannot be deleted.
                     let mut branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
                         self.branches.all.get(&alias).cloned().unwrap_or_default()
                     } else {
                         self.branches.visible_branch_names.iter().filter(|name| self.branches.all.get(&alias).is_some_and(|branches| branches.contains(name))).cloned().collect()
                     };
 
-                    // Exclude current branch from deletable branches
                     if let Some(current) = get_current_branch(repo) {
                         branch_names.retain(|branch| branch != &current);
                     }
@@ -885,7 +909,7 @@ impl App {
             Focus::ModalCheckout => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                // Get branch names: visible first, fallback to all if empty
+                // Modal navigation wraps over the same branch list the modal displays.
                 let branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
                     self.branches.all.get(&alias).cloned().unwrap_or_default()
                 } else {
@@ -902,7 +926,7 @@ impl App {
             Focus::ModalSolo => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                // Get branch names: visible first, fallback to all if empty
+                // Modal navigation wraps over the same branch list the modal displays.
                 let branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
                     self.branches.all.get(&alias).cloned().unwrap_or_default()
                 } else {
@@ -911,7 +935,6 @@ impl App {
 
                 let len = branch_names.len() as i32;
                 if len > 0 {
-                    // Scroll down with wrapping
                     self.modal_solo_selected = (self.modal_solo_selected + 1) % len;
                 } else {
                     self.modal_solo_selected = 0;
@@ -921,21 +944,19 @@ impl App {
                 if let Some(repo) = &self.repo {
                     let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                    // Get branch names: visible first, fallback to all if empty
+                    // Current branch is filtered out after visibility so it cannot be deleted.
                     let mut branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
                         self.branches.all.get(&alias).cloned().unwrap_or_default()
                     } else {
                         self.branches.visible_branch_names.iter().filter(|name| self.branches.all.get(&alias).is_some_and(|branches| branches.contains(name))).cloned().collect()
                     };
 
-                    // Exclude current branch from deletable branches
                     if let Some(current) = get_current_branch(repo) {
                         branch_names.retain(|branch| branch != &current);
                     }
 
                     let length = branch_names.len() as i32;
                     if length > 0 {
-                        // Scroll down with wrapping
                         self.modal_delete_branch_selected = (self.modal_delete_branch_selected + 1) % length;
                     } else {
                         self.modal_delete_branch_selected = 0;
@@ -1134,37 +1155,7 @@ impl App {
             return;
         }
 
-        // Collect the line indices of aliases that have visible branches
-        let mut visible_indices: Vec<usize> = self
-            .branches
-            .all
-            .iter()
-            .filter_map(|(&alias, all_branches)| {
-                let relevant_branches: Vec<&String> = all_branches.iter().filter(|b| self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(*b)).collect();
-                if relevant_branches.is_empty() {
-                    None
-                } else {
-                    // Lookup the line in indices
-                    self.branches.indices.get(alias as usize).copied()
-                }
-            })
-            .collect();
-
-        // Sort ascending (line order)
-        visible_indices.sort_unstable();
-
-        // Find the largest visible line index that is less than current selection
-        if let Some(&next) = visible_indices.iter().rev().find(|&&idx| idx < self.graph_selected) {
-            self.graph_selected = next;
-        }
-    }
-
-    pub fn on_scroll_down_branch(&mut self) {
-        if self.focus != Focus::Viewport || self.viewport != Viewport::Graph {
-            return;
-        }
-
-        // Collect the line indices of aliases that have visible branches
+        // Build candidate rows from branch labels currently visible in the graph.
         let mut visible_indices: Vec<usize> = self
             .branches
             .all
@@ -1175,10 +1166,33 @@ impl App {
             })
             .collect();
 
-        // Sort ascending (line order)
+        // Sorting by row makes "up" choose the nearest newer visible branch.
         visible_indices.sort_unstable();
 
-        // Find the smallest visible line index that is greater than current selection
+        if let Some(&next) = visible_indices.iter().rev().find(|&&idx| idx < self.graph_selected) {
+            self.graph_selected = next;
+        }
+    }
+
+    pub fn on_scroll_down_branch(&mut self) {
+        if self.focus != Focus::Viewport || self.viewport != Viewport::Graph {
+            return;
+        }
+
+        // Build candidate rows from branch labels currently visible in the graph.
+        let mut visible_indices: Vec<usize> = self
+            .branches
+            .all
+            .iter()
+            .filter_map(|(&alias, all_branches)| {
+                let relevant_branches: Vec<&String> = all_branches.iter().filter(|b| self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(*b)).collect();
+                if relevant_branches.is_empty() { None } else { self.branches.indices.get(alias as usize).copied() }
+            })
+            .collect();
+
+        // Sorting by row makes "down" choose the nearest older visible branch.
+        visible_indices.sort_unstable();
+
         if let Some(&next) = visible_indices.iter().find(|&&idx| idx > self.graph_selected) {
             self.graph_selected = next;
         }
@@ -1239,7 +1253,7 @@ impl App {
     }
 
     pub fn on_toggle_hunk_mode(&mut self) {
-        // Switching mode, preserving the semantically correct line number
+        // Preserve the closest logical diff location when switching viewer modes.
         match self.viewer_mode {
             ViewerMode::Full => {
                 let full_idx = self.viewer_selected;
@@ -1365,7 +1379,7 @@ impl App {
                 let (_, branch) = self.branches.sorted.get(self.branches_selected).unwrap();
                 let branch = branch.clone();
 
-                // If this branch is already the only visible one, clear it
+                // Repeating solo on the same branch clears the filter back to all branches.
                 if self.branches.visible_branch_names.len() == 1 && self.branches.visible_branch_names.contains(&branch) {
                     self.branches.visible_branch_names.clear();
                 } else {
@@ -1383,7 +1397,7 @@ impl App {
 
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
 
-                // Filter the sorted branches that belong to this alias
+                // Commits with multiple branch labels need a modal before choosing the solo branch.
                 let branches_for_alias: Vec<String> = self.branches.sorted.iter().filter(|(b_alias, _)| *b_alias == alias).map(|(_, name)| name.clone()).collect();
 
                 if branches_for_alias.is_empty() {
@@ -1411,56 +1425,74 @@ impl App {
     }
 
     pub fn on_drop(&mut self) {
-        if let Some(repo) = &self.repo
-            && self.viewport == Viewport::Graph
-            && self.focus == Focus::Viewport
-        {
+        if self.repo.is_some() && self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
             let alias = self.oids.get_alias_by_idx(self.graph_selected);
             if !self.oids.stashes.contains(&alias) {
                 return;
             }
 
-            let path = repo.path().to_path_buf();
-            let mut repo = Repository::open(path).unwrap();
+            let Some(path) = self.repo.as_ref().map(|repo| repo.path().to_path_buf()) else {
+                return;
+            };
+            let mut repo = match Repository::open(path) {
+                Ok(repo) => repo,
+                Err(error) => {
+                    self.show_error(format!("Open repository failed: {error}"));
+                    return;
+                },
+            };
             let oid = self.oids.get_oid_by_alias(alias);
 
-            // Due to incosistnent git2 api, stashing requires mutalbe repo reference, im too lazy
-            pop(&mut repo, oid, false).unwrap();
-            self.reload(None);
+            match pop(&mut repo, oid, false) {
+                Ok(_) => self.reload(None),
+                Err(error) => self.show_error(format!("Drop stash failed: {error}")),
+            }
         }
     }
 
     pub fn on_pop(&mut self) {
-        if let Some(repo) = &self.repo
-            && self.viewport == Viewport::Graph
-            && self.focus == Focus::Viewport
-        {
+        if self.repo.is_some() && self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
             let alias = self.oids.get_alias_by_idx(self.graph_selected);
             if !self.oids.stashes.contains(&alias) {
                 return;
             }
 
-            let path = repo.path().to_path_buf();
-            let mut repo = Repository::open(path).unwrap();
+            let Some(path) = self.repo.as_ref().map(|repo| repo.path().to_path_buf()) else {
+                return;
+            };
+            let mut repo = match Repository::open(path) {
+                Ok(repo) => repo,
+                Err(error) => {
+                    self.show_error(format!("Open repository failed: {error}"));
+                    return;
+                },
+            };
             let oid = self.oids.get_oid_by_alias(alias);
 
-            // Due to incosistnent git2 api, stashing requires mutalbe repo reference, im too lazy
-            pop(&mut repo, oid, true).unwrap();
-            self.reload(None);
+            match pop(&mut repo, oid, true) {
+                Ok(_) => self.reload(None),
+                Err(error) => self.show_error(format!("Pop stash failed: {error}")),
+            }
         }
     }
 
     pub fn on_stash(&mut self) {
-        if let Some(repo) = &self.repo
-            && self.viewport == Viewport::Graph
-            && self.focus == Focus::Viewport
-        {
-            let path = repo.path().to_path_buf();
-            let mut repo = Repository::open(path).unwrap();
+        if self.repo.is_some() && self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
+            let Some(path) = self.repo.as_ref().map(|repo| repo.path().to_path_buf()) else {
+                return;
+            };
+            let mut repo = match Repository::open(path) {
+                Ok(repo) => repo,
+                Err(error) => {
+                    self.show_error(format!("Open repository failed: {error}"));
+                    return;
+                },
+            };
 
-            // Due to incosistnent git2 api, stashing requires mutalbe repo reference, im too lazy
-            stash(&mut repo).unwrap();
-            self.reload(None);
+            match stash(&mut repo) {
+                Ok(_) => self.reload(None),
+                Err(error) => self.show_error(format!("Stash failed: {error}")),
+            }
         }
     }
 
@@ -1474,13 +1506,12 @@ impl App {
         if self.viewport != Viewport::Settings {
             let repo_path = self.path.as_deref().unwrap_or(".");
             let handle = fetch_over_ssh(repo_path, "origin");
-            match handle.join().expect("Thread panicked") {
-                Ok(_) => {
+            match handle.join() {
+                Ok(Ok(_)) => {
                     self.reload(None);
                 },
-                _ => {
-                    // TODO: Handle error
-                },
+                Ok(Err(error)) => self.show_error(format!("Fetch failed: {error}")),
+                Err(_) => self.show_error("Fetch failed: worker thread panicked"),
             }
         }
     }
@@ -1490,27 +1521,25 @@ impl App {
 
         match self.focus {
             Focus::Branches => {
-                // Always allow checkout from branches view
-                let (alias, branch) = self.branches.sorted.get(self.branches_selected).unwrap();
+                // Branch pane checkout uses the selected row directly.
+                let Some((alias, branch)) = self.branches.sorted.get(self.branches_selected).cloned() else {
+                    return;
+                };
 
-                checkout_branch(
-                    repo,
-                    &mut self.branches.visible_branch_names, // HashSet of visible branches
-                    &mut self.branches.local,                // Local branches map
-                    *alias,
-                    branch,
-                )
-                .expect("Error");
+                match checkout_branch(repo, &mut self.branches.visible_branch_names, &mut self.branches.local, alias, &branch) {
+                    Ok(_) => {
+                        // Keep graph selection on the commit that owns the checked-out branch.
+                        self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias).unwrap_or(0);
 
-                // Update graph selection to point to the alias
-                self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == alias).unwrap_or(0);
-
-                self.focus = Focus::Viewport;
-                self.reload(None);
+                        self.focus = Focus::Viewport;
+                        self.reload(None);
+                    },
+                    Err(error) => self.show_error(format!("Checkout failed: {error}")),
+                }
             },
 
             Focus::Viewport => {
-                // Only allow checkout from graph if a non-zero line is selected
+                // The uncommitted pseudo-row has no standalone commit to checkout.
                 if self.viewport != Viewport::Graph || self.graph_selected == 0 {
                     return;
                 }
@@ -1518,31 +1547,37 @@ impl App {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
                 let oid = self.oids.get_oid_by_alias(alias);
 
-                // All branches pointing to this commit
+                // Ambiguous commits are checked out through a branch-selection modal.
                 let branches_for_alias: Vec<String> = self.branches.all.get(&alias).cloned().unwrap_or_default();
 
                 match branches_for_alias.len() {
                     0 => {
-                        // No branch: checkout detached HEAD
-                        checkout_head(repo, *oid);
-                        self.focus = Focus::Viewport;
-                        self.reload(None);
+                        // No branch label means detached checkout is the only option.
+                        match checkout_head(repo, *oid) {
+                            Ok(_) => {
+                                self.focus = Focus::Viewport;
+                                self.reload(None);
+                            },
+                            Err(error) => self.show_error(format!("Checkout failed: {error}")),
+                        }
                     },
                     1 => {
-                        // Exactly one branch: checkout immediately
-                        checkout_branch(repo, &mut self.branches.visible_branch_names, &mut self.branches.local, alias, &branches_for_alias[0]).expect("Error");
-
-                        self.focus = Focus::Viewport;
-                        self.reload(None);
+                        // A single label can be checked out without another prompt.
+                        match checkout_branch(repo, &mut self.branches.visible_branch_names, &mut self.branches.local, alias, &branches_for_alias[0]) {
+                            Ok(_) => {
+                                self.focus = Focus::Viewport;
+                                self.reload(None);
+                            },
+                            Err(error) => self.show_error(format!("Checkout failed: {error}")),
+                        }
                     },
                     _ => {
-                        // Multiple branches: open modal to select
                         self.focus = Focus::ModalCheckout;
                     },
                 }
             },
 
-            _ => (), // other focus modes don't allow checkout
+            _ => (),
         }
     }
 
@@ -1554,15 +1589,21 @@ impl App {
                         return;
                     }
                     let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                    reset_to_commit(repo, *oid, git2::ResetType::Hard).expect("Couldn't hard reset");
-                    self.reload(None);
-                    self.focus = Focus::Viewport;
+                    match reset_to_commit(repo, *oid, git2::ResetType::Hard) {
+                        Ok(_) => {
+                            self.reload(None);
+                            self.focus = Focus::Viewport;
+                        },
+                        Err(error) => self.show_error(format!("Hard reset failed: {error}")),
+                    }
                 },
                 Focus::StatusTop | Focus::StatusBottom => {
                     if let Some(file_name) = self.get_selected_file_name() {
                         let path = Path::new(&file_name);
-                        let _ = reset_file(repo, path);
-                        self.reload(None);
+                        match reset_file(repo, path) {
+                            Ok(_) => self.reload(None),
+                            Err(error) => self.show_error(format!("Reset file failed: {error}")),
+                        }
                     }
                 },
                 _ => {},
@@ -1578,9 +1619,13 @@ impl App {
                 return;
             }
             let oid = self.oids.get_oid_by_idx(self.graph_selected);
-            reset_to_commit(repo, *oid, git2::ResetType::Mixed).expect("Couldn't mixed reset");
-            self.reload(None);
-            self.focus = Focus::Viewport;
+            match reset_to_commit(repo, *oid, git2::ResetType::Mixed) {
+                Ok(_) => {
+                    self.reload(None);
+                    self.focus = Focus::Viewport;
+                },
+                Err(error) => self.show_error(format!("Mixed reset failed: {error}")),
+            }
         }
     }
 
@@ -1592,8 +1637,10 @@ impl App {
                     match self.focus {
                         Focus::Viewport => {
                             if self.uncommitted.is_staged {
-                                unstage_all(repo).expect("Couldn't unstage all");
-                                self.reload(None);
+                                match unstage_all(repo) {
+                                    Ok(_) => self.reload(None),
+                                    Err(error) => self.show_error(format!("Unstage all failed: {error}")),
+                                }
                             }
                         },
                         Focus::StatusTop => {
@@ -1613,14 +1660,16 @@ impl App {
                                         if idx < deleted.len() {
                                             deleted[idx].clone()
                                         } else {
-                                            // TODO: Handle this case later
+                                            // Selection drifted beyond the staged lists; ignore the command.
                                             return;
                                         }
                                     }
                                 }
                             };
-                            unstage_file(repo, Path::new(&file)).expect("Couldn't unstage file");
-                            self.reload(None);
+                            match unstage_file(repo, Path::new(&file)) {
+                                Ok(_) => self.reload(None),
+                                Err(error) => self.show_error(format!("Unstage file failed: {error}")),
+                            }
                         },
                         _ => {},
                     }
@@ -1637,8 +1686,10 @@ impl App {
                     match self.focus {
                         Focus::Viewport => {
                             if self.uncommitted.is_unstaged {
-                                stage_all(repo).expect("Couldn't add all");
-                                self.reload(None);
+                                match stage_all(repo) {
+                                    Ok(_) => self.reload(None),
+                                    Err(error) => self.show_error(format!("Stage all failed: {error}")),
+                                }
                             }
                         },
                         Focus::StatusBottom => {
@@ -1658,14 +1709,16 @@ impl App {
                                         if idx < deleted.len() {
                                             deleted[idx].clone()
                                         } else {
-                                            // TODO: Handle this case later
+                                            // Selection drifted beyond the unstaged lists; ignore the command.
                                             return;
                                         }
                                     }
                                 }
                             };
-                            stage_file(repo, Path::new(&file)).expect("Couldn't add file");
-                            self.reload(None);
+                            match stage_file(repo, Path::new(&file)) {
+                                Ok(_) => self.reload(None),
+                                Err(error) => self.show_error(format!("Stage file failed: {error}")),
+                            }
                         },
                         _ => {},
                     }
@@ -1691,15 +1744,17 @@ impl App {
                 Viewport::Settings | Viewport::Viewer => {},
                 _ => {
                     let repo_path = self.path.as_deref().unwrap_or(".");
-                    let branch = get_current_branch(repo).expect("Couldn't get current branch");
+                    let Some(branch) = get_current_branch(repo) else {
+                        self.show_error("Push failed: detached HEAD has no current branch");
+                        return;
+                    };
                     let handle = push_over_ssh(repo_path, "origin", branch.as_str(), true);
-                    match handle.join().expect("Thread panicked") {
-                        Ok(_) => {
+                    match handle.join() {
+                        Ok(Ok(_)) => {
                             self.reload(None);
                         },
-                        _ => {
-                            // TODO: Handle error
-                        },
+                        Ok(Err(error)) => self.show_error(format!("Push failed: {error}")),
+                        Err(_) => self.show_error("Push failed: worker thread panicked"),
                     }
                 },
             }
@@ -1713,13 +1768,12 @@ impl App {
                 _ => {
                     let repo_path = self.path.as_deref().unwrap_or(".");
                     let handle = push_tags_over_ssh(repo_path, "origin");
-                    match handle.join().expect("Thread panicked") {
-                        Ok(_) => {
+                    match handle.join() {
+                        Ok(Ok(_)) => {
                             self.reload(None);
                         },
-                        _ => {
-                            // TODO: Handle error
-                        },
+                        Ok(Err(error)) => self.show_error(format!("Push tags failed: {error}")),
+                        Err(_) => self.show_error("Push tags failed: worker thread panicked"),
                     }
                 },
             }
@@ -1747,19 +1801,27 @@ impl App {
 
         match self.focus {
             Focus::Branches => {
-                // Get the selected branch
-                let branch = &self.branches.sorted.get(self.branches_selected).unwrap().1;
+                let Some((_, branch)) = self.branches.sorted.get(self.branches_selected).cloned() else {
+                    return;
+                };
 
-                // Only proceed if it's not the current branch
+                // Deleting the currently checked-out branch would leave HEAD invalid.
                 let proceed = match get_current_branch(repo) {
-                    Some(current) => current != *branch,
+                    Some(current) => current != branch,
                     None => true,
                 };
 
-                if proceed && delete_branch(repo, branch).is_ok() {
-                    // Remove it from visible set
-                    self.branches.visible_branch_names.remove(branch);
-                    self.reload(None);
+                if proceed {
+                    match delete_branch(repo, &branch) {
+                        Ok(_) => {
+                            // Remove stale filter entries before reload repopulates branches.
+                            self.branches.visible_branch_names.remove(&branch);
+                            self.reload(None);
+                        },
+                        Err(error) => self.show_error(format!("Delete branch failed: {error}")),
+                    }
+                } else {
+                    self.show_error("Delete branch failed: cannot delete the current branch");
                 }
             },
 
@@ -1771,19 +1833,19 @@ impl App {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
                 let current = get_current_branch(repo);
 
-                // Get all visible branches pointing to this alias
+                // Current branch is excluded so graph deletion cannot remove checked-out HEAD.
                 let visible_branches: Vec<_> = self.branches.all.get(&alias).cloned().unwrap_or_default().into_iter().filter(|b| current.as_ref() != Some(b)).collect();
 
                 match visible_branches.len() {
-                    0 => {}, // nothing to delete
-                    1 => {
-                        if delete_branch(repo, &visible_branches[0]).is_ok() {
+                    0 => {},
+                    1 => match delete_branch(repo, &visible_branches[0]) {
+                        Ok(_) => {
                             self.branches.visible_branch_names.remove(&visible_branches[0]);
                             self.reload(None);
-                        }
+                        },
+                        Err(error) => self.show_error(format!("Delete branch failed: {error}")),
                     },
                     _ => {
-                        // Multiple branches → show modal to select which one to delete
                         self.focus = Focus::ModalDeleteBranch;
                     },
                 }
@@ -1810,9 +1872,13 @@ impl App {
                 Viewport::Settings | Viewport::Viewer => {},
                 _ => match self.focus {
                     Focus::Tags => {
-                        let tag = &self.tags.sorted.get(self.tags_selected).unwrap().1;
-                        untag(repo, tag).unwrap();
-                        self.reload(None);
+                        let Some((_, tag)) = self.tags.sorted.get(self.tags_selected).cloned() else {
+                            return;
+                        };
+                        match untag(repo, &tag) {
+                            Ok(_) => self.reload(None),
+                            Err(error) => self.show_error(format!("Delete tag failed: {error}")),
+                        }
                     },
                     Focus::Viewport => {
                         if self.graph_selected != 0 {
@@ -1820,9 +1886,9 @@ impl App {
                             if let Some(tag_names) = self.tags.local.get(&alias) {
                                 match tag_names.len() {
                                     0 => {},
-                                    1 => {
-                                        untag(repo, tag_names[0].as_str()).unwrap();
-                                        self.reload(None);
+                                    1 => match untag(repo, tag_names[0].as_str()) {
+                                        Ok(_) => self.reload(None),
+                                        Err(error) => self.show_error(format!("Delete tag failed: {error}")),
                                     },
                                     _ => {
                                         self.focus = Focus::ModalDeleteTag;
@@ -1846,11 +1912,11 @@ impl App {
             let idx = if self.graph_selected == 0 { 1 } else { self.graph_selected };
             let oid = self.oids.get_oid_by_idx(idx);
 
-            // Perform cherry-pick
-            cherry_pick_commit(repo, *oid, Some("message"), true).unwrap();
-
-            // Reload after operation
-            self.reload(None);
+            // Cherry-pick reloads because it creates a new HEAD commit.
+            match cherry_pick_commit(repo, *oid, Some("message"), true) {
+                Ok(_) => self.reload(None),
+                Err(error) => self.show_error(format!("Cherry-pick failed: {error}")),
+            }
         }
     }
 
@@ -1871,10 +1937,9 @@ impl App {
                     self.viewport = Viewport::Splash;
                     self.focus = Focus::Viewport;
 
-                    // Start with the first selectable line
+                    // Highlight the current repository in the recent list when possible.
                     let mut selected = 0;
 
-                    // If current repo path exists in recent, add its position
                     if let Some(path) = &self.path
                         && let Some(pos) = self.recent.iter().position(|p| p == path)
                     {

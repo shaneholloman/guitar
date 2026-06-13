@@ -12,18 +12,18 @@ use git2::Repository;
 use im::HashSet;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-// Context for walking and rendering commits
+// Walks git history into lane snapshots and ref lookup tables.
 pub struct Walker {
-    // General
+    // Repository state shared with the batcher and stash query.
     pub repo: Rc<RefCell<Repository>>,
 
-    // Batcher
+    // Revwalk cursor for incremental history loading.
     pub batcher: Batcher,
 
-    // Walker utilities
+    // Mutable lane buffer that records topology deltas.
     pub buffer: RefCell<Buffer>,
 
-    // Walker data
+    // Alias and ref metadata accumulated during the walk.
     pub oids: Oids,
 
     pub branches_lanes: HashMap<u32, usize>,
@@ -35,16 +35,16 @@ pub struct Walker {
 
     pub stashes_lanes: HashMap<u32, usize>,
 
-    // Batching
+    // Number of commits requested per walk iteration.
     pub amount: usize,
 }
 
-// Output structure for walk results
+// Snapshot sent from the worker thread back to the UI.
 pub struct WalkerOutput {
-    // Walker utilities
+    // Lane data for graph rendering.
     pub buffer: RefCell<Buffer>,
 
-    // Walker data
+    // Alias and ref metadata for the current batch.
     pub oids: Oids,
 
     pub branches_lanes: HashMap<u32, usize>,
@@ -56,72 +56,46 @@ pub struct WalkerOutput {
 
     pub stashes_lanes: HashMap<u32, usize>,
 
-    // Batching
+    // Flags that let App distinguish first batch, more batches, and completion.
     pub is_again: bool,
     pub is_first: bool,
 }
 
 impl Walker {
-    // Creates a new walker
+    // Open the repository and seed all metadata that does not depend on walking commits.
     pub fn new(path: String, amount: usize, visible_branch_names: HashSet<String>) -> Result<Self, git2::Error> {
         let path = path.clone();
         let repo = Rc::new(RefCell::new(Repository::open(path).expect("Failed to open repo")));
 
-        // Walker utilities
         let buffer = RefCell::new(Buffer::default());
 
-        // Oids data
         let mut oids = Oids::default();
 
-        // Branches data
+        // Branch and tag tips are registered before walking so aliases are stable.
         let branches_lanes = HashMap::new();
         let (branches_local, branches_remote) = get_tip_oids(&repo.borrow(), &mut oids);
 
-        // Tags data
         let tags_lanes = HashMap::new();
         let tags_local = get_tag_oids(&repo.borrow(), &mut oids);
 
-        // Stashes data
         let stashes_lanes = HashMap::new();
 
-        // Get stashed commits and store them in oids
+        // Stashes are collected up front so they can be inserted near their parents later.
         {
             let mut repo_mut = repo.borrow_mut();
             oids.stashes = get_stashed_commits(&mut repo_mut, &mut oids);
         }
 
-        // Batcher
         let batcher = Batcher::new(repo.clone(), &visible_branch_names).expect("Error");
 
-        Ok(Self {
-            repo,
-
-            // Batcher
-            batcher,
-
-            // Walker utilities
-            buffer,
-
-            // Walker data
-            oids,
-            branches_lanes,
-            branches_local,
-            branches_remote,
-            tags_lanes,
-            tags_local,
-            stashes_lanes,
-
-            // Pagination
-            amount,
-        })
+        Ok(Self { repo, batcher, buffer, oids, branches_lanes, branches_local, branches_remote, tags_lanes, tags_local, stashes_lanes, amount })
     }
 
-    // Walk through batch of commits, update buffers and render lines
+    // Process one revwalk page and update lane snapshots for the renderer.
     pub fn walk(&mut self) -> bool {
-        // Repo borrow
         let repo = self.repo.borrow();
 
-        // Determine the current HEAD oid
+        // Without HEAD there is no stable parent for the uncommitted pseudo-row.
         let head_oid = match repo.head().ok().and_then(|h| h.target()) {
             Some(oid) => oid,
             None => {
@@ -129,22 +103,19 @@ impl Walker {
             },
         };
 
-        // Get the alias
         let head_alias = self.oids.get_alias_by_oid(head_oid);
 
-        // Sort commits
         let mut sorted_batch: Vec<u32> = Vec::new();
         get_sorted_oids(&self.batcher, &mut self.oids, &mut sorted_batch, self.amount);
 
-        // Make a fake commit for unstaged changes
+        // Alias NONE is rendered as the uncommitted row above HEAD.
         if self.oids.get_commit_count() == 1 {
             self.buffer.borrow_mut().update(Chunk::uncommitted(head_alias, NONE));
         }
 
-        // Get all the stashed commits here
         let stashes: Vec<u32> = self.oids.stashes.clone();
 
-        // Insert stashes into sorted_batch right after their parent commit
+        // Place each stash near its first parent so it reads as a side snapshot.
         for &stash_alias in &stashes {
             let stash_oid = self.oids.get_oid_by_alias(stash_alias);
             let stash_commit = repo.find_commit(*stash_oid).unwrap();
@@ -152,43 +123,39 @@ impl Walker {
             if let Some(parent_oid) = stash_commit.parent_ids().next() {
                 let parent_alias = self.oids.get_alias_by_oid(parent_oid);
 
-                // Find the position of the parent in the current sorted batch
                 if let Some(pos) = sorted_batch.iter().position(|&a| a == parent_alias) {
-                    // Insert the stash alias right after the parent
                     sorted_batch.insert(if pos == 0 { 0 } else { pos - 1 }, stash_alias);
                 }
             }
         }
 
-        // One mutable borrow per walk
+        // Hold one mutable buffer borrow while the page updates topology.
         let mut buffer = self.buffer.borrow_mut();
 
-        // Go through the commits, inferring the graph
         for &alias in sorted_batch.iter() {
             let mut merger_alias: u32 = NONE;
             let oid = self.oids.get_oid_by_alias(alias);
             let commit = repo.find_commit(*oid).unwrap();
 
-            // Get the first and second parents
+            // Only two parents are modeled because the renderer draws one merge edge.
             let mut parents_iter = commit.parent_ids();
             let parent_a_oid = parents_iter.next();
             let parent_b_oid = parents_iter.next();
 
-            // Get parent aliases
+            // Stashes should point only to their base commit, not the index/worktree parents.
             let (parent_a, parent_b) = if stashes.contains(&alias) {
                 (parent_a_oid.map(|p| self.oids.get_alias_by_oid(p)).unwrap_or(NONE), NONE)
             } else {
                 (parent_a_oid.map(|p| self.oids.get_alias_by_oid(p)).unwrap_or(NONE), parent_b_oid.map(|p| self.oids.get_alias_by_oid(p)).unwrap_or(NONE))
             };
 
-            // Create commit chunk for the current commit with its parents
             let chunk = Chunk::commit(alias, parent_a, parent_b);
 
-            // Update
             buffer.update(chunk);
 
             for (lane_idx, chunk) in buffer.curr.iter().enumerate() {
                 if !chunk.is_dummy() && alias == chunk.alias {
+                    // Ref lanes are captured after the buffer decides where this alias sits.
                     if self.branches_local.contains_key(&alias) || self.branches_remote.contains_key(&alias) {
                         self.branches_lanes.insert(alias, lane_idx);
                     }
@@ -202,6 +169,7 @@ impl Walker {
                     }
 
                     if chunk.parent_a != NONE && chunk.parent_b != NONE {
+                        // If the second parent is not already visible as a lane, mark a deferred merge.
                         let mut is_merger_found = false;
                         for chunk_nested in buffer.curr.iter() {
                             if chunk_nested.parent_a != NONE && chunk_nested.parent_b == NONE && chunk.parent_b == chunk_nested.parent_a {
@@ -216,17 +184,15 @@ impl Walker {
                 }
             }
 
-            // Handle mergers
             if merger_alias != NONE {
                 buffer.merger(merger_alias);
             }
 
-            // Register alias in oids
+            // Preserve the rendered order separately from first-seen alias assignment.
             self.oids.append_sorted_alias(alias);
         }
 
-        // Indicate whether repeats are needed
-        // Too lazy to make an off by one mistake here, zero is fine
+        // Empty pages mean the worker is done; emit one backup so decompression has a final delta.
         if sorted_batch.is_empty() {
             buffer.backup();
             return false;

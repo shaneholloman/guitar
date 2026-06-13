@@ -54,7 +54,7 @@ impl TextInput {
             _ => {},
         }
 
-        // Always update scroll after any key event
+        // Editing, deleting, and movement can all move the cursor outside the visible field.
         self.update_scroll(self.max_width);
     }
 
@@ -63,7 +63,7 @@ impl TextInput {
     }
 
     pub fn update_scroll(&mut self, max_width: usize) {
-        // Ensure cursor is visible
+        // Keep the cursor within the horizontal input viewport.
         if self.cursor < self.scroll {
             self.scroll = self.cursor;
         } else if self.cursor >= self.scroll + max_width {

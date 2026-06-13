@@ -19,60 +19,54 @@ use ratatui::{
 
 impl App {
     pub fn draw_settings(&mut self, frame: &mut Frame, repo: &git2::Repository) {
-        // Padding
+        // Settings owns the center viewport and uses centered rows throughout.
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
 
-        // Calculate maximum available width for text
         let available_width = self.layout.graph.width.saturating_sub(1) as usize;
 
-        // Credentials
+        // Credentials are read live so the settings view reflects git config changes.
         let (name, email) = get_git_user_info(repo).unwrap();
 
-        // Setup list items
+        // settings_selections maps interactive rows back to their line indices.
         let mut lines: Vec<Line> = Vec::new();
         self.settings_selections = Vec::new();
         lines.push(Line::default());
 
-        // Each heat cell is "X " - two columns
+        // Each heat cell renders as two terminal columns.
         let cell_width = 2;
 
-        // Borders
+        // Outer margins are reserved so the centered content breathes in narrow terminals.
         let border_width = 8;
 
-        // Available width
         let weekday_label_width = 2;
         let usable_width = available_width.saturating_sub(border_width).saturating_sub(weekday_label_width);
 
-        // How many weeks fit horizontally
+        // Only the most recent weeks that fit are rendered.
         let max_weeks_fit = (usable_width / cell_width).max(1);
         let total_weeks = self.heatmap[0].len();
         let visible_weeks = max_weeks_fit.min(total_weeks);
 
-        // Right align and keep most recent weeks
         let week_start = (total_weeks.saturating_sub(visible_weeks).saturating_add(2)).min(total_weeks);
 
-        // Width used by the heatmap body excluding borders
+        // All settings rows align to the heatmap body width.
         let heatmap_width = visible_weeks * cell_width;
 
-        // Info
         lines.push(Line::default());
         lines.push(
             Line::from(Span::styled(fill_width(" version:", format!("{} ", VERSION).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered(),
         );
         self.settings_selections.push(lines.len().saturating_sub(1));
 
-        // Heatmap
+        // Heatmap rows use weekday labels followed by the cropped commit grid.
         lines.push(Line::default());
         for (day_idx, &label) in WEEKDAY_LABELS.iter().enumerate() {
             let mut spans = Vec::new();
-            // Day label
             spans.push(Span::styled(format!(" {}  ", label), Style::default().fg(self.theme.COLOR_TEXT)));
-            // Heatmap cells
             spans.extend(self.heatmap[day_idx][week_start..].iter().map(|&count| heat_cell(count, &self.theme)));
             lines.push(Line::from(spans).centered());
         }
 
-        // Paths
+        // Config paths are informational, but still selectable for consistent navigation.
         lines.push(Line::default());
         lines.push(Line::from(vec![Span::styled(fill_width(" paths:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
         lines.push(Line::default());
@@ -95,7 +89,7 @@ impl App {
         );
         self.settings_selections.push(lines.len().saturating_sub(1));
 
-        // Credentials
+        // Credential rows are selectable because they are important setup information.
         lines.push(Line::default());
         lines.push(Line::from(vec![Span::styled(fill_width(" credentials:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
         lines.push(Line::default());
@@ -103,15 +97,13 @@ impl App {
             Line::from(Span::styled(fill_width(" name:", format!("{} ", name.unwrap()).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered(),
         );
 
-        // Record the line index as selectable
+        // Selectable rows are recorded immediately after being pushed.
         self.settings_selections.push(lines.len().saturating_sub(1));
         lines.push(Line::from(Span::styled(fill_width(" email:", format!("{} ", email.unwrap()).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
 
-        // Record the line index as selectable
         self.settings_selections.push(lines.len().saturating_sub(1));
         lines.push(Line::from(Span::styled(fill_width(" authorization:", "external ssh agent ", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.COLOR_GREY_900))).centered());
 
-        // Record the line index as selectable
         self.settings_selections.push(lines.len().saturating_sub(1));
         lines.push(Line::default());
         lines.push(Line::from(Span::styled(fill_width(" themes:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
@@ -124,7 +116,6 @@ impl App {
             .centered(),
         );
 
-        // Record the line index as selectable
         self.settings_selections.push(lines.len() - 1);
         lines.push(
             Line::from(Span::styled(
@@ -134,7 +125,6 @@ impl App {
             .centered(),
         );
 
-        // Record the line index as selectable
         self.settings_selections.push(lines.len().saturating_sub(1));
         lines.push(
             Line::from(Span::styled(
@@ -144,10 +134,9 @@ impl App {
             .centered(),
         );
 
-        // Record the line index as selectable
         self.settings_selections.push(lines.len().saturating_sub(1));
 
-        // Keymap
+        // Keymap sections are generated from the active keymap data, not duplicated text.
         lines.push(Line::default());
         lines.push(Line::from(Span::styled(fill_width(" shortcuts / normal mode:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         lines.push(Line::default());
@@ -167,7 +156,6 @@ impl App {
                     .collect();
                 lines.push(Line::from(spans).centered());
 
-                // Record the line index as selectable
                 self.settings_selections.push(lines.len().saturating_sub(1));
             });
         }
@@ -175,13 +163,11 @@ impl App {
         lines.push(Line::from(Span::styled(fill_width(" shortcuts / action mode:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         lines.push(Line::default());
         if let Some(action_keymap) = self.keymaps.get(&InputMode::Action) {
-            // Get normal keys
+            // Action mode only shows bindings that are not already visible in normal mode.
             let normal_keys: std::collections::HashSet<_> = self.keymaps.get(&InputMode::Normal).map(|km| km.keys().cloned().collect()).unwrap_or_default();
 
-            // Filter action keymap to only unique keys
             let unique_action = action_keymap.iter().filter(|(kb, _)| !normal_keys.contains(kb)).map(|(kb, cmd)| (kb.clone(), cmd.clone())).collect();
 
-            // Render only unique action keys
             render_keybindings(&self.theme, &unique_action, heatmap_width).iter().enumerate().for_each(|(idx, kb_line)| {
                 let spans: Vec<Span> = kb_line
                     .clone()
@@ -201,26 +187,23 @@ impl App {
             });
         }
 
-        // Get vertical dimensions
+        // Settings uses sticky scroll so the selected row stays near the bottom while moving down.
         let total_lines = lines.len();
         let visible_height = if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(2) as usize } else { self.layout.graph.height as usize };
 
-        // Snap to nearest selectable line if needed
+        // Navigation lands on selectable rows even when the rendered list contains headings.
         if !self.settings_selections.contains(&self.settings_selected) {
-            // Find nearest selectable line above or below
             let mut nearest = None;
 
-            // Moving down
             if self.last_input_direction == Some(Direction::Down) {
                 nearest = self.settings_selections.iter().copied().find(|&i| i > self.settings_selected);
             }
 
-            // Moving up
             if nearest.is_none() && self.last_input_direction == Some(Direction::Up) {
                 nearest = self.settings_selections.iter().rev().copied().find(|&i| i < self.settings_selected);
             }
 
-            // Fallback to nearest by distance if neither direction flag is set
+            // Without direction, choose the closest selectable row by distance.
             if nearest.is_none() {
                 nearest = self.settings_selections.iter().min_by_key(|&&i| i.abs_diff(self.settings_selected)).copied();
             }
@@ -230,11 +213,10 @@ impl App {
             }
         }
 
-        // Calculate sticky scroll
         let start = (self.settings_selected + 1).saturating_sub(visible_height);
         let end = (start + visible_height).min(total_lines);
 
-        // Setup list items
+        // Ensure blank lines still occupy space after conversion to ListItem.
         let list_items: Vec<ListItem> = lines[start..end]
             .iter()
             .enumerate()
@@ -242,12 +224,11 @@ impl App {
                 let absolute_idx = start + i;
                 let mut item = line.clone();
 
-                // Ensure there is at least one span
                 if item.spans.is_empty() {
                     item.spans.push(Span::raw(" "));
                 }
 
-                // Highlight the selected line if focused
+                // Highlight only while settings has viewport focus.
                 if absolute_idx == self.settings_selected && self.focus == Focus::Viewport {
                     let spans: Vec<Span> = item
                         .spans
@@ -266,13 +247,11 @@ impl App {
             .collect();
 
         if self.layout_config.is_zen {
-            // Setup the list
+            // Zen mode frames settings as a standalone list.
             let list = List::new(list_items).block(Block::default().borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded).padding(padding));
 
-            // Render the list
             frame.render_widget(list, self.layout.graph);
 
-            // Setup the scrollbar
             let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(start);
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("╮"))
@@ -281,19 +260,16 @@ impl App {
                 .thumb_symbol("▌")
                 .thumb_style(Style::default().fg(if self.focus == Focus::Viewport { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
-            // Render the scrollbar
             frame.render_stateful_widget(scrollbar, self.layout.app, &mut scrollbar_state);
 
             return;
         }
 
-        // Setup the list
+        // Normal mode settings reuses the graph viewport without graph borders.
         let list = List::new(list_items).block(Block::default().padding(padding));
 
-        // Render the list
         frame.render_widget(list, self.layout.graph);
 
-        // Setup the scrollbar
         let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(start);
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("╮"))
@@ -302,7 +278,6 @@ impl App {
             .thumb_symbol("▌")
             .thumb_style(Style::default().fg(if self.focus == Focus::Viewport { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
-        // Render the scrollbar
         frame.render_stateful_widget(scrollbar, self.layout.app, &mut scrollbar_state);
     }
 }

@@ -3,16 +3,14 @@ use git2::ObjectType;
 use git2::{Oid, Repository, Time};
 use std::collections::HashMap;
 
-// Returns a map of commit OIDs to the branch names that point to them
+// Map each ref tip to the compact alias used by the graph renderer.
 pub fn get_tip_oids(repo: &Repository, oids: &mut Oids) -> (HashMap<u32, Vec<String>>, HashMap<u32, Vec<String>>) {
     let mut local: HashMap<u32, Vec<String>> = HashMap::new();
     let mut remote: HashMap<u32, Vec<String>> = HashMap::new();
 
-    // Iterate all refs once
     for reference in repo.references().unwrap().flatten() {
-        // Only handle direct refs (skip symbolic ones like HEAD)
+        // Symbolic refs such as HEAD have no target and are skipped.
         if let Some(oid) = reference.target() {
-            // Get the alias
             let alias = oids.get_alias_by_oid(oid);
             let name = reference.name().unwrap_or("unknown");
 
@@ -27,7 +25,7 @@ pub fn get_tip_oids(repo: &Repository, oids: &mut Oids) -> (HashMap<u32, Vec<Str
     (local, remote)
 }
 
-// Get all tags in a repo
+// Map lightweight and annotated tags to the commit aliases they resolve to.
 pub fn get_tag_oids(repo: &Repository, oids: &mut Oids) -> HashMap<u32, Vec<String>> {
     let mut local: HashMap<u32, Vec<String>> = HashMap::new();
 
@@ -42,10 +40,10 @@ pub fn get_tag_oids(repo: &Repository, oids: &mut Oids) -> HashMap<u32, Vec<Stri
             None => continue,
         };
 
-        // Peel ref to commit
+        // Non-commit tags are ignored because the graph has no lane for blobs or trees.
         let obj = match reference.peel(ObjectType::Commit) {
             Ok(obj) => obj,
-            Err(_) => continue, // Ignore if the tag points to non-commit
+            Err(_) => continue,
         };
 
         let commit_oid = obj.id();
@@ -57,24 +55,20 @@ pub fn get_tag_oids(repo: &Repository, oids: &mut Oids) -> HashMap<u32, Vec<Stri
     local
 }
 
-// Update the oids vector
+// Pull the next revwalk page into the global alias order.
 pub fn get_sorted_oids(batcher: &Batcher, oids: &mut Oids, sorted: &mut Vec<u32>, amount: usize) {
-    // Get the next batch of commits
     let chunk = batcher.next(amount);
     if chunk.is_empty() {
-        // No more commits left
         return;
     }
 
-    // Walk all commits topologically
     for oid in chunk {
-        // Get the alias
         let alias = oids.get_alias_by_oid(oid);
         sorted.push(alias);
     }
 }
 
-// Returns the name of the currently checked-out branch, or None if detached HEAD
+// Return the current branch name, or None when HEAD is detached.
 pub fn get_current_branch(repo: &Repository) -> Option<String> {
     let head = repo.head().ok()?;
     if !head.is_branch() {
@@ -83,8 +77,7 @@ pub fn get_current_branch(repo: &Repository) -> Option<String> {
     head.shorthand().map(|s| s.to_string())
 }
 
-// Returns a map of commit OIDs to their timestamps:
-// (commit time, committer time, author time)
+// Return all git timestamp variants for refs that need date metadata.
 pub fn get_timestamps(repo: &Repository, _branches: &HashMap<Oid, Vec<String>>) -> HashMap<Oid, (Time, Time, Time)> {
     _branches
         .keys()
@@ -93,7 +86,6 @@ pub fn get_timestamps(repo: &Repository, _branches: &HashMap<Oid, Vec<String>>) 
             let author_time = commit.author().when();
             let committer_time = commit.committer().when();
             let time = commit.time();
-            // Map each OID to its associated timestamps
             (sha, (time, committer_time, author_time))
         })
         .collect()
@@ -109,6 +101,7 @@ pub fn get_git_user_info(repo: &Repository) -> Result<(Option<String>, Option<St
 pub fn get_stashed_commits(repo: &mut Repository, oids: &mut Oids) -> Vec<u32> {
     let mut stashes = Vec::new();
 
+    // Stashes are real commits; assigning aliases lets them render beside normal history.
     repo.stash_foreach(|_, _, oid| {
         let alias = oids.get_alias_by_oid(*oid);
         stashes.push(alias);

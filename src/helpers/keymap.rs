@@ -164,8 +164,7 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
 
     // Full-page scrolling (Vim-style)
 
-    // 'g' for beginning (in vim it's 'gg', but that requires stateful key handling)
-    // TODO: Implement stateful key handling
+    // 'g' goes to beginning because single-key handling cannot distinguish vim's 'gg' yet.
     map.insert(KeyBinding::new(Char('g'), KeyModifiers::NONE), Command::GoToBeginning);
 
     // 'G' for end
@@ -221,8 +220,7 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     // This is where dangerous/destructive operations live
     map.insert(KeyBinding::new(Char('a'), KeyModifiers::CONTROL), Command::ActionMode);
 
-    // '.' for minimize (vim uses '.' to repeat last command; here it minimizes panels)
-    // TODO: Consider alternative keybinding if this conflicts with user expectations
+    // '.' minimizes panels, trading vim repeat behavior for a compact UI command.
     map.insert(KeyBinding::new(Char('.'), KeyModifiers::NONE), Command::Minimize);
 
     // 'r' for reload (similar to vim's :e to reload file)

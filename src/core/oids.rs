@@ -2,6 +2,7 @@ use crate::core::chunk::NONE;
 use git2::Oid;
 use std::collections::HashMap;
 
+// Stores full OIDs once and passes small numeric aliases through UI data structures.
 #[derive(Clone)]
 pub struct Oids {
     pub zero: Oid,
@@ -19,6 +20,7 @@ impl Default for Oids {
 
 impl Oids {
     pub fn get_alias_by_oid(&mut self, oid: Oid) -> u32 {
+        // Assign aliases lazily so refs, commits, tags, and stashes share one namespace.
         *self.aliases.entry(oid).or_insert_with(|| {
             self.oids.push(oid);
             self.oids.len() as u32 - 1

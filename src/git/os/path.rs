@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+// Walk upward from any path until a non-bare repository root is found.
 pub fn try_into_git_repo_root(start_path: impl AsRef<Path>) -> Option<PathBuf> {
     let mut current_path = start_path.as_ref();
 

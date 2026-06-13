@@ -9,6 +9,7 @@ mod app {
     pub mod app_draw_modal_checkout;
     pub mod app_draw_modal_delete_branch;
     pub mod app_draw_modal_delete_tag;
+    pub mod app_draw_modal_error;
     pub mod app_draw_modal_input;
     pub mod app_draw_modal_solo;
     pub mod app_draw_settings;
@@ -97,10 +98,10 @@ fn reset_saved_config() -> io::Result<()> {
 }
 
 fn main() -> io::Result<()> {
-    // Check args for meta queries
+    // Meta flags are handled before ratatui takes over the terminal.
     let args: Vec<String> = env::args().collect();
 
-    // Return version if requested and then quit
+    // Version output must stay plain so scripts can consume it.
     if args.iter().any(|a| a == VERSION_LONG || a == VERSION_SHORT) {
         println!("{VERSION}");
         return Ok(());

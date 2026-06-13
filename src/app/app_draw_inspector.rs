@@ -14,21 +14,20 @@ use ratatui::{
 
 impl App {
     pub fn draw_inspector(&mut self, frame: &mut Frame, repo: &git2::Repository) {
-        // Padding
+        // Inspector text is padded on both sides for readability in the narrow right pane.
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
 
-        // Calculate maximum available width for text
+        // Width leaves room for padding and the scrollbar edge.
         let available_width = self.layout.inspector.width.saturating_sub(1) as usize;
         let max_text_width = available_width.saturating_sub(2);
 
-        // Flags
+        // The inspector is intentionally empty for the uncommitted pseudo-row.
         let is_showing_uncommitted = self.graph_selected == 0;
 
-        // Lines
         let mut lines: Vec<Line<'_>> = Vec::new();
 
         if !is_showing_uncommitted {
-            // Query commit info
+            // Commit metadata is read lazily for the selected graph row.
             let alias = self.oids.get_alias_by_idx(self.graph_selected);
             let oid = self.oids.get_oid_by_alias(alias);
             let commit = repo.find_commit(*oid).unwrap();
@@ -37,7 +36,7 @@ impl App {
             let summary = commit.summary().unwrap_or("⊘ no summary").to_string();
             let body = commit.body().unwrap_or("⊘ no body").to_string();
 
-            // Assemble lines
+            // Sections are plain list rows so they scroll with the same pane machinery.
             lines = vec![
                 Line::from(Span::styled("commit sha:", Style::default().fg(self.theme.COLOR_GREY_500))),
                 Line::from(Span::styled(truncate_with_ellipsis(&format!("#{}", oid), max_text_width), Style::default().fg(self.theme.COLOR_TEXT))),
@@ -81,25 +80,22 @@ impl App {
             }
         }
 
-        // Get vertical dimensions
+        // Shared pane list pattern: clamp selection, trap scroll, then slice visible rows.
         let total_lines = lines.len();
         let visible_height = if self.layout_config.is_zen { self.layout.inspector.height.saturating_sub(2) as usize } else { self.layout.inspector.height.saturating_sub(1) as usize };
 
-        // Clamp selection
         if total_lines == 0 {
             self.inspector_selected = 0;
         } else if self.inspector_selected >= total_lines {
             self.inspector_selected = total_lines.saturating_sub(1);
         }
 
-        // Trap selection
         self.trap_selection(self.inspector_selected, &self.inspector_scroll, total_lines, visible_height);
 
-        // Calculate scroll
         let start = self.inspector_scroll.get().min(total_lines.saturating_sub(visible_height));
         let end = (start + visible_height).min(total_lines);
 
-        // Setup list items
+        // Selection highlight dims text to keep metadata subordinate to graph selection.
         let list_items: Vec<ListItem> = lines[start..end]
             .iter()
             .enumerate()
@@ -114,12 +110,11 @@ impl App {
             .collect();
 
         if self.layout_config.is_zen {
-            // Setup the list
+            // Zen mode frames the pane as a full standalone list.
             let list = List::new(list_items).block(Block::default().borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded).padding(padding));
 
             frame.render_widget(list, self.layout.inspector);
 
-            // Setup the scrollbar
             let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.inspector_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("╮"))
@@ -128,18 +123,16 @@ impl App {
                 .thumb_symbol(if total_lines > visible_height { "▌" } else { "│" })
                 .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::Inspector { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
-            // Render the scrollbar
             frame.render_stateful_widget(scrollbar, self.layout.inspector_scrollbar, &mut scrollbar_state);
 
             return;
         }
 
-        // Setup the list
+        // Normal mode relies on the right pane border and scrollbar for framing.
         let list = List::new(list_items).block(Block::default().padding(padding));
 
         frame.render_widget(list, self.layout.inspector);
 
-        // Setup the scrollbar
         let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.inspector_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("╮"))
@@ -148,7 +141,6 @@ impl App {
             .thumb_symbol(if total_lines > visible_height { "▌" } else { "│" })
             .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::Inspector { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
-        // Render the scrollbar
         frame.render_stateful_widget(scrollbar, self.layout.inspector_scrollbar, &mut scrollbar_state);
     }
 }

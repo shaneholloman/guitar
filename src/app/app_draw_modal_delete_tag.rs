@@ -19,7 +19,7 @@ impl App {
         lines.push(Line::from(vec![Span::styled(line_text, Style::default().fg(self.theme.COLOR_TEXT))]));
         lines.push(Line::default());
 
-        // Render list
+        // Tag choices come from the selected commit alias.
         let color = self.tags.colors.get(&alias).unwrap();
         let tags = self.tags.local.get(&alias).unwrap();
         tags.iter().enumerate().for_each(|(idx, tag)| {
@@ -30,11 +30,11 @@ impl App {
             lines.push(Line::from(Span::styled(line_text, Style::default().fg(if idx == self.modal_delete_tag_selected as usize { *color } else { self.theme.COLOR_TEXT }))));
         });
 
-        // Background
+        // Paint a plain overlay before clearing the modal rectangle.
         let bg_block = Block::default().style(Style::default().fg(self.theme.COLOR_BORDER));
         bg_block.render(frame.area(), frame.buffer_mut());
 
-        // Modal size (smaller than area)
+        // The modal grows with tag names but is capped to the terminal size.
         length += 10;
         let modal_width = length.min((frame.area().width as f32 * 0.8) as usize) as u16;
         let modal_height = height.min((frame.area().height as f32 * 0.6) as usize) as u16;
@@ -43,10 +43,10 @@ impl App {
         let modal_area = Rect::new(x, y, modal_width, modal_height);
         frame.render_widget(Clear, modal_area);
 
-        // Padding
+        // Padding keeps tag names away from rounded borders.
         let padding = ratatui::widgets::Padding { left: 3, right: 3, top: 1, bottom: 1 };
 
-        // Modal block
+        // The title on the right doubles as the close affordance.
         let modal_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(self.theme.COLOR_GREY_600))
@@ -55,7 +55,6 @@ impl App {
             .padding(padding)
             .border_type(ratatui::widgets::BorderType::Rounded);
 
-        // Modal content
         let paragraph = Paragraph::new(Text::from(lines)).block(modal_block).alignment(Alignment::Center);
 
         paragraph.render(modal_area, frame.buffer_mut());

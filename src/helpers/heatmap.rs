@@ -9,7 +9,8 @@ pub const WEEKS: usize = 53;
 pub const DAYS: usize = 7;
 
 pub fn commits_per_day(repo: &git2::Repository, oids: &Vec<Oid>) -> HashMap<usize, usize> {
-    let today: NaiveDate = Utc::now().date_naive(); // only date
+    // Use UTC dates so commits near midnight are bucketed consistently.
+    let today: NaiveDate = Utc::now().date_naive();
     let mut counts: HashMap<usize, usize> = HashMap::new();
 
     for oid in oids {
@@ -18,13 +19,12 @@ pub fn commits_per_day(repo: &git2::Repository, oids: &Vec<Oid>) -> HashMap<usiz
             Err(_) => continue,
         };
 
-        // Convert commit time to NaiveDate
+        // Git commit times are stored as epoch seconds.
         let commit_date = Utc.timestamp_opt(commit.time().seconds(), 0).single().unwrap().date_naive();
 
-        // Compute integer days ago
         let days_ago = today.signed_duration_since(commit_date).num_days();
 
-        // Only count commits within 53 weeks (371 days)
+        // Ignore commits outside the rendered 53-week grid.
         if !(0..53 * 7).contains(&days_ago) {
             continue;
         }
@@ -40,46 +40,40 @@ pub fn empty_heatmap() -> [[usize; WEEKS]; DAYS] {
 }
 
 pub fn build_heatmap(repo: &Repository, oids: &Vec<Oid>) -> [[usize; WEEKS]; DAYS] {
-    // One row for each day of the week, starting on Monday
+    // Rows are weekdays starting Monday, columns run oldest to newest.
     let mut grid = [[0usize; WEEKS]; DAYS];
 
-    // Map: days_ago -> commit count
+    // Counts are keyed by days ago, with 0 representing today.
     let counts = commits_per_day(repo, oids);
 
-    // Today in UTC, aligned to calendar days
     let today = Utc::now().date_naive();
 
-    // 0 = Monday, 6 = Sunday
+    // Chrono uses 0 for Monday and 6 for Sunday.
     let weekday_today = today.weekday().num_days_from_monday() as usize;
 
-    // Total renderable cells
     let total_days = WEEKS * DAYS;
 
-    // Offset so the last column start on the current day of the week
+    // Align the newest column so today lands on its weekday row.
     let offset = 6 - weekday_today;
 
     for days_ago in 0..total_days {
-        // Shift the logical position for presentation
+        // Shift relative age into the displayed grid coordinate system.
         let logical = days_ago + offset;
 
-        // Which week column this day belongs to
         let week = logical / 7;
 
-        // Ignore anything beyond the oldest week
         if week >= WEEKS {
             continue;
         }
 
-        // Get column index, from oldest to current
+        // Reverse week order because the screen reads oldest to newest.
         let week_idx = WEEKS - 1 - week;
 
-        // Get row index from Monday to Sunday
+        // Convert age back into a Monday-based weekday row.
         let day_idx = (weekday_today + 7 - (days_ago % 7)) % 7;
 
-        // Number of commits for this day
         let count = *counts.get(&days_ago).unwrap_or(&0);
 
-        // Fill the heatmap cell
         grid[day_idx][week_idx] = count;
     }
 

@@ -1,27 +1,25 @@
 use git2::{Cred, PushOptions, RemoteCallbacks, Repository};
 use std::thread;
 
+// Pushes are threaded so network latency does not have to live inside command handlers.
 pub fn push_over_ssh(repo_path: &str, remote_name: &str, branch: &str, force: bool) -> thread::JoinHandle<Result<(), git2::Error>> {
-    // Clone inputs so they can move into the thread safely
+    // Own the inputs before crossing the thread boundary.
     let repo_path = repo_path.to_string();
     let remote_name = remote_name.to_string();
     let branch = branch.to_string();
 
     thread::spawn(move || {
-        // Open the repository
         let repo = Repository::open(&repo_path)?;
         let mut remote = repo.find_remote(&remote_name)?;
 
-        // Configure SSH authentication
+        // Use ssh-agent credentials, matching the most common git@host workflow.
         let mut callbacks = RemoteCallbacks::new();
         callbacks.credentials(|_url, username_from_url, _| Cred::ssh_key_from_agent(username_from_url.unwrap_or("git")));
 
-        // Track progress
-        callbacks.push_update_reference(|_refname, status| {
-            if let Some(_err) = status {
-                // eprintln!("Failed to update {refname}: {err}");
-            } else {
-                // println!("Updated {refname}");
+        // Surface server-side ref update failures as git2 errors instead of silent statuses.
+        callbacks.push_update_reference(|refname, status| {
+            if let Some(err) = status {
+                return Err(git2::Error::from_str(&format!("Failed to update {refname}: {err}")));
             }
             Ok(())
         });
@@ -31,11 +29,9 @@ pub fn push_over_ssh(repo_path: &str, remote_name: &str, branch: &str, force: bo
         push_options.remote_callbacks(callbacks);
 
         // Match `git push --force <remote> <branch>`: update the current branch only.
-        // Tags are intentionally not included because plain `git push --force`
-        // does not push them, and some servers reject tag updates.
+        // Tags are intentionally excluded because plain force push does not update them.
         let branch_refspec = if force { format!("+refs/heads/{0}:refs/heads/{0}", branch) } else { format!("refs/heads/{0}:refs/heads/{0}", branch) };
 
-        // Perform the push
         remote.push(&[branch_refspec.as_str()], Some(&mut push_options))?;
 
         // println!("Push complete for branch '{}'", branch);
@@ -54,9 +50,17 @@ pub fn push_tags_over_ssh(repo_path: &str, remote_name: &str) -> thread::JoinHan
         let mut callbacks = RemoteCallbacks::new();
         callbacks.credentials(|_url, username_from_url, _| Cred::ssh_key_from_agent(username_from_url.unwrap_or("git")));
 
-        callbacks.push_update_reference(|_refname, status| {
-            if let Some(_err) = status {
-                // eprintln!("Failed to update {refname}: {err}");
+        // Treat each remote tag update as part of the command result.
+        callbacks.push_update_reference(|refname, status| {
+            if let Some(err) = status {
+                return Err(git2::Error::from_str(&format!("Failed to update {refname}: {err}")));
+            }
+            Ok(())
+        });
+
+        callbacks.push_update_reference(|refname, status| {
+            if let Some(err) = status {
+                return Err(git2::Error::from_str(&format!("Failed to update {refname}: {err}")));
             }
             Ok(())
         });
@@ -64,6 +68,7 @@ pub fn push_tags_over_ssh(repo_path: &str, remote_name: &str) -> thread::JoinHan
         let mut push_options = PushOptions::new();
         push_options.remote_callbacks(callbacks);
 
+        // Build one explicit refspec per local tag so existing branches are untouched.
         let tag_refspecs = repo.tag_names(None)?.iter().flatten().map(|tag_name| format!("refs/tags/{0}:refs/tags/{0}", tag_name)).collect::<Vec<_>>();
 
         if tag_refspecs.is_empty() {
@@ -92,7 +97,7 @@ pub fn delete_remote_branch_ssh(repo_path: &str, remote_name: &str, branch: &str
         let mut push_options = PushOptions::new();
         push_options.remote_callbacks(callbacks);
 
-        // Deletion refspec
+        // An empty source refspec asks the remote to delete the destination branch.
         let refspec = format!(":refs/heads/{}", branch);
 
         remote.push(&[&refspec], Some(&mut push_options))?;

@@ -26,7 +26,7 @@ impl Spinner {
 
     pub fn start(&mut self) {
         if self.running.load(Ordering::SeqCst) {
-            return; // already running
+            return;
         }
 
         self.running.store(true, Ordering::SeqCst);
@@ -50,7 +50,8 @@ impl Spinner {
     pub fn stop(&mut self) {
         self.running.store(false, Ordering::SeqCst);
         if let Some(handle) = self.handle.take() {
-            handle.join().unwrap(); // wait for thread to finish
+            // Join the worker so the spinner cannot outlive the App state it reports on.
+            handle.join().unwrap();
         }
     }
 
