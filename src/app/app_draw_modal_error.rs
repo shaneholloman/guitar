@@ -15,11 +15,11 @@ impl App {
 
         let mut lines = Vec::new();
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled("error", Style::default().fg(self.theme.COLOR_GRAPEFRUIT))));
+        lines.push(Line::from(Span::styled("error", Style::default().fg(self.theme.COLOR_RED))));
         lines.push(Line::default());
-        lines.extend(wrapped_message.into_iter().map(|line| Line::from(Span::styled(line, Style::default().fg(self.theme.COLOR_TEXT)))));
+        lines.extend(wrapped_message.into_iter().map(|line| Line::from(Span::styled(line, Style::default().fg(self.theme.COLOR_RED)))));
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled("(enter) OK", Style::default().fg(self.theme.COLOR_GREY_500))));
+        lines.push(Line::from(Span::styled("(enter) OK", Style::default().fg(self.theme.COLOR_RED))));
 
         let content_width = lines.iter().map(|line| line.width()).max().unwrap_or(30);
         let modal_width = (content_width + 10).max(30).min(max_modal_width) as u16;
@@ -35,8 +35,8 @@ impl App {
 
         let modal_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(self.theme.COLOR_GREY_600))
-            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_GREY_500)))
+            .border_style(Style::default().fg(self.theme.COLOR_RED))
+            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_RED)))
             .title_alignment(Alignment::Right)
             .padding(ratatui::widgets::Padding { left: 3, right: 3, top: 1, bottom: 1 })
             .border_type(ratatui::widgets::BorderType::Rounded);
