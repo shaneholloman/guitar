@@ -27,9 +27,9 @@ use crate::{
     helpers::{colors::ColorPicker, heatmap::build_heatmap, keymap::InputMode, palette::*, spinner::Spinner},
 };
 use crossterm::{
-    event::{KeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
+    event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
     execute,
-    terminal::enable_raw_mode,
+    terminal::{enable_raw_mode, supports_keyboard_enhancement},
 };
 use git2::Repository;
 use indexmap::IndexMap;
@@ -196,28 +196,43 @@ impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         // Ask supported terminals to distinguish Esc from modified key sequences.
         enable_raw_mode()?;
-        execute!(stdout(), PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES))?;
+        let has_keyboard_enhancement = matches!(supports_keyboard_enhancement(), Ok(true));
 
-        // Load persisted state before the first repository scan.
-        self.load_recent();
-        self.load_layout();
-        self.load_keymap();
-        self.reload(None);
-
-        while !self.is_exit {
-            if event::poll(Duration::from_millis(50)).unwrap_or(false) {
-                self.handle_events()?;
-            }
-
-            // Pull at most one walker update per tick to keep redraws responsive.
-            if let Some(repo) = &self.repo.clone() {
-                self.sync(repo);
-            }
-
-            terminal.draw(|frame| self.draw(frame))?;
+        if has_keyboard_enhancement {
+            execute!(stdout(), PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES))?;
         }
 
-        Ok(())
+        let run_result = (|| {
+            // Load persisted state before the first repository scan.
+            self.load_recent();
+            self.load_layout();
+            self.load_keymap();
+            self.reload(None);
+
+            while !self.is_exit {
+                if event::poll(Duration::from_millis(50)).unwrap_or(false) {
+                    self.handle_events()?;
+                }
+
+                // Pull at most one walker update per tick to keep redraws responsive.
+                if let Some(repo) = &self.repo.clone() {
+                    self.sync(repo);
+                }
+
+                terminal.draw(|frame| self.draw(frame))?;
+            }
+
+            Ok(())
+        })();
+
+        if has_keyboard_enhancement {
+            let pop_result = execute!(stdout(), PopKeyboardEnhancementFlags);
+            if run_result.is_ok() {
+                pop_result?;
+            }
+        }
+
+        run_result
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
