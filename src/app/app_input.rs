@@ -86,8 +86,70 @@ impl App {
                     self.save_layout();
                 }
             },
+            MouseEventKind::ScrollUp => {
+                self.handle_mouse_scroll(mouse_event.column, mouse_event.row, Direction::Up);
+            },
+            MouseEventKind::ScrollDown => {
+                self.handle_mouse_scroll(mouse_event.column, mouse_event.row, Direction::Down);
+            },
             _ => {},
         }
+    }
+
+    fn handle_mouse_scroll(&mut self, column: u16, row: u16, direction: Direction) {
+        if self.layout_drag.is_some() {
+            return;
+        }
+
+        if self.is_modal_focus() {
+            match direction {
+                Direction::Up => self.on_scroll_up(),
+                Direction::Down => self.on_scroll_down(),
+            }
+            return;
+        }
+
+        if let Some(focus) = self.scroll_focus_at(column, row) {
+            self.focus = focus;
+            match direction {
+                Direction::Up => self.on_scroll_up(),
+                Direction::Down => self.on_scroll_down(),
+            }
+        }
+    }
+
+    fn scroll_focus_at(&self, column: u16, row: u16) -> Option<Focus> {
+        if self.layout_config.is_zen {
+            return Self::rect_contains(self.layout.app, column, row).then_some(self.focus);
+        }
+
+        if matches!(self.viewport, Viewport::Splash | Viewport::Settings) {
+            return Self::rect_contains(self.layout.app, column, row).then_some(Focus::Viewport);
+        }
+
+        if self.layout_config.is_branches && Self::rect_contains(self.layout.pane_branches, column, row) {
+            return Some(Focus::Branches);
+        }
+        if self.layout_config.is_tags && Self::rect_contains(self.layout.pane_tags, column, row) {
+            return Some(Focus::Tags);
+        }
+        if self.layout_config.is_stashes && Self::rect_contains(self.layout.pane_stashes, column, row) {
+            return Some(Focus::Stashes);
+        }
+        if self.layout_config.is_inspector && self.graph_selected != 0 && Self::rect_contains(self.layout.pane_inspector, column, row) {
+            return Some(Focus::Inspector);
+        }
+        if self.layout_config.is_status && self.graph_selected == 0 && Self::rect_contains(self.layout.pane_status_bottom, column, row) {
+            return Some(Focus::StatusBottom);
+        }
+        if self.layout_config.is_status && Self::rect_contains(self.layout.pane_status_top, column, row) {
+            return Some(Focus::StatusTop);
+        }
+        if Self::rect_contains(self.layout.graph_scrollbar, column, row) {
+            return Some(Focus::Viewport);
+        }
+
+        None
     }
 
     fn layout_drag_at(&self, column: u16, row: u16) -> Option<LayoutDrag> {
