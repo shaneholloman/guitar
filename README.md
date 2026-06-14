@@ -104,10 +104,10 @@ guitar --reset
 - Tag pane for local tags.
 - Stash pane showing stash commits alongside normal history.
 - Worktree pane showing main and linked worktrees, current/locked/invalid state, branch or detached HEAD, and dirty markers.
-- Status panes that split staged and unstaged files on the uncommitted row.
+- Status panes that split staged and unstaged files on the uncommitted row, with conflicted files highlighted in yellow.
 - Commit file list for the selected commit, compared with its first parent.
 - Commit inspector with commit SHA, parent SHAs, featured branches, author, committer, summary, and body.
-- File viewer for selected status/commit files, with line wrapping, line numbers, diff highlighting, hunk-only mode, and split diff mode.
+- File viewer for selected status/commit files, with line wrapping, line numbers, diff highlighting, hunk-only mode, split diff mode, and conflict-marker display.
 - Settings/help view with version, commit heatmap, config paths, Git identity, auth notes, theme selection, and active keymaps.
 - Zen mode for focusing one pane at a time.
 - Minimal chrome mode that hides the title and status bars.
@@ -132,6 +132,9 @@ guitar --reset
 - Hard reset or mixed reset to the selected commit.
 - Discard changes for a selected status file by resetting it to `HEAD`.
 - Cherry-pick a selected commit in a basic happy-path flow.
+- Rebase the current local branch onto the selected graph commit.
+- Continue or abort an in-progress rebase from action mode.
+- Conflict-aware rebase flow: conflicts are surfaced in a modal, marked in the graph/status/inspector panes, and can be viewed in unified or split diff mode while you resolve them externally.
 
 #### Input, Layout, and Persistence
 
@@ -155,7 +158,9 @@ Saved files live under your platform config directory in a `guitar` folder, for 
 - Network operations assume the `origin` remote and SSH-agent auth. There is no remote picker, HTTPS credential prompt, or in-app credential flow.
 - There is no normal non-force branch push command yet. The current branch push command is force push only.
 - There is no pull UI.
-- Merge, rebase, and conflict-resolution workflows are not implemented.
+- Merge workflows are not implemented.
+- Conflict resolution editing is external; guitar detects conflicts, displays conflicted files, and continues rebases after you resolve files in another editor.
+- Rebasing requires a checked-out local branch. Detached `HEAD` rebases are intentionally refused.
 - Cherry-pick is still rough: it auto-commits, has no conflict-resolution UI, and does not provide a message editor for the resulting commit.
 - Worktree move/repair and custom separate worktree branch names are not implemented.
 - Bare repositories are not supported.
@@ -171,7 +176,7 @@ Saved files live under your platform config directory in a `guitar` folder, for 
 
 ### Roadmap
 
-Planned or desired features include jujutsu integration, richer worktree management, conflict mode, merging, rebasing, and more.
+Planned or desired features include jujutsu integration, richer worktree management, merging, richer in-app conflict resolution, and more.
 
 Follow the project board for current work:
 
@@ -250,6 +255,8 @@ Dangerous actions live behind action mode. By default, press `Ctrl+a`, then pres
 | Toggle Worktree Lock | `Shift+L` |
 | Untag | `Shift+U` |
 | Cherrypick | `y` |
+| Rebase / Continue Rebase | `r` |
+| Abort Rebase | `Shift+R` |
 
 ### Screenshots
 
