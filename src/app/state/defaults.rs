@@ -8,7 +8,7 @@ use crate::{
 use crate::{
     app::{
         app::{App, BranchModalAction, Focus, OperationKind, Viewport, WorktreeModalAction},
-        app_layout::Layout,
+        state::layout::Layout,
     },
     core::{branches::Branches, buffer::Buffer, oids::Oids, tags::Tags},
     git::queries::helpers::UncommittedChanges,

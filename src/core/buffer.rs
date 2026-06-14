@@ -135,3 +135,7 @@ impl Buffer {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/core/buffer.rs"]
+mod tests;

@@ -64,3 +64,7 @@ impl App {
         paragraph.render(modal_area, frame.buffer_mut());
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/app/draw/modals/solo.rs"]
+mod tests;

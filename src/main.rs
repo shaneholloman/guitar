@@ -1,39 +1,6 @@
 use std::{env, fs, io, path::PathBuf};
-mod app {
-    #[allow(clippy::module_inception)]
-    pub mod app;
-    pub mod app_default;
-    pub mod app_draw_branches;
-    pub mod app_draw_graph;
-    pub mod app_draw_inspector;
-    pub mod app_draw_modal_checkout;
-    pub mod app_draw_modal_delete_branch;
-    pub mod app_draw_modal_delete_tag;
-    pub mod app_draw_modal_error;
-    pub mod app_draw_modal_input;
-    pub mod app_draw_modal_rebase;
-    pub mod app_draw_modal_remove_worktree;
-    pub mod app_draw_modal_solo;
-    pub mod app_draw_modal_worktree_chooser;
-    pub mod app_draw_reflogs;
-    pub mod app_draw_settings;
-    pub mod app_draw_splash;
-    pub mod app_draw_stashes;
-    pub mod app_draw_status;
-    pub mod app_draw_statusbar;
-    pub mod app_draw_tags;
-    pub mod app_draw_title;
-    pub mod app_draw_viewer;
-    pub mod app_draw_worktrees;
-    pub mod app_input;
-    pub mod app_layout;
-    pub mod input;
-    pub mod input_events;
-    pub mod input_git;
-    pub mod input_modals;
-    pub mod input_navigation;
-    pub mod input_worktrees;
-}
+
+mod app;
 mod core {
     pub mod batcher;
     pub mod branches;

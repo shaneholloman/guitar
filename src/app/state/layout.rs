@@ -1,6 +1,6 @@
 use crate::app::{
     app::{App, Focus, Viewport},
-    app_default::ViewerMode,
+    state::defaults::ViewerMode,
 };
 use crate::helpers::layout::{LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_MIN_SIDE_PANE, add_scrollbar, extend_up, inset_bottom, inset_top, load_layout_config, save_layout_config, shrink_width};
 use ratatui::Frame;
