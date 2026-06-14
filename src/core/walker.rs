@@ -1,4 +1,4 @@
-use crate::git::queries::commits::get_stashed_commits;
+use crate::git::queries::{commits::get_stashed_commits, reflogs::HeadReflogEntry};
 use crate::{
     core::{
         batcher::Batcher,
@@ -7,6 +7,7 @@ use crate::{
         oids::Oids,
     },
     git::queries::commits::{get_sorted_oids, get_tag_oids, get_tip_oids},
+    git::queries::reflogs::get_head_reflog_entries,
 };
 use git2::Repository;
 use im::HashSet;
@@ -34,6 +35,8 @@ pub struct Walker {
     pub tags_local: HashMap<u32, Vec<String>>,
 
     pub stashes_lanes: HashMap<u32, usize>,
+    pub reflogs_lanes: HashMap<u32, usize>,
+    pub head_reflog_entries: Vec<HeadReflogEntry>,
 
     // Number of commits requested per walk iteration.
     pub amount: usize,
@@ -55,6 +58,8 @@ pub struct WalkerOutput {
     pub tags_local: HashMap<u32, Vec<String>>,
 
     pub stashes_lanes: HashMap<u32, usize>,
+    pub reflogs_lanes: HashMap<u32, usize>,
+    pub head_reflog_entries: Vec<HeadReflogEntry>,
 
     // Flags that let App distinguish first batch, more batches, and completion.
     pub is_again: bool,
@@ -63,7 +68,7 @@ pub struct WalkerOutput {
 
 impl Walker {
     // Open the repository and seed all metadata that does not depend on walking commits.
-    pub fn new(path: String, amount: usize, visible_branch_names: HashSet<String>) -> Result<Self, git2::Error> {
+    pub fn new(path: String, amount: usize, visible_branch_names: HashSet<String>, include_head_reflog_roots: bool) -> Result<Self, git2::Error> {
         let path = path.clone();
         let repo = Rc::new(RefCell::new(Repository::open(path).expect("Failed to open repo")));
 
@@ -79,6 +84,7 @@ impl Walker {
         let tags_local = get_tag_oids(&repo.borrow(), &mut oids);
 
         let stashes_lanes = HashMap::new();
+        let reflogs_lanes = HashMap::new();
 
         // Stashes are collected up front so they can be inserted near their parents later.
         {
@@ -86,9 +92,18 @@ impl Walker {
             oids.stashes = get_stashed_commits(&mut repo_mut, &mut oids);
         }
 
-        let batcher = Batcher::new(repo.clone(), &visible_branch_names).expect("Error");
+        let head_reflog_entries = get_head_reflog_entries(&repo.borrow()).unwrap_or_default();
+        let mut head_reflog_roots = Vec::new();
+        for entry in &head_reflog_entries {
+            oids.get_alias_by_oid(entry.new_oid);
+            if include_head_reflog_roots && !head_reflog_roots.contains(&entry.new_oid) {
+                head_reflog_roots.push(entry.new_oid);
+            }
+        }
 
-        Ok(Self { repo, batcher, buffer, oids, branches_lanes, branches_local, branches_remote, tags_lanes, tags_local, stashes_lanes, amount })
+        let batcher = Batcher::new(repo.clone(), &visible_branch_names, &head_reflog_roots).expect("Error");
+
+        Ok(Self { repo, batcher, buffer, oids, branches_lanes, branches_local, branches_remote, tags_lanes, tags_local, stashes_lanes, reflogs_lanes, head_reflog_entries, amount })
     }
 
     // Process one revwalk page and update lane snapshots for the renderer.
@@ -114,6 +129,7 @@ impl Walker {
         }
 
         let stashes: Vec<u32> = self.oids.stashes.clone();
+        let reflog_aliases: Vec<u32> = self.head_reflog_entries.iter().filter_map(|entry| self.oids.aliases.get(&entry.new_oid).copied()).collect();
 
         // Place each stash near its first parent so it reads as a side snapshot.
         for &stash_alias in &stashes {
@@ -168,6 +184,10 @@ impl Walker {
                         self.stashes_lanes.insert(alias, lane_idx);
                     }
 
+                    if reflog_aliases.contains(&alias) {
+                        self.reflogs_lanes.insert(alias, lane_idx);
+                    }
+
                     if chunk.parent_a != NONE && chunk.parent_b != NONE {
                         // If the second parent is not already visible as a lane, mark a deferred merge.
                         let mut is_merger_found = false;
@@ -199,5 +219,75 @@ impl Walker {
         }
 
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git2::{Oid, ResetType, Signature};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_repo(name: &str) -> (PathBuf, Repository) {
+        let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("guitar-walker-reflog-{name}-{id}"));
+        fs::create_dir_all(&path).unwrap();
+        let repo = Repository::init(&path).unwrap();
+        {
+            let mut config = repo.config().unwrap();
+            config.set_str("user.name", "Test User").unwrap();
+            config.set_str("user.email", "test@example.com").unwrap();
+        }
+        (path, repo)
+    }
+
+    fn commit(repo: &Repository, file: &str, message: &str) -> Oid {
+        let workdir = repo.workdir().unwrap().to_path_buf();
+        fs::write(workdir.join(file), message).unwrap();
+
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(file)).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let sig = Signature::now("Test User", "test@example.com").unwrap();
+        let parent = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
+        let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents).unwrap()
+    }
+
+    #[test]
+    fn walker_loads_commit_reachable_only_from_head_reflog() {
+        let (path, repo) = temp_repo("lost-root");
+        let base = commit(&repo, "file.txt", "base");
+        let lost = commit(&repo, "file.txt", "lost");
+        let base_commit = repo.find_commit(base).unwrap();
+        repo.reset(base_commit.as_object(), ResetType::Hard, None).unwrap();
+
+        let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), true).unwrap();
+        walker.walk();
+        let lost_alias = walker.oids.aliases.get(&lost).copied().unwrap();
+
+        assert!(walker.oids.get_sorted_aliases().contains(&lost_alias));
+    }
+
+    #[test]
+    fn walker_can_hide_commit_reachable_only_from_head_reflog() {
+        let (path, repo) = temp_repo("hidden-lost-root");
+        let base = commit(&repo, "file.txt", "base");
+        let lost = commit(&repo, "file.txt", "lost");
+        let base_commit = repo.find_commit(base).unwrap();
+        repo.reset(base_commit.as_object(), ResetType::Hard, None).unwrap();
+
+        let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), false).unwrap();
+        walker.walk();
+        let lost_alias = walker.oids.aliases.get(&lost).copied().unwrap();
+
+        assert!(!walker.oids.get_sorted_aliases().contains(&lost_alias));
+        assert!(walker.head_reflog_entries.iter().any(|entry| entry.new_oid == lost));
     }
 }

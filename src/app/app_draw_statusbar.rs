@@ -39,6 +39,9 @@ impl App {
             },
             Focus::StatusBottom => self.uncommitted.conflicts.len() + self.uncommitted.unstaged.modified.len() + self.uncommitted.unstaged.added.len() + self.uncommitted.unstaged.deleted.len(),
             Focus::Branches => self.branches.sorted.len(),
+            Focus::Tags => self.tags.sorted.len(),
+            Focus::Stashes => self.oids.stashes.len(),
+            Focus::Reflogs => self.reflogs.entries.len(),
             Focus::Worktrees => self.worktrees.entries.len(),
             _ => 0,
         };
@@ -61,6 +64,9 @@ impl App {
                         self.branches.visible_branch_names.len()
                     }
                 },
+                Focus::Tags => self.tags_selected + 1,
+                Focus::Stashes => self.stashes_selected + 1,
+                Focus::Reflogs => self.reflogs_selected + 1,
                 Focus::Worktrees => self.worktrees_selected + 1,
                 _ => 0,
             }

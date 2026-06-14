@@ -3,6 +3,7 @@ pub const SYM_FOLDER: &str = "";
 pub const SYM_COMMIT_BRANCH: &str = "●";
 pub const SYM_COMMIT: &str = "○";
 pub const SYM_COMMIT_STASH: &str = "◎";
+pub const SYM_REFLOG: &str = "↺";
 pub const SYM_WORKTREE: &str = "🞕";
 pub const SYM_WORKTREE_OTHER: &str = "🞎";
 pub const SYM_WORKTREE_DIRTY: &str = "~";

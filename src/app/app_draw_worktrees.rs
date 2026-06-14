@@ -47,7 +47,11 @@ impl App {
         let visible_height = if self.layout_config.is_zen {
             self.layout.worktrees.height.saturating_sub(2) as usize
         } else {
-            self.layout.worktrees.height.saturating_sub(if self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes { 1 } else { 2 }) as usize
+            self.layout.worktrees.height.saturating_sub(if self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs {
+                1
+            } else {
+                2
+            }) as usize
         };
 
         let mut worktrees_empty = false;
@@ -109,7 +113,7 @@ impl App {
             return;
         }
 
-        if self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes {
+        if self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs {
             let top_border = Paragraph::new("─".repeat(self.layout.worktrees.width.saturating_sub(1) as usize)).style(Style::default().fg(self.theme.COLOR_BORDER));
             frame.render_widget(top_border, Rect { x: self.layout.worktrees.x + 1, y: self.layout.worktrees.y.saturating_sub(1), width: self.layout.worktrees.width, height: 1 });
         }
@@ -120,7 +124,7 @@ impl App {
         let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
         let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.worktrees_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some(if self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes { "│" } else { "─" }))
+            .begin_symbol(Some(if self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs { "│" } else { "─" }))
             .end_symbol(Some("─"))
             .track_symbol(Some("│"))
             .thumb_symbol(if total_lines > visible_height { "▌" } else { "│" })

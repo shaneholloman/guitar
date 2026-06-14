@@ -68,6 +68,16 @@ impl App {
                     lines.push(Line::from(Span::styled(text, Style::default().fg(*color))));
                 }
             }
+            if let Some(entry) = self.reflogs.latest_for_alias(alias) {
+                lines.push(Line::default());
+                lines.push(Line::from(Span::styled("head reflog:", Style::default().fg(self.theme.COLOR_GREY_500))));
+                lines.push(Line::from(Span::styled(truncate_with_ellipsis(&entry.selector, max_text_width), Style::default().fg(self.reflogs.get_color(alias).unwrap_or(self.theme.COLOR_TEXT)))));
+                lines.push(Line::from(Span::styled(timestamp_to_utc(entry.time), Style::default().fg(self.theme.COLOR_TEXT))));
+                let wrapped = wrap_words(sanitize(entry.message.clone()), max_text_width);
+                for line in wrapped {
+                    lines.push(Line::from(Span::styled(line, Style::default().fg(self.theme.COLOR_TEXT))));
+                }
+            }
             lines.push(Line::default());
             lines.extend(vec![
                 Line::from(Span::styled(format!("authored by: {}", author.name().unwrap_or("-")), Style::default().fg(self.theme.COLOR_GREY_500))),

@@ -16,7 +16,7 @@ impl App {
         if self.viewport == Viewport::Settings || self.viewport == Viewport::Splash {
             return order;
         }
-        for focus in &[Focus::Viewport, Focus::Inspector, Focus::StatusTop, Focus::StatusBottom, Focus::Worktrees, Focus::Stashes, Focus::Tags, Focus::Branches] {
+        for focus in &[Focus::Viewport, Focus::Inspector, Focus::StatusTop, Focus::StatusBottom, Focus::Worktrees, Focus::Reflogs, Focus::Stashes, Focus::Tags, Focus::Branches] {
             match focus {
                 Focus::Viewport => order.push(Focus::Viewport),
                 Focus::Inspector if self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts) => order.push(Focus::Inspector),
@@ -25,6 +25,7 @@ impl App {
                 Focus::Branches if self.layout_config.is_branches => order.push(Focus::Branches),
                 Focus::Tags if self.layout_config.is_tags => order.push(Focus::Tags),
                 Focus::Stashes if self.layout_config.is_stashes => order.push(Focus::Stashes),
+                Focus::Reflogs if self.layout_config.is_reflogs => order.push(Focus::Reflogs),
                 Focus::Worktrees if self.layout_config.is_worktrees => order.push(Focus::Worktrees),
                 _ => {},
             }
@@ -97,6 +98,23 @@ impl App {
                         if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
                             let oid = self.oids.get_oid_by_idx(self.graph_selected);
                             self.current_diff = get_filenames_diff_at_oid(repo, *oid);
+                        }
+                    }
+                }
+            },
+            Focus::Reflogs => {
+                if let Some(repo) = self.repo.clone() {
+                    self.viewport = Viewport::Graph;
+                    self.focus = Focus::Viewport;
+                    if let Some(entry) = self.reflogs.entries.get(self.reflogs_selected) {
+                        let Some(position) = self.oids.get_sorted_aliases().iter().position(|o| o == &entry.new_alias) else {
+                            self.show_error("Reflog commit is hidden from the graph. Press 9 to show graph reflogs.");
+                            return;
+                        };
+                        self.graph_selected = position;
+                        if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                            self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
                         }
                     }
                 }
@@ -322,6 +340,23 @@ impl App {
                     }
                 }
             },
+            Focus::Reflogs => {
+                if let Some(repo) = self.repo.clone() {
+                    self.viewport = Viewport::Graph;
+                    self.focus = Focus::Viewport;
+                    if let Some(entry) = self.reflogs.entries.get(self.reflogs_selected) {
+                        let Some(position) = self.oids.get_sorted_aliases().iter().position(|o| o == &entry.new_alias) else {
+                            self.show_error("Reflog commit is hidden from the graph. Press 9 to show graph reflogs.");
+                            return;
+                        };
+                        self.graph_selected = position;
+                        if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
+                            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+                            self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+                        }
+                    }
+                }
+            },
             Focus::Worktrees => {
                 self.open_selected_worktree();
             },
@@ -367,6 +402,10 @@ impl App {
             Focus::Stashes => {
                 let page = self.layout.stashes.height as usize - 1;
                 self.stashes_selected = self.stashes_selected.saturating_sub(page);
+            },
+            Focus::Reflogs => {
+                let page = self.layout.reflogs.height as usize - 1;
+                self.reflogs_selected = self.reflogs_selected.saturating_sub(page);
             },
             Focus::Worktrees => {
                 let page = self.layout.worktrees.height as usize - 1;
@@ -426,6 +465,10 @@ impl App {
             Focus::Stashes => {
                 let page = self.layout.stashes.height as usize - 1;
                 self.stashes_selected += page;
+            },
+            Focus::Reflogs => {
+                let page = self.layout.reflogs.height as usize - 1;
+                self.reflogs_selected += page;
             },
             Focus::Worktrees => {
                 let page = self.layout.worktrees.height as usize - 1;
@@ -496,6 +539,9 @@ impl App {
             },
             Focus::Stashes => {
                 self.stashes_selected = self.stashes_selected.saturating_sub(1);
+            },
+            Focus::Reflogs => {
+                self.reflogs_selected = self.reflogs_selected.saturating_sub(1);
             },
             Focus::Worktrees => {
                 self.worktrees_selected = self.worktrees_selected.saturating_sub(1);
@@ -625,6 +671,9 @@ impl App {
             },
             Focus::Stashes => {
                 self.stashes_selected += 1;
+            },
+            Focus::Reflogs => {
+                self.reflogs_selected += 1;
             },
             Focus::Worktrees => {
                 self.worktrees_selected += 1;
@@ -757,6 +806,7 @@ impl App {
             Focus::Branches => self.branches_selected /= 2,
             Focus::Tags => self.tags_selected /= 2,
             Focus::Stashes => self.stashes_selected /= 2,
+            Focus::Reflogs => self.reflogs_selected /= 2,
             Focus::Worktrees => self.worktrees_selected /= 2,
             _ => {},
         };
@@ -787,6 +837,10 @@ impl App {
                 let total = self.oids.stashes.len();
                 self.stashes_selected = self.stashes_selected + (total - self.stashes_selected) / 2
             },
+            Focus::Reflogs => {
+                let total = self.reflogs.entries.len();
+                self.reflogs_selected = self.reflogs_selected + (total - self.reflogs_selected) / 2
+            },
             Focus::Worktrees => {
                 let total = self.worktrees.entries.len();
                 self.worktrees_selected = self.worktrees_selected + (total - self.worktrees_selected) / 2
@@ -808,6 +862,10 @@ impl App {
             Focus::Stashes => {
                 let half = (self.layout.stashes.height as usize - 1) / 2;
                 self.stashes_selected = self.stashes_selected.saturating_sub(half);
+            },
+            Focus::Reflogs => {
+                let half = (self.layout.reflogs.height as usize - 1) / 2;
+                self.reflogs_selected = self.reflogs_selected.saturating_sub(half);
             },
             Focus::Worktrees => {
                 let half = (self.layout.worktrees.height as usize - 1) / 2;
@@ -877,6 +935,10 @@ impl App {
             Focus::Stashes => {
                 let half = (self.layout.stashes.height.saturating_sub(1) as usize) / 2;
                 self.stashes_selected += half;
+            },
+            Focus::Reflogs => {
+                let half = (self.layout.reflogs.height.saturating_sub(1) as usize) / 2;
+                self.reflogs_selected += half;
             },
             Focus::Worktrees => {
                 let half = (self.layout.worktrees.height.saturating_sub(1) as usize) / 2;
@@ -1106,6 +1168,9 @@ impl App {
             Focus::Stashes => {
                 self.stashes_selected = 0;
             },
+            Focus::Reflogs => {
+                self.reflogs_selected = 0;
+            },
             Focus::Worktrees => {
                 self.worktrees_selected = 0;
             },
@@ -1146,6 +1211,9 @@ impl App {
             },
             Focus::Stashes => {
                 self.stashes_selected = usize::MAX;
+            },
+            Focus::Reflogs => {
+                self.reflogs_selected = usize::MAX;
             },
             Focus::Worktrees => {
                 self.worktrees_selected = usize::MAX;
@@ -1260,6 +1328,11 @@ impl App {
                 self.pending_cherrypick_oid = None;
                 self.focus = Focus::Viewport;
             },
+            Focus::ModalCreateBranch => {
+                self.modal_input.clear();
+                self.clear_pending_branch_target();
+                self.focus = Focus::Viewport;
+            },
             Focus::ModalCreateWorktreeName | Focus::ModalCreateWorktreePath => {
                 self.modal_input.clear();
                 self.modal_worktree_name.clear();
@@ -1332,8 +1405,9 @@ impl App {
                 self.pending_cherrypick_oid = None;
                 self.focus = Focus::Viewport;
             },
-            Focus::ModalCommit | Focus::ModalCreateWorktreeName | Focus::ModalCreateWorktreePath | Focus::ModalLockWorktree => {
+            Focus::ModalCommit | Focus::ModalCreateBranch | Focus::ModalCreateWorktreeName | Focus::ModalCreateWorktreePath | Focus::ModalLockWorktree => {
                 self.modal_input.clear();
+                self.clear_pending_branch_target();
                 self.focus = Focus::Viewport;
             },
             Focus::ModalCheckout => {
@@ -1402,6 +1476,31 @@ impl App {
             self.focus = Focus::Viewport;
         }
         self.save_layout();
+    }
+
+    pub fn on_toggle_reflogs(&mut self) {
+        self.layout_config.is_reflogs = !self.layout_config.is_reflogs;
+        self.mark_viewer_layout_dirty();
+        if self.viewport == Viewport::Settings {
+            return;
+        }
+        if self.layout_config.is_reflogs {
+            self.focus = Focus::Reflogs;
+        } else {
+            self.focus = Focus::Viewport;
+        }
+        self.save_layout();
+    }
+
+    pub fn on_toggle_graph_reflogs(&mut self) {
+        self.layout_config.is_graph_reflogs = !self.layout_config.is_graph_reflogs;
+        self.mark_viewer_layout_dirty();
+        self.save_layout();
+        if self.repo.is_some() {
+            self.reload(None);
+            self.focus = Focus::Viewport;
+            self.viewport = Viewport::Graph;
+        }
     }
 
     pub fn on_toggle_worktrees(&mut self) {

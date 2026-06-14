@@ -504,12 +504,33 @@ impl App {
     pub fn on_create_branch(&mut self) {
         match self.viewport {
             Viewport::Settings | Viewport::Viewer => {},
-            _ => {
-                if self.graph_selected != 0 {
-                    self.focus = Focus::ModalCreateBranch;
-                }
+            _ => match self.focus {
+                Focus::Reflogs => {
+                    if let Some(entry) = self.reflogs.entries.get(self.reflogs_selected) {
+                        self.pending_branch_target_oid = Some(entry.new_oid);
+                        self.focus = Focus::ModalCreateBranch;
+                    }
+                },
+                _ => {
+                    if self.graph_selected != 0 {
+                        self.pending_branch_target_oid = None;
+                        self.focus = Focus::ModalCreateBranch;
+                    }
+                },
             },
         }
+    }
+
+    pub fn selected_branch_target_oid(&self) -> Option<git2::Oid> {
+        if let Some(oid) = self.pending_branch_target_oid {
+            return Some(oid);
+        }
+
+        if self.graph_selected != 0 { Some(*self.oids.get_oid_by_idx(self.graph_selected)) } else { None }
+    }
+
+    pub fn clear_pending_branch_target(&mut self) {
+        self.pending_branch_target_oid = None;
     }
 
     pub fn on_delete_branch(&mut self) {
@@ -702,6 +723,7 @@ impl App {
 mod tests {
     use super::*;
     use crate::core::chunk::NONE;
+    use crate::core::reflogs::HeadReflogAliasEntry;
     use git2::Signature;
     use std::{
         fs,
@@ -752,5 +774,30 @@ mod tests {
         assert_eq!(app.focus, Focus::ModalCherrypick);
         assert_eq!(app.pending_cherrypick_oid, Some(oid));
         assert_eq!(app.modal_input.value(), "cherrypicked: original summary");
+    }
+
+    #[test]
+    fn create_branch_from_reflog_uses_reflog_commit_target() {
+        let (_path, repo) = temp_repo("reflog-branch-target");
+        let graph_oid = commit(&repo, "graph.txt", "graph");
+        let reflog_oid = commit(&repo, "reflog.txt", "reflog");
+
+        let mut app = App { repo: Some(Rc::new(repo)), viewport: Viewport::Graph, focus: Focus::Reflogs, graph_selected: 1, ..Default::default() };
+        let graph_alias = app.oids.get_alias_by_oid(graph_oid);
+        let reflog_alias = app.oids.get_alias_by_oid(reflog_oid);
+        app.oids.sorted_aliases = vec![NONE, graph_alias, reflog_alias];
+        app.reflogs.entries.push(HeadReflogAliasEntry {
+            selector: "HEAD@{0}".to_string(),
+            old_oid: graph_oid,
+            new_oid: reflog_oid,
+            new_alias: reflog_alias,
+            message: "commit: reflog".to_string(),
+            time: git2::Time::new(1, 0),
+        });
+
+        app.on_create_branch();
+
+        assert_eq!(app.focus, Focus::ModalCreateBranch);
+        assert_eq!(app.selected_branch_target_oid(), Some(reflog_oid));
     }
 }

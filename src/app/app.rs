@@ -1,5 +1,6 @@
 use crate::{
     app::input::TextInput,
+    core::reflogs::HeadReflogs,
     core::stashes::Stashes,
     core::worktrees::Worktrees,
     git::{
@@ -74,6 +75,7 @@ pub enum Focus {
     Branches,
     Tags,
     Stashes,
+    Reflogs,
     Worktrees,
     ModalCheckout,
     ModalSolo,
@@ -144,9 +146,13 @@ pub enum LayoutDrag {
     BranchesTags,
     BranchesStashes,
     BranchesWorktrees,
+    BranchesReflogs,
     TagsStashes,
     TagsWorktrees,
     StashesWorktrees,
+    TagsReflogs,
+    StashesReflogs,
+    ReflogsWorktrees,
     InspectorStatus,
     StatusFiles,
 }
@@ -180,6 +186,7 @@ pub struct App {
     pub branches: Branches,
     pub tags: Tags,
     pub stashes: Stashes,
+    pub reflogs: HeadReflogs,
     pub worktrees: Worktrees,
     pub uncommitted: UncommittedChanges,
 
@@ -214,6 +221,10 @@ pub struct App {
     // Stashes
     pub stashes_selected: usize,
     pub stashes_scroll: Cell<usize>,
+
+    // Reflogs
+    pub reflogs_selected: usize,
+    pub reflogs_scroll: Cell<usize>,
 
     // Worktrees
     pub worktrees_selected: usize,
@@ -255,6 +266,7 @@ pub struct App {
     // Modal editor
     pub modal_input: TextInput,
     pub pending_cherrypick_oid: Option<Oid>,
+    pub pending_branch_target_oid: Option<Oid>,
     pub modal_worktree_name: String,
     pub modal_worktree_selected: i32,
     pub modal_worktree_candidates: Vec<usize>,
@@ -387,6 +399,9 @@ impl App {
                     if self.layout_config.is_stashes {
                         self.draw_stashes(frame, repo);
                     }
+                    if self.layout_config.is_reflogs {
+                        self.draw_reflogs(frame);
+                    }
                     if self.layout_config.is_worktrees {
                         self.draw_worktrees(frame);
                     }
@@ -474,6 +489,7 @@ impl App {
         self.branches = Branches::default();
         self.tags = Tags::default();
         self.stashes = Stashes::default();
+        self.reflogs = HeadReflogs::default();
         self.worktrees = Worktrees::default();
 
         self.branches.visible_branch_names = visible_branch_names;
@@ -547,10 +563,11 @@ impl App {
 
             // Move only serializable state into the worker thread.
             let visible_branch_names = self.branches.visible_branch_names.clone();
+            let include_head_reflog_roots = self.layout_config.is_graph_reflogs;
 
             // The worker streams partial graph state so large repositories become usable quickly.
             let handle = thread::spawn(move || {
-                let mut walk_ctx = Walker::new(absolute_path, 10000, visible_branch_names).expect("Error");
+                let mut walk_ctx = Walker::new(absolute_path, 10000, visible_branch_names, include_head_reflog_roots).expect("Error");
                 let mut is_first = true;
 
                 loop {
@@ -569,6 +586,8 @@ impl App {
                             tags_lanes: walk_ctx.tags_lanes.clone(),
                             tags_local: walk_ctx.tags_local.clone(),
                             stashes_lanes: walk_ctx.stashes_lanes.clone(),
+                            reflogs_lanes: walk_ctx.reflogs_lanes.clone(),
+                            head_reflog_entries: walk_ctx.head_reflog_entries.clone(),
                             buffer: walk_ctx.buffer.clone(),
                             is_first,
                             is_again,
@@ -615,6 +634,8 @@ impl App {
             self.tags.feed(&self.oids, &self.color, &result.tags_lanes, result.tags_local);
 
             self.stashes.feed(&self.color, &result.stashes_lanes);
+
+            self.reflogs.feed(&self.oids, &self.color, &result.reflogs_lanes, result.head_reflog_entries);
 
             // Keep the selected commit's file list fresh as more history arrives.
             if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {

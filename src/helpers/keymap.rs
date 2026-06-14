@@ -26,6 +26,8 @@ pub enum Command {
     ToggleBranches,
     ToggleTags,
     ToggleStashes,
+    ToggleReflogs,
+    ToggleGraphReflogs,
     ToggleWorktrees,
     ToggleStatus,
     ToggleInspector,
@@ -226,8 +228,10 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     map.insert(KeyBinding::new(Char('3'), KeyModifiers::NONE), Command::ToggleStashes);
     map.insert(KeyBinding::new(Char('4'), KeyModifiers::NONE), Command::ToggleStatus);
     map.insert(KeyBinding::new(Char('5'), KeyModifiers::NONE), Command::ToggleInspector);
-    map.insert(KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleShas);
-    map.insert(KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleWorktrees);
+    map.insert(KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleWorktrees);
+    map.insert(KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleReflogs);
+    map.insert(KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleShas);
+    map.insert(KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleGraphReflogs);
 
     // Help and settings
     map.insert(KeyBinding::new(Char('?'), KeyModifiers::NONE), Command::ToggleHelp);
@@ -567,12 +571,39 @@ fn add_default_binding(maps: &mut Keymaps, mode: InputMode, key: KeyBinding, com
     true
 }
 
+fn remap_old_numeric_defaults(maps: &mut Keymaps, mode: InputMode) -> bool {
+    let Some(mode_map) = maps.get_mut(&mode) else {
+        return false;
+    };
+
+    let key_6 = KeyBinding::new(Char('6'), KeyModifiers::NONE);
+    let key_7 = KeyBinding::new(Char('7'), KeyModifiers::NONE);
+    let key_8 = KeyBinding::new(Char('8'), KeyModifiers::NONE);
+
+    if mode_map.get(&key_6) != Some(&Command::ToggleShas) || mode_map.get(&key_7) != Some(&Command::ToggleWorktrees) || mode_map.get(&key_8) != Some(&Command::ToggleReflogs) {
+        return false;
+    }
+
+    mode_map.insert(key_6, Command::ToggleWorktrees);
+    mode_map.insert(key_7, Command::ToggleReflogs);
+    mode_map.insert(key_8, Command::ToggleShas);
+    true
+}
+
 fn migrate_default_bindings(maps: &mut Keymaps) -> bool {
     let mut changed = false;
+    changed |= remap_old_numeric_defaults(maps, InputMode::Normal);
+    changed |= remap_old_numeric_defaults(maps, InputMode::Action);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('v'), KeyModifiers::NONE), Command::ToggleSplitDiffMode);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('v'), KeyModifiers::NONE), Command::ToggleSplitDiffMode);
-    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleWorktrees);
-    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleWorktrees);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleWorktrees);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleWorktrees);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleReflogs);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleReflogs);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleShas);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleShas);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleGraphReflogs);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleGraphReflogs);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('w'), KeyModifiers::NONE), Command::CreateWorktree);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('w'), KeyModifiers::NONE), Command::CreateWorktree);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('W'), KeyModifiers::SHIFT), Command::RemoveWorktree);
@@ -625,9 +656,53 @@ mod tests {
         let action = maps.get(&InputMode::Action).unwrap();
 
         assert_eq!(normal.get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleTags));
+        assert_eq!(normal.get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleWorktrees));
+        assert_eq!(normal.get(&KeyBinding::new(Char('8'), KeyModifiers::NONE)), Some(&Command::ToggleShas));
+        assert_eq!(normal.get(&KeyBinding::new(Char('9'), KeyModifiers::NONE)), Some(&Command::ToggleGraphReflogs));
         assert_eq!(normal.get(&KeyBinding::new(Char('w'), KeyModifiers::NONE)), Some(&Command::CreateWorktree));
         assert_eq!(action.get(&KeyBinding::new(Char('W'), KeyModifiers::SHIFT)), Some(&Command::RemoveWorktree));
         assert_eq!(action.get(&KeyBinding::new(Char('L'), KeyModifiers::SHIFT)), Some(&Command::ToggleWorktreeLock));
+    }
+
+    #[test]
+    fn defaults_include_numeric_ui_toggles() {
+        let maps = default_keymaps();
+        let normal = maps.get(&InputMode::Normal).unwrap();
+        let action = maps.get(&InputMode::Action).unwrap();
+
+        for mode_map in [normal, action] {
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::NONE)), Some(&Command::ToggleBranches));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('2'), KeyModifiers::NONE)), Some(&Command::ToggleTags));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('3'), KeyModifiers::NONE)), Some(&Command::ToggleStashes));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::NONE)), Some(&Command::ToggleStatus));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('5'), KeyModifiers::NONE)), Some(&Command::ToggleInspector));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleWorktrees));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleReflogs));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('8'), KeyModifiers::NONE)), Some(&Command::ToggleShas));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('9'), KeyModifiers::NONE)), Some(&Command::ToggleGraphReflogs));
+        }
+    }
+
+    #[test]
+    fn migration_remaps_old_numeric_ui_defaults() {
+        let mut maps = IndexMap::new();
+
+        for mode in [InputMode::Normal, InputMode::Action] {
+            let mut mode_map = IndexMap::new();
+            mode_map.insert(KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleShas);
+            mode_map.insert(KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleWorktrees);
+            mode_map.insert(KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleReflogs);
+            maps.insert(mode, mode_map);
+        }
+
+        assert!(migrate_default_bindings(&mut maps));
+
+        for mode in [InputMode::Normal, InputMode::Action] {
+            let mode_map = maps.get(&mode).unwrap();
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleWorktrees));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleReflogs));
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('8'), KeyModifiers::NONE)), Some(&Command::ToggleShas));
+        }
     }
 
     #[test]

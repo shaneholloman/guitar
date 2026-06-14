@@ -35,6 +35,7 @@ impl App {
             Focus::Branches => "branches",
             Focus::Tags => "tags",
             Focus::Stashes => "stashes",
+            Focus::Reflogs => "reflog",
             Focus::Worktrees => "worktrees",
             Focus::Inspector => "inspector",
             Focus::StatusTop => "staged",

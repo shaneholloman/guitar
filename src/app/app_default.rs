@@ -3,7 +3,7 @@ use crate::helpers::keymap::InputMode;
 use crate::helpers::layout::load_layout_config;
 use crate::{
     app::input::TextInput,
-    core::{stashes::Stashes, worktrees::Worktrees},
+    core::{reflogs::HeadReflogs, stashes::Stashes, worktrees::Worktrees},
 };
 use crate::{
     app::{
@@ -68,6 +68,7 @@ impl Default for App {
             branches: Branches::default(),
             tags: Tags::default(),
             stashes: Stashes::default(),
+            reflogs: HeadReflogs::default(),
             worktrees: Worktrees::default(),
             uncommitted: UncommittedChanges::default(),
 
@@ -102,6 +103,10 @@ impl Default for App {
             // Stashes
             stashes_selected: 0,
             stashes_scroll: 0.into(),
+
+            // Reflogs
+            reflogs_selected: 0,
+            reflogs_scroll: 0.into(),
 
             // Worktrees
             worktrees_selected: 0,
@@ -143,6 +148,7 @@ impl Default for App {
             // Modal editor
             modal_input: TextInput::default(),
             pending_cherrypick_oid: None,
+            pending_branch_target_oid: None,
             modal_worktree_name: String::new(),
             modal_worktree_selected: 0,
             modal_worktree_candidates: Vec::new(),

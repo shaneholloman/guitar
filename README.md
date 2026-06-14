@@ -93,6 +93,7 @@ guitar --reset
 - Graph rendering for commits, branches, merges, tags, stashes, worktree HEAD badges, and the synthetic uncommitted-work row.
 - Optional abbreviated SHA column.
 - Branch visibility filters and one-branch solo mode.
+- Optional HEAD reflog graph roots so reset-away or otherwise unlabeled HEAD positions can be found.
 - Navigation by row, page, half page, list midpoint, first/last row, branch labels, and first-parent commit relationships.
 - SHA-prefix jump for commits that have already been loaded.
 - Recent repository splash screen.
@@ -103,6 +104,7 @@ guitar --reset
 - Branch pane with local/remote and visible/hidden indicators.
 - Tag pane for local tags.
 - Stash pane showing stash commits alongside normal history.
+- HEAD reflog pane for jumping to recent HEAD positions, including commits no branch currently names.
 - Worktree pane showing main and linked worktrees, current/locked/invalid state, branch or detached HEAD, and dirty markers.
 - Status panes that split staged and unstaged files on the uncommitted row, with conflicted files highlighted in yellow.
 - Commit file list for the selected commit, compared with its first parent.
@@ -121,7 +123,7 @@ guitar --reset
 - Force push the current branch to `origin` over SSH.
 - Push all local tags to `origin` over SSH.
 - Checkout local branches, materialize and checkout remote branches, or checkout an unlabeled commit in detached HEAD mode.
-- Create a branch at the selected commit.
+- Create a branch at the selected graph or HEAD reflog commit.
 - Delete a local branch, or delete a remote branch over SSH when the selected branch is remote.
 - Create and delete lightweight local tags.
 - Create linked worktrees from the selected commit, using the new worktree name as the new local branch name.
@@ -221,6 +223,8 @@ Dangerous actions live behind action mode. By default, press `Ctrl+a`, then pres
 | Toggle Inspector | `5` |
 | Toggle SHAs | `6` |
 | Toggle Worktrees | `7` |
+| Toggle Reflogs | `8` |
+| Toggle Graph Reflogs | `9` |
 | Toggle Help / Settings | `?` |
 | Action Mode | `Ctrl+a` |
 | Minimize | `.` |

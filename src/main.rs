@@ -15,6 +15,7 @@ mod app {
     pub mod app_draw_modal_remove_worktree;
     pub mod app_draw_modal_solo;
     pub mod app_draw_modal_worktree_chooser;
+    pub mod app_draw_reflogs;
     pub mod app_draw_settings;
     pub mod app_draw_splash;
     pub mod app_draw_stashes;
@@ -40,6 +41,7 @@ mod core {
     pub mod chunk;
     pub mod layers;
     pub mod oids;
+    pub mod reflogs;
     pub mod renderers;
     pub mod stashes;
     pub mod tags;
@@ -69,6 +71,7 @@ pub mod git {
         pub mod commits;
         pub mod diffs;
         pub mod helpers;
+        pub mod reflogs;
         pub mod worktrees;
     }
 }

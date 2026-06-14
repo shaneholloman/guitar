@@ -88,6 +88,9 @@ impl App {
         if self.layout_config.is_stashes && Self::rect_contains(self.layout.pane_stashes, column, row) {
             return Some(Focus::Stashes);
         }
+        if self.layout_config.is_reflogs && Self::rect_contains(self.layout.pane_reflogs, column, row) {
+            return Some(Focus::Reflogs);
+        }
         if self.layout_config.is_worktrees && Self::rect_contains(self.layout.pane_worktrees, column, row) {
             return Some(Focus::Worktrees);
         }
@@ -130,17 +133,29 @@ impl App {
         if Self::rect_contains(self.layout.divider_branches_stashes, column, row) {
             return Some(LayoutDrag::BranchesStashes);
         }
+        if Self::rect_contains(self.layout.divider_branches_reflogs, column, row) {
+            return Some(LayoutDrag::BranchesReflogs);
+        }
         if Self::rect_contains(self.layout.divider_branches_worktrees, column, row) {
             return Some(LayoutDrag::BranchesWorktrees);
         }
         if Self::rect_contains(self.layout.divider_tags_stashes, column, row) {
             return Some(LayoutDrag::TagsStashes);
         }
+        if Self::rect_contains(self.layout.divider_tags_reflogs, column, row) {
+            return Some(LayoutDrag::TagsReflogs);
+        }
         if Self::rect_contains(self.layout.divider_tags_worktrees, column, row) {
             return Some(LayoutDrag::TagsWorktrees);
         }
+        if Self::rect_contains(self.layout.divider_stashes_reflogs, column, row) {
+            return Some(LayoutDrag::StashesReflogs);
+        }
         if Self::rect_contains(self.layout.divider_stashes_worktrees, column, row) {
             return Some(LayoutDrag::StashesWorktrees);
+        }
+        if Self::rect_contains(self.layout.divider_reflogs_worktrees, column, row) {
+            return Some(LayoutDrag::ReflogsWorktrees);
         }
         if Self::rect_contains(self.layout.divider_inspector_status, column, row) {
             return Some(LayoutDrag::InspectorStatus);
@@ -210,6 +225,14 @@ impl App {
                     self.layout_config.weight_stashes = stashes;
                 }
             },
+            LayoutDrag::BranchesReflogs => {
+                if let Some((branches, reflogs)) =
+                    Self::resized_pair_weights(row, self.layout.pane_branches, self.layout.pane_reflogs, self.layout_config.weight_branches, self.layout_config.weight_reflogs)
+                {
+                    self.layout_config.weight_branches = branches;
+                    self.layout_config.weight_reflogs = reflogs;
+                }
+            },
             LayoutDrag::BranchesWorktrees => {
                 if let Some((branches, worktrees)) =
                     Self::resized_pair_weights(row, self.layout.pane_branches, self.layout.pane_worktrees, self.layout_config.weight_branches, self.layout_config.weight_worktrees)
@@ -224,6 +247,12 @@ impl App {
                     self.layout_config.weight_stashes = stashes;
                 }
             },
+            LayoutDrag::TagsReflogs => {
+                if let Some((tags, reflogs)) = Self::resized_pair_weights(row, self.layout.pane_tags, self.layout.pane_reflogs, self.layout_config.weight_tags, self.layout_config.weight_reflogs) {
+                    self.layout_config.weight_tags = tags;
+                    self.layout_config.weight_reflogs = reflogs;
+                }
+            },
             LayoutDrag::TagsWorktrees => {
                 if let Some((tags, worktrees)) = Self::resized_pair_weights(row, self.layout.pane_tags, self.layout.pane_worktrees, self.layout_config.weight_tags, self.layout_config.weight_worktrees)
                 {
@@ -236,6 +265,22 @@ impl App {
                     Self::resized_pair_weights(row, self.layout.pane_stashes, self.layout.pane_worktrees, self.layout_config.weight_stashes, self.layout_config.weight_worktrees)
                 {
                     self.layout_config.weight_stashes = stashes;
+                    self.layout_config.weight_worktrees = worktrees;
+                }
+            },
+            LayoutDrag::StashesReflogs => {
+                if let Some((stashes, reflogs)) =
+                    Self::resized_pair_weights(row, self.layout.pane_stashes, self.layout.pane_reflogs, self.layout_config.weight_stashes, self.layout_config.weight_reflogs)
+                {
+                    self.layout_config.weight_stashes = stashes;
+                    self.layout_config.weight_reflogs = reflogs;
+                }
+            },
+            LayoutDrag::ReflogsWorktrees => {
+                if let Some((reflogs, worktrees)) =
+                    Self::resized_pair_weights(row, self.layout.pane_reflogs, self.layout.pane_worktrees, self.layout_config.weight_reflogs, self.layout_config.weight_worktrees)
+                {
+                    self.layout_config.weight_reflogs = reflogs;
                     self.layout_config.weight_worktrees = worktrees;
                 }
             },

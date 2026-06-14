@@ -129,14 +129,19 @@ impl App {
                 match key_event.code {
                     KeyCode::Esc => {
                         self.focus = Focus::Viewport;
+                        self.clear_pending_branch_target();
                         self.modal_input.clear();
                     },
                     KeyCode::Enter => {
                         if let Some(repo) = &self.repo {
-                            let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-                            match create_branch(repo, self.modal_input.value(), *oid) {
+                            let Some(oid) = self.selected_branch_target_oid() else {
+                                self.show_error("Create branch failed: no commit is selected");
+                                return true;
+                            };
+                            match create_branch(repo, self.modal_input.value(), oid) {
                                 Ok(_) => {
                                     self.modal_input.clear();
+                                    self.clear_pending_branch_target();
                                     self.reload(None);
                                     self.focus = Focus::Viewport;
                                 },

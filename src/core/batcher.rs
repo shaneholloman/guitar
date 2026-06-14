@@ -1,6 +1,7 @@
 use git2::{BranchType, Oid, Repository, Revwalk};
 use im::HashSet;
 use std::cell::RefCell;
+use std::collections::HashSet as StdHashSet;
 use std::{rc::Rc, sync::Mutex};
 
 // Own the revwalk cursor so commit history can be loaded in pages.
@@ -10,14 +11,14 @@ pub struct Batcher {
 
 impl Batcher {
     // Build the initial revwalk from all visible local and remote branch tips.
-    pub fn new(repo: Rc<RefCell<Repository>>, visible_branch_names: &HashSet<String>) -> Result<Self, git2::Error> {
-        let revwalk = Self::build(&repo.borrow(), visible_branch_names)?;
+    pub fn new(repo: Rc<RefCell<Repository>>, visible_branch_names: &HashSet<String>, extra_roots: &[Oid]) -> Result<Self, git2::Error> {
+        let revwalk = Self::build(&repo.borrow(), visible_branch_names, extra_roots)?;
         Ok(Self { revwalk: Mutex::new(revwalk) })
     }
 
     // Recreate the cursor after branch filters, fetches, or repository state changes.
-    pub fn reset(&self, repo: Rc<RefCell<Repository>>, visible_branch_names: &HashSet<String>) -> Result<(), git2::Error> {
-        let revwalk = Self::build(&repo.borrow(), visible_branch_names)?;
+    pub fn reset(&self, repo: Rc<RefCell<Repository>>, visible_branch_names: &HashSet<String>, extra_roots: &[Oid]) -> Result<(), git2::Error> {
+        let revwalk = Self::build(&repo.borrow(), visible_branch_names, extra_roots)?;
         let mut guard = self.revwalk.lock().unwrap();
         *guard = revwalk;
         Ok(())
@@ -29,11 +30,12 @@ impl Batcher {
         revwalk.by_ref().take(count).filter_map(Result::ok).collect()
     }
 
-    fn build(repo: &Repository, visible_branch_names: &HashSet<String>) -> Result<Revwalk<'static>, git2::Error> {
+    fn build(repo: &Repository, visible_branch_names: &HashSet<String>, extra_roots: &[Oid]) -> Result<Revwalk<'static>, git2::Error> {
         // The repository outlives the revwalk in App state; this keeps libgit2's lifetime usable here.
         let repo_ref: &'static Repository = unsafe { std::mem::transmute::<&Repository, &'static Repository>(repo) };
 
         let mut revwalk = repo_ref.revwalk()?;
+        let mut pushed = StdHashSet::new();
 
         for branch_type in [BranchType::Local, BranchType::Remote] {
             for branch_result in repo.branches(Some(branch_type))? {
@@ -46,7 +48,14 @@ impl Batcher {
                 // An empty filter means every branch contributes a tip.
                 if visible_branch_names.is_empty() || visible_branch_names.contains(&name) {
                     revwalk.push(oid)?;
+                    pushed.insert(oid);
                 }
+            }
+        }
+
+        for oid in extra_roots {
+            if pushed.insert(*oid) {
+                revwalk.push(*oid)?;
             }
         }
 

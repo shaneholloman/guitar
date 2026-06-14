@@ -1,4 +1,4 @@
-use crate::core::worktrees::Worktrees;
+use crate::core::{reflogs::HeadReflogs, worktrees::Worktrees};
 use crate::helpers::keymap::{Command, KeyBinding, keycode_to_visual_string};
 use crate::helpers::text::truncate_with_ellipsis;
 use crate::{
@@ -435,8 +435,8 @@ pub fn render_sha_range(theme: &Theme, oids: &Oids, start: usize, end: usize) ->
 #[allow(clippy::too_many_arguments)]
 pub fn render_message_range(
     theme: &Theme, repo: &Repository, oids: &Oids, local: &HashMap<u32, Vec<String>>, all_branches: &HashMap<u32, Vec<String>>, visible_branch_names: &HashSet<String>,
-    tags: &HashMap<u32, Vec<String>>, worktrees: &Worktrees, branch_colors: &mut HashMap<u32, Color>, tag_colors: &mut HashMap<u32, Color>, stashes_colors: &mut HashMap<u32, Color>, start: usize,
-    end: usize, selected: usize, uncommitted: &UncommittedChanges,
+    tags: &HashMap<u32, Vec<String>>, worktrees: &Worktrees, reflogs: &HeadReflogs, branch_colors: &mut HashMap<u32, Color>, tag_colors: &mut HashMap<u32, Color>,
+    stashes_colors: &mut HashMap<u32, Color>, show_reflog_labels: bool, start: usize, end: usize, selected: usize, uncommitted: &UncommittedChanges,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line> = Vec::new();
 
@@ -450,9 +450,11 @@ pub fn render_message_range(
             let commit = repo.find_commit(*oid).unwrap();
 
             // Branch labels respect the active branch filter to match the rendered graph.
+            let mut has_visible_branch_label = false;
             if let Some(branch_list) = all_branches.get(&alias) {
                 for branch in branch_list {
                     if visible_branch_names.contains(branch) || visible_branch_names.is_empty() {
+                        has_visible_branch_label = true;
                         let is_local = local.values().any(|branches| branches.iter().any(|b| b == branch));
                         spans.push(Span::styled(
                             format!("{} {} ", if is_local { SYM_COMMIT_BRANCH } else { "◆" }, branch),
@@ -470,8 +472,10 @@ pub fn render_message_range(
                     }
                 }
             }
+            let has_tag_label = tags.get(&alias).is_some_and(|tags| !tags.is_empty());
 
-            for worktree in worktrees.get_by_alias(&alias) {
+            let worktrees_for_alias = worktrees.get_by_alias(&alias);
+            for worktree in &worktrees_for_alias {
                 let color = if !worktree.is_valid || worktree.locked_reason.is_some() {
                     theme.COLOR_GREY_600
                 } else if worktree.is_current {
@@ -481,9 +485,22 @@ pub fn render_message_range(
                 };
                 spans.push(Span::styled(format!("{SYM_WORKTREE} {} ", worktree.name), Style::default().fg(color)));
             }
+            let has_worktree_label = !worktrees_for_alias.is_empty();
 
             if oids.stashes.contains(&alias) {
                 spans.push(Span::styled(format!("{SYM_COMMIT_STASH} stash "), Style::default().fg(if let Some(color) = stashes_colors.get(&alias) { *color } else { theme.COLOR_TEXT })));
+            }
+            let has_stash_label = oids.stashes.contains(&alias);
+
+            if show_reflog_labels
+                && !has_visible_branch_label
+                && !has_tag_label
+                && !has_stash_label
+                && !has_worktree_label
+                && let Some(entry) = reflogs.latest_for_alias(alias)
+            {
+                let color = reflogs.get_color(alias).unwrap_or(theme.COLOR_TEXT);
+                spans.push(Span::styled(format!("{SYM_REFLOG} {} ", entry.selector), Style::default().fg(color)));
             }
 
             spans.push(Span::styled(commit.summary().unwrap_or("⊘ no message").to_string(), Style::default().fg(if global_idx == selected { theme.COLOR_GREY_500 } else { theme.COLOR_TEXT })));
