@@ -23,6 +23,7 @@ pub mod git {
         pub mod committing;
         pub mod conflicts;
         pub mod fetching;
+        pub mod merging;
         pub mod pushing;
         pub mod rebasing;
         pub mod resetting;

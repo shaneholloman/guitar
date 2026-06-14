@@ -6,6 +6,7 @@ use crate::{
             checkout::{checkout_branch, checkout_head},
             cherrypicking::{CherrypickOutcome, abort_cherrypick, continue_cherrypick, is_cherrypick_in_progress},
             fetching::fetch_over_ssh,
+            merging::{MergeOutcome, abort_merge, continue_merge, is_merge_in_progress, start_merge},
             pushing::{push_over_ssh, push_tags_over_ssh},
             rebasing::{RebaseOutcome, abort_rebase, continue_rebase, is_rebase_in_progress, start_rebase},
             resetting::{reset_file, reset_to_commit},
@@ -48,7 +49,12 @@ impl App {
         };
 
         match action {
-            PendingOperationAction::Start(oid) => self.handle_rebase_result(start_rebase(&repo, oid)),
+            PendingOperationAction::Start { kind: OperationKind::Rebase, oid } => self.handle_rebase_result(start_rebase(&repo, oid)),
+            PendingOperationAction::Start { kind: OperationKind::Merge, oid } => self.handle_merge_result(start_merge(&repo, oid)),
+            PendingOperationAction::Start { kind: OperationKind::Cherrypick, .. } => {
+                self.focus = Focus::Viewport;
+                self.show_error("Cherry-pick failed: no commit message was provided");
+            },
             PendingOperationAction::Continue => self.continue_active_operation(&repo),
             PendingOperationAction::Abort => self.abort_active_operation(&repo),
         }
@@ -104,6 +110,41 @@ impl App {
         }
     }
 
+    fn handle_merge_result(&mut self, result: Result<MergeOutcome, git2::Error>) {
+        self.modal_operation_kind = OperationKind::Merge;
+        match result {
+            Ok(MergeOutcome::Completed { .. }) => {
+                self.modal_operation_message = "Merge completed.".to_string();
+                self.focus = Focus::ModalOperationSuccess;
+                self.reload(None);
+            },
+            Ok(MergeOutcome::FastForward { .. }) => {
+                self.modal_operation_message = "Merge fast-forwarded.".to_string();
+                self.focus = Focus::ModalOperationSuccess;
+                self.reload(None);
+            },
+            Ok(MergeOutcome::UpToDate) => {
+                self.modal_operation_message = "Merge already up to date.".to_string();
+                self.focus = Focus::ModalOperationSuccess;
+                self.reload(None);
+            },
+            Ok(MergeOutcome::Conflict) => {
+                self.show_operation_conflict(OperationKind::Merge, "Merge stopped because conflicts need to be resolved.");
+            },
+            Ok(MergeOutcome::Aborted) => {
+                self.modal_operation_message = "Merge aborted.".to_string();
+                self.focus = Focus::ModalOperationSuccess;
+                self.reload(None);
+            },
+            Err(error) => {
+                self.modal_operation_message.clear();
+                self.focus = Focus::Viewport;
+                self.show_error(format!("Merge failed: {error}"));
+                self.reload(None);
+            },
+        }
+    }
+
     pub fn show_operation_conflict(&mut self, kind: OperationKind, message: impl Into<String>) {
         self.modal_operation_kind = kind;
         self.modal_operation_message = message.into();
@@ -115,6 +156,7 @@ impl App {
         match repo.state() {
             RepositoryState::Rebase | RepositoryState::RebaseInteractive | RepositoryState::RebaseMerge | RepositoryState::ApplyMailboxOrRebase => Some(OperationKind::Rebase),
             RepositoryState::CherryPick | RepositoryState::CherryPickSequence => Some(OperationKind::Cherrypick),
+            RepositoryState::Merge => Some(OperationKind::Merge),
             _ => None,
         }
     }
@@ -123,9 +165,10 @@ impl App {
         match Self::active_operation_kind(repo) {
             Some(OperationKind::Rebase) => self.handle_rebase_result(continue_rebase(repo)),
             Some(OperationKind::Cherrypick) => self.handle_cherrypick_result(continue_cherrypick(repo)),
+            Some(OperationKind::Merge) => self.handle_merge_result(continue_merge(repo)),
             None => {
                 self.focus = Focus::Viewport;
-                self.show_error("Continue failed: no rebase or cherry-pick in progress");
+                self.show_error("Continue failed: no rebase, cherry-pick, or merge in progress");
             },
         }
     }
@@ -134,9 +177,10 @@ impl App {
         match Self::active_operation_kind(repo) {
             Some(OperationKind::Rebase) => self.handle_rebase_result(abort_rebase(repo)),
             Some(OperationKind::Cherrypick) => self.handle_cherrypick_result(abort_cherrypick(repo)),
+            Some(OperationKind::Merge) => self.handle_merge_result(abort_merge(repo)),
             None => {
                 self.focus = Focus::Viewport;
-                self.show_error("Abort failed: no rebase or cherry-pick in progress");
+                self.show_error("Abort failed: no rebase, cherry-pick, or merge in progress");
             },
         }
     }
@@ -620,7 +664,7 @@ impl App {
             return;
         }
 
-        if is_rebase_in_progress(repo) || is_cherrypick_in_progress(repo) {
+        if is_rebase_in_progress(repo) || is_cherrypick_in_progress(repo) || is_merge_in_progress(repo) {
             self.on_continue_operation();
             return;
         }
@@ -630,9 +674,31 @@ impl App {
         }
 
         let oid = *self.oids.get_oid_by_idx(self.graph_selected);
-        self.pending_operation_action = Some(PendingOperationAction::Start(oid));
+        self.pending_operation_action = Some(PendingOperationAction::Start { kind: OperationKind::Rebase, oid });
         self.modal_operation_kind = OperationKind::Rebase;
         self.modal_operation_message = "Rebasing the current branch onto the selected commit...".to_string();
+        self.focus = Focus::ModalOperationProgress;
+    }
+
+    pub fn on_merge(&mut self) {
+        let Some(repo) = &self.repo else { return };
+        if matches!(self.viewport, Viewport::Settings | Viewport::Viewer) || self.focus != Focus::Viewport {
+            return;
+        }
+
+        if is_rebase_in_progress(repo) || is_cherrypick_in_progress(repo) || is_merge_in_progress(repo) {
+            self.on_continue_operation();
+            return;
+        }
+
+        if self.viewport != Viewport::Graph || self.graph_selected == 0 {
+            return;
+        }
+
+        let oid = *self.oids.get_oid_by_idx(self.graph_selected);
+        self.pending_operation_action = Some(PendingOperationAction::Start { kind: OperationKind::Merge, oid });
+        self.modal_operation_kind = OperationKind::Merge;
+        self.modal_operation_message = "Merging the selected commit into the current branch...".to_string();
         self.focus = Focus::ModalOperationProgress;
     }
 

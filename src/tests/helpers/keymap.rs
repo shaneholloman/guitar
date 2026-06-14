@@ -73,6 +73,7 @@ fn defaults_include_operation_bindings() {
     let action = maps.get(&InputMode::Action).unwrap();
 
     assert_eq!(action.get(&KeyBinding::new(Char('r'), KeyModifiers::NONE)), Some(&Command::Rebase));
+    assert_eq!(action.get(&KeyBinding::new(Char('m'), KeyModifiers::NONE)), Some(&Command::Merge));
     assert_eq!(action.get(&KeyBinding::new(Char('C'), KeyModifiers::SHIFT)), Some(&Command::ContinueOperation));
     assert_eq!(action.get(&KeyBinding::new(Char('A'), KeyModifiers::SHIFT)), Some(&Command::AbortOperation));
 }
@@ -91,8 +92,37 @@ fn migration_adds_operation_defaults_without_rewriting_existing_keys() {
     let action = maps.get(&InputMode::Action).unwrap();
     assert_eq!(action.get(&KeyBinding::new(Char('r'), KeyModifiers::NONE)), Some(&Command::Reload));
     assert_eq!(action.get(&KeyBinding::new(Char('R'), KeyModifiers::SHIFT)), Some(&Command::ForcePush));
+    assert_eq!(action.get(&KeyBinding::new(Char('m'), KeyModifiers::NONE)), Some(&Command::Merge));
     assert_eq!(action.get(&KeyBinding::new(Char('C'), KeyModifiers::SHIFT)), Some(&Command::ContinueOperation));
     assert_eq!(action.get(&KeyBinding::new(Char('A'), KeyModifiers::SHIFT)), Some(&Command::AbortOperation));
+}
+
+#[test]
+fn migration_replaces_inherited_action_hunk_mode_with_merge() {
+    let mut maps = IndexMap::new();
+    maps.insert(InputMode::Normal, IndexMap::new());
+    let mut action = IndexMap::new();
+    action.insert(KeyBinding::new(Char('m'), KeyModifiers::NONE), Command::ToggleHunkMode);
+    maps.insert(InputMode::Action, action);
+
+    assert!(migrate_default_bindings(&mut maps));
+
+    let action = maps.get(&InputMode::Action).unwrap();
+    assert_eq!(action.get(&KeyBinding::new(Char('m'), KeyModifiers::NONE)), Some(&Command::Merge));
+}
+
+#[test]
+fn migration_preserves_custom_action_m_binding() {
+    let mut maps = IndexMap::new();
+    maps.insert(InputMode::Normal, IndexMap::new());
+    let mut action = IndexMap::new();
+    action.insert(KeyBinding::new(Char('m'), KeyModifiers::NONE), Command::MixedReset);
+    maps.insert(InputMode::Action, action);
+
+    assert!(migrate_default_bindings(&mut maps));
+
+    let action = maps.get(&InputMode::Action).unwrap();
+    assert_eq!(action.get(&KeyBinding::new(Char('m'), KeyModifiers::NONE)), Some(&Command::MixedReset));
 }
 
 #[test]
@@ -104,6 +134,7 @@ fn action_settings_filter_hides_only_identical_inherited_bindings() {
     let mut action = IndexMap::new();
     action.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
     action.insert(KeyBinding::new(Char('r'), KeyModifiers::NONE), Command::Rebase);
+    action.insert(KeyBinding::new(Char('m'), KeyModifiers::NONE), Command::Merge);
     action.insert(KeyBinding::new(Char('C'), KeyModifiers::SHIFT), Command::ContinueOperation);
     action.insert(KeyBinding::new(Char('A'), KeyModifiers::SHIFT), Command::AbortOperation);
 
@@ -111,6 +142,7 @@ fn action_settings_filter_hides_only_identical_inherited_bindings() {
 
     assert_eq!(visible.get(&KeyBinding::new(Char('j'), KeyModifiers::NONE)), None);
     assert_eq!(visible.get(&KeyBinding::new(Char('r'), KeyModifiers::NONE)), Some(&Command::Rebase));
+    assert_eq!(visible.get(&KeyBinding::new(Char('m'), KeyModifiers::NONE)), Some(&Command::Merge));
     assert_eq!(visible.get(&KeyBinding::new(Char('C'), KeyModifiers::SHIFT)), Some(&Command::ContinueOperation));
     assert_eq!(visible.get(&KeyBinding::new(Char('A'), KeyModifiers::SHIFT)), Some(&Command::AbortOperation));
 }

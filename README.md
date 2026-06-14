@@ -134,9 +134,10 @@ guitar --reset
 - Hard reset or mixed reset to the selected commit.
 - Discard changes for a selected status file by resetting it to `HEAD`.
 - Cherry-pick a selected commit after confirming or editing the resulting commit message.
+- Merge the selected graph commit into the current local branch, using Git-default fast-forward/no-op/merge-commit behavior and honoring `merge.ff`.
 - Rebase the current local branch onto the selected graph commit.
-- Continue or abort an in-progress rebase or cherry-pick from action mode.
-- Conflict-aware rebase and cherry-pick flows: conflicts are surfaced in a modal, marked in the graph/status/inspector panes, and can be viewed in unified or split diff mode while you resolve them externally.
+- Continue or abort an in-progress rebase, cherry-pick, or merge from action mode.
+- Conflict-aware rebase, cherry-pick, and merge flows: conflicts are surfaced in a modal, marked in the graph/status/inspector panes, and can be viewed in unified or split diff mode while you resolve them externally.
 
 #### Input, Layout, and Persistence
 
@@ -161,9 +162,9 @@ Saved files live under your platform config directory in a `guitar` folder, for 
 - Network operations assume the `origin` remote and SSH-agent auth. There is no remote picker, HTTPS credential prompt, or in-app credential flow.
 - There is no normal non-force branch push command yet. The current branch push command is force push only.
 - There is no pull UI.
-- Merge workflows are not implemented.
-- Conflict resolution editing is external; guitar detects conflicts, displays conflicted files, and continues rebases or cherry-picks after you resolve files in another editor.
+- Conflict resolution editing is external; guitar detects conflicts, displays conflicted files, and continues rebases, cherry-picks, or merges after you resolve files in another editor.
 - Rebasing requires a checked-out local branch. Detached `HEAD` rebases are intentionally refused.
+- Merging requires a checked-out local branch. Detached `HEAD` merges are intentionally refused.
 - Worktree move/repair and custom separate worktree branch names are not implemented.
 - Submodules are ignored in commit diffs.
 - Merge commit file lists and file diffs are compared to the first parent only.
@@ -176,7 +177,7 @@ Saved files live under your platform config directory in a `guitar` folder, for 
 
 ### Roadmap
 
-Planned or desired features include jujutsu integration, richer worktree management, merging, richer in-app conflict resolution, and more.
+Planned or desired features include jujutsu integration, richer worktree management, richer in-app conflict resolution, and more.
 
 Follow the project board for current work:
 
@@ -259,8 +260,9 @@ Dangerous actions live behind action mode. By default, press `Ctrl+a`, then pres
 | Untag | `Shift+U` |
 | Cherrypick | `y` |
 | Rebase | `r` |
-| Continue Rebase/Cherrypick | `Shift+C` |
-| Abort Rebase/Cherrypick | `Shift+A` |
+| Merge | `m` |
+| Continue Rebase/Cherrypick/Merge | `Shift+C` |
+| Abort Rebase/Cherrypick/Merge | `Shift+A` |
 
 ### Screenshots
 

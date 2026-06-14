@@ -101,6 +101,7 @@ pub enum Focus {
 pub enum OperationKind {
     Rebase,
     Cherrypick,
+    Merge,
 }
 
 impl OperationKind {
@@ -108,13 +109,14 @@ impl OperationKind {
         match self {
             OperationKind::Rebase => "rebase",
             OperationKind::Cherrypick => "cherrypick",
+            OperationKind::Merge => "merge",
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PendingOperationAction {
-    Start(Oid),
+    Start { kind: OperationKind, oid: Oid },
     Continue,
     Abort,
 }

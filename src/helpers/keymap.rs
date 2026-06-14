@@ -81,6 +81,7 @@ pub enum Command {
     Untag,
     Cherrypick,
     Rebase,
+    Merge,
     ContinueOperation,
     AbortOperation,
     CreateWorktree,
@@ -332,10 +333,13 @@ fn default_action_keymap() -> IndexMap<KeyBinding, Command> {
     // 'r' starts a rebase from action mode.
     map.insert(KeyBinding::new(Char('r'), KeyModifiers::NONE), Command::Rebase);
 
-    // 'C' continues an in-progress rebase or cherry-pick from action mode.
+    // 'm' merges the selected commit into the current branch.
+    map.insert(KeyBinding::new(Char('m'), KeyModifiers::NONE), Command::Merge);
+
+    // 'C' continues an in-progress rebase, cherry-pick, or merge from action mode.
     map.insert(KeyBinding::new(Char('C'), KeyModifiers::SHIFT), Command::ContinueOperation);
 
-    // 'A' aborts an in-progress rebase or cherry-pick from action mode.
+    // 'A' aborts an in-progress rebase, cherry-pick, or merge from action mode.
     map.insert(KeyBinding::new(Char('A'), KeyModifiers::SHIFT), Command::AbortOperation);
 
     // 'W' removes/prunes a selected worktree.
@@ -592,10 +596,26 @@ fn remap_old_numeric_defaults(maps: &mut Keymaps, mode: InputMode) -> bool {
     true
 }
 
+fn migrate_merge_default(maps: &mut Keymaps) -> bool {
+    let Some(action) = maps.get_mut(&InputMode::Action) else {
+        return false;
+    };
+
+    let key = KeyBinding::new(Char('m'), KeyModifiers::NONE);
+    match action.get(&key) {
+        None | Some(Command::ToggleHunkMode) => {
+            action.insert(key, Command::Merge);
+            true
+        },
+        Some(_) => false,
+    }
+}
+
 fn migrate_default_bindings(maps: &mut Keymaps) -> bool {
     let mut changed = false;
     changed |= remap_old_numeric_defaults(maps, InputMode::Normal);
     changed |= remap_old_numeric_defaults(maps, InputMode::Action);
+    changed |= migrate_merge_default(maps);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('v'), KeyModifiers::NONE), Command::ToggleSplitDiffMode);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('v'), KeyModifiers::NONE), Command::ToggleSplitDiffMode);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('0'), KeyModifiers::NONE), Command::ResetLayout);
