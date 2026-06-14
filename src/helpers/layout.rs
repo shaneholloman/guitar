@@ -91,16 +91,16 @@ pub struct LayoutConfig {
 impl Default for LayoutConfig {
     fn default() -> Self {
         Self {
-            is_shas: false,
+            is_shas: true,
             is_minimal: false,
-            is_branches: false,
+            is_branches: true,
             is_tags: false,
             is_stashes: false,
             is_reflogs: false,
-            is_graph_reflogs: true,
+            is_graph_reflogs: false,
             is_worktrees: false,
-            is_status: false,
-            is_inspector: false,
+            is_status: true,
+            is_inspector: true,
             is_zen: false,
             width_left_pane: LAYOUT_WIDTH_LEFT_PANE,
             width_right_pane: LAYOUT_WIDTH_RIGHT_PANE,
@@ -186,5 +186,21 @@ mod tests {
         assert_eq!(config.weight_worktrees, LAYOUT_WEIGHT_DEFAULT);
         assert_eq!(config.weight_viewer_split_left, LAYOUT_WEIGHT_DEFAULT);
         assert_eq!(config.weight_viewer_split_right, LAYOUT_WEIGHT_DEFAULT);
+    }
+
+    #[test]
+    fn default_layout_shows_primary_workflow_panes() {
+        let config = LayoutConfig::default();
+
+        assert!(config.is_branches);
+        assert!(config.is_status);
+        assert!(config.is_inspector);
+        assert!(config.is_shas);
+        assert!(!config.is_tags);
+        assert!(!config.is_stashes);
+        assert!(!config.is_reflogs);
+        assert!(!config.is_graph_reflogs);
+        assert!(!config.is_worktrees);
+        assert!(!config.is_zen);
     }
 }

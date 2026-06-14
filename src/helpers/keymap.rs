@@ -22,6 +22,7 @@ pub enum Command {
     Select,
     Back,
     Minimize,
+    ResetLayout,
     ToggleZenMode,
     ToggleBranches,
     ToggleTags,
@@ -223,6 +224,7 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
 
     // 'z' for zen mode
     map.insert(KeyBinding::new(Char('z'), KeyModifiers::NONE), Command::ToggleZenMode);
+    map.insert(KeyBinding::new(Char('0'), KeyModifiers::NONE), Command::ResetLayout);
     map.insert(KeyBinding::new(Char('1'), KeyModifiers::NONE), Command::ToggleBranches);
     map.insert(KeyBinding::new(Char('2'), KeyModifiers::NONE), Command::ToggleTags);
     map.insert(KeyBinding::new(Char('3'), KeyModifiers::NONE), Command::ToggleStashes);
@@ -596,6 +598,8 @@ fn migrate_default_bindings(maps: &mut Keymaps) -> bool {
     changed |= remap_old_numeric_defaults(maps, InputMode::Action);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('v'), KeyModifiers::NONE), Command::ToggleSplitDiffMode);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('v'), KeyModifiers::NONE), Command::ToggleSplitDiffMode);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('0'), KeyModifiers::NONE), Command::ResetLayout);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('0'), KeyModifiers::NONE), Command::ResetLayout);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleWorktrees);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleWorktrees);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleReflogs);
@@ -656,6 +660,7 @@ mod tests {
         let action = maps.get(&InputMode::Action).unwrap();
 
         assert_eq!(normal.get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleTags));
+        assert_eq!(normal.get(&KeyBinding::new(Char('0'), KeyModifiers::NONE)), Some(&Command::ResetLayout));
         assert_eq!(normal.get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleWorktrees));
         assert_eq!(normal.get(&KeyBinding::new(Char('8'), KeyModifiers::NONE)), Some(&Command::ToggleShas));
         assert_eq!(normal.get(&KeyBinding::new(Char('9'), KeyModifiers::NONE)), Some(&Command::ToggleGraphReflogs));
@@ -671,6 +676,7 @@ mod tests {
         let action = maps.get(&InputMode::Action).unwrap();
 
         for mode_map in [normal, action] {
+            assert_eq!(mode_map.get(&KeyBinding::new(Char('0'), KeyModifiers::NONE)), Some(&Command::ResetLayout));
             assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::NONE)), Some(&Command::ToggleBranches));
             assert_eq!(mode_map.get(&KeyBinding::new(Char('2'), KeyModifiers::NONE)), Some(&Command::ToggleTags));
             assert_eq!(mode_map.get(&KeyBinding::new(Char('3'), KeyModifiers::NONE)), Some(&Command::ToggleStashes));

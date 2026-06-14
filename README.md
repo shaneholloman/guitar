@@ -216,6 +216,7 @@ Dangerous actions live behind action mode. By default, press `Ctrl+a`, then pres
 | Toggle Hunk Mode | `m` |
 | Toggle Split Diff Mode | `v` |
 | Toggle Zen Mode | `z` |
+| Reset Layout | `0` |
 | Toggle Branches | `1` |
 | Toggle Tags | `2` |
 | Toggle Stashes | `3` |

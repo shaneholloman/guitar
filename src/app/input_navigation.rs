@@ -7,7 +7,7 @@ use crate::{
         actions::{branching::delete_branch, checkout::checkout_branch, tagging::untag},
         queries::{commits::get_current_branch, diffs::get_filenames_diff_at_oid},
     },
-    helpers::{keymap::InputMode, palette::Theme},
+    helpers::{keymap::InputMode, layout::LayoutConfig, palette::Theme},
 };
 
 const SETTINGS_THEME_SELECTION_START: usize = 7;
@@ -1432,6 +1432,21 @@ impl App {
         self.layout_config.is_minimal = !self.layout_config.is_minimal;
         self.mark_viewer_layout_dirty();
         self.save_layout();
+    }
+
+    pub fn on_reset_layout(&mut self) {
+        let config = LayoutConfig::default();
+        let should_reload = self.repo.is_some() && self.layout_config.is_graph_reflogs != config.is_graph_reflogs;
+        self.layout_config = config;
+        self.layout_drag = None;
+        self.mark_viewer_layout_dirty();
+        self.viewport = Viewport::Graph;
+        self.focus = Focus::Viewport;
+        self.file_name = None;
+        self.save_layout();
+        if should_reload {
+            self.reload(None);
+        }
     }
 
     pub fn on_toggle_shas(&mut self) {

@@ -41,6 +41,7 @@ impl App {
             Command::Select => self.on_select(),
             Command::Back => self.on_back(),
             Command::Minimize => self.on_minimize(),
+            Command::ResetLayout => self.on_reset_layout(),
             Command::ToggleZenMode => self.on_toggle_zen_mode(),
             Command::ToggleBranches => self.on_toggle_branches(),
             Command::ToggleTags => self.on_toggle_tags(),
