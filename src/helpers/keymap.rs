@@ -88,6 +88,10 @@ pub enum Command {
 pub type ModeKeymap = IndexMap<KeyBinding, Command>;
 pub type Keymaps = IndexMap<InputMode, ModeKeymap>;
 
+pub fn action_keymap_visible_entries(normal: Option<&ModeKeymap>, action: &ModeKeymap) -> ModeKeymap {
+    action.iter().filter(|(kb, cmd)| normal.and_then(|normal| normal.get(*kb)) != Some(*cmd)).map(|(kb, cmd)| (kb.clone(), cmd.clone())).collect()
+}
+
 fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     let mut map = IndexMap::new();
 
@@ -663,5 +667,23 @@ mod tests {
 
         let action = maps.get(&InputMode::Action).unwrap();
         assert_eq!(action.get(&KeyBinding::new(Char('r'), KeyModifiers::NONE)), Some(&Command::FetchAll));
+    }
+
+    #[test]
+    fn action_settings_filter_hides_only_identical_inherited_bindings() {
+        let mut normal = IndexMap::new();
+        normal.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+        normal.insert(KeyBinding::new(Char('r'), KeyModifiers::NONE), Command::Reload);
+
+        let mut action = IndexMap::new();
+        action.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+        action.insert(KeyBinding::new(Char('r'), KeyModifiers::NONE), Command::Rebase);
+        action.insert(KeyBinding::new(Char('R'), KeyModifiers::SHIFT), Command::AbortRebase);
+
+        let visible = action_keymap_visible_entries(Some(&normal), &action);
+
+        assert_eq!(visible.get(&KeyBinding::new(Char('j'), KeyModifiers::NONE)), None);
+        assert_eq!(visible.get(&KeyBinding::new(Char('r'), KeyModifiers::NONE)), Some(&Command::Rebase));
+        assert_eq!(visible.get(&KeyBinding::new(Char('R'), KeyModifiers::SHIFT)), Some(&Command::AbortRebase));
     }
 }

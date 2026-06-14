@@ -1,5 +1,5 @@
 use crate::helpers::heatmap::heat_cell;
-use crate::helpers::keymap::InputMode;
+use crate::helpers::keymap::{InputMode, action_keymap_visible_entries};
 use crate::helpers::palette::*;
 use crate::helpers::symbols::WEEKDAY_LABELS;
 use crate::helpers::version::VERSION;
@@ -163,10 +163,8 @@ impl App {
         lines.push(Line::from(Span::styled(fill_width(" shortcuts / action mode:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         lines.push(Line::default());
         if let Some(action_keymap) = self.keymaps.get(&InputMode::Action) {
-            // Action mode only shows bindings that are not already visible in normal mode.
-            let normal_keys: std::collections::HashSet<_> = self.keymaps.get(&InputMode::Normal).map(|km| km.keys().cloned().collect()).unwrap_or_default();
-
-            let unique_action = action_keymap.iter().filter(|(kb, _)| !normal_keys.contains(kb)).map(|(kb, cmd)| (kb.clone(), cmd.clone())).collect();
+            // Action mode hides inherited duplicates, but shows keys whose command changes.
+            let unique_action = action_keymap_visible_entries(self.keymaps.get(&InputMode::Normal), action_keymap);
 
             render_keybindings(&self.theme, &unique_action, heatmap_width).iter().enumerate().for_each(|(idx, kb_line)| {
                 let spans: Vec<Span> = kb_line
