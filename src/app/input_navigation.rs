@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        app::{App, Direction, Focus, Viewport},
+        app::{App, BranchModalAction, Direction, Focus, Viewport},
         app_default::ViewerMode,
     },
     git::{
@@ -156,29 +156,23 @@ impl App {
             },
             Focus::ModalSolo => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                let branch_names = self.graph_branch_choices(alias);
+                let mut should_reload = false;
 
-                // Solo choices mirror what the graph currently considers visible.
-                let visible_branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
-                    self.branches.all.get(&alias).cloned().unwrap_or_default()
-                } else {
-                    self.branches.visible_branch_names.iter().filter(|b| self.branches.all.get(&alias).is_some_and(|all| all.contains(b))).cloned().collect()
-                };
-
-                // Selecting an already soloed branch clears the filter back to all branches.
-                if let Some(branch) = visible_branch_names.get(self.modal_solo_selected as usize) {
-                    let is_already_solo = self.branches.visible_branch_names.len() == 1 && self.branches.visible_branch_names.contains(branch);
-
-                    if is_already_solo {
-                        self.branches.visible_branch_names.clear();
-                    } else {
-                        self.branches.visible_branch_names.clear();
-                        self.branches.visible_branch_names.insert(branch.clone());
+                if let Some(branch) = branch_names.get(self.modal_solo_selected as usize) {
+                    match self.modal_branch_action {
+                        BranchModalAction::Solo => self.solo_branch_name(branch),
+                        BranchModalAction::Toggle => self.toggle_branch_name(branch),
                     }
+                    should_reload = true;
                 }
 
                 self.modal_solo_selected = 0;
+                self.modal_branch_action = BranchModalAction::Solo;
                 self.focus = Focus::Viewport;
-                self.reload(None);
+                if should_reload {
+                    self.reload(None);
+                }
             },
 
             Focus::ModalDeleteBranch => {
@@ -606,13 +600,7 @@ impl App {
             },
             Focus::ModalSolo => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
-
-                // Modal navigation wraps over the same branch list the modal displays.
-                let branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
-                    self.branches.all.get(&alias).cloned().unwrap_or_default()
-                } else {
-                    self.branches.visible_branch_names.iter().filter(|name| self.branches.all.get(&alias).is_some_and(|branches| branches.contains(name))).cloned().collect()
-                };
+                let branch_names = self.graph_branch_choices(alias);
 
                 let len = branch_names.len() as i32;
                 if len > 0 {
@@ -735,13 +723,7 @@ impl App {
             },
             Focus::ModalSolo => {
                 let alias = self.oids.get_alias_by_idx(self.graph_selected);
-
-                // Modal navigation wraps over the same branch list the modal displays.
-                let branch_names: Vec<String> = if self.branches.visible_branch_names.is_empty() {
-                    self.branches.all.get(&alias).cloned().unwrap_or_default()
-                } else {
-                    self.branches.visible_branch_names.iter().filter(|name| self.branches.all.get(&alias).is_some_and(|branches| branches.contains(name))).cloned().collect()
-                };
+                let branch_names = self.graph_branch_choices(alias);
 
                 let len = branch_names.len() as i32;
                 if len > 0 {
@@ -1251,68 +1233,95 @@ impl App {
         };
     }
 
+    fn branch_name_at_pane_selection(&self) -> Option<String> {
+        self.branches.sorted.get(self.branches_selected).map(|(_, branch)| branch.clone())
+    }
+
+    fn all_branch_names(&self) -> im::HashSet<String> {
+        self.branches.sorted.iter().map(|(_, branch)| branch.clone()).collect()
+    }
+
+    fn solo_branch_name(&mut self, branch: &str) {
+        self.branches.visible_branch_names.clear();
+        self.branches.visible_branch_names.insert(branch.to_string());
+    }
+
+    fn toggle_branch_name(&mut self, branch: &str) {
+        if self.branches.visible_branch_names.is_empty() {
+            self.branches.visible_branch_names = self.all_branch_names();
+            self.branches.visible_branch_names.remove(branch);
+        } else if self.branches.visible_branch_names.contains(branch) {
+            self.branches.visible_branch_names.remove(branch);
+        } else {
+            self.branches.visible_branch_names.insert(branch.to_string());
+        }
+
+        if self.branches.visible_branch_names.is_empty() {
+            return;
+        }
+
+        let has_visible_branch = self.branches.sorted.iter().any(|(_, branch)| self.branches.visible_branch_names.contains(branch));
+        if !has_visible_branch {
+            self.branches.visible_branch_names.clear();
+        }
+    }
+
+    pub(crate) fn graph_branch_choices(&self, alias: u32) -> Vec<String> {
+        self.branches
+            .sorted
+            .iter()
+            .filter(|(branch_alias, branch)| *branch_alias == alias && (self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(branch)))
+            .map(|(_, branch)| branch.clone())
+            .collect()
+    }
+
+    fn apply_graph_branch_action(&mut self, action: BranchModalAction) {
+        if self.viewport != Viewport::Graph || self.graph_selected == 0 {
+            return;
+        }
+
+        let alias = self.oids.get_alias_by_idx(self.graph_selected);
+        let branch_names = self.graph_branch_choices(alias);
+
+        match branch_names.as_slice() {
+            [] => {},
+            [branch] => {
+                match action {
+                    BranchModalAction::Solo => self.solo_branch_name(branch),
+                    BranchModalAction::Toggle => self.toggle_branch_name(branch),
+                }
+                self.reload(None);
+            },
+            _ => {
+                self.modal_branch_action = action;
+                self.modal_solo_selected = 0;
+                self.focus = Focus::ModalSolo;
+            },
+        }
+    }
+
     pub fn on_toggle_branch(&mut self) {
-        if self.focus == Focus::Branches {
-            let (_, branch) = self.branches.sorted.get(self.branches_selected).unwrap();
-            let branch = branch.clone();
-
-            if self.branches.visible_branch_names.contains(&branch) {
-                self.branches.visible_branch_names.remove(&branch);
-            } else {
-                self.branches.visible_branch_names.insert(branch);
-            }
-
-            self.reload(None);
+        match self.focus {
+            Focus::Branches => {
+                if let Some(branch) = self.branch_name_at_pane_selection() {
+                    self.toggle_branch_name(&branch);
+                    self.reload(None);
+                }
+            },
+            Focus::Viewport => self.apply_graph_branch_action(BranchModalAction::Toggle),
+            _ => {},
         }
     }
 
     pub fn on_solo_branch(&mut self) {
         match self.focus {
             Focus::Branches => {
-                let (_, branch) = self.branches.sorted.get(self.branches_selected).unwrap();
-                let branch = branch.clone();
-
-                // Repeating solo on the same branch clears the filter back to all branches.
-                if self.branches.visible_branch_names.len() == 1 && self.branches.visible_branch_names.contains(&branch) {
-                    self.branches.visible_branch_names.clear();
-                } else {
-                    self.branches.visible_branch_names.clear();
-                    self.branches.visible_branch_names.insert(branch);
-                }
-
-                self.reload(None);
-            },
-
-            Focus::Viewport => {
-                if self.viewport != Viewport::Graph || self.graph_selected == 0 {
-                    return;
-                }
-
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-
-                // Commits with multiple branch labels need a modal before choosing the solo branch.
-                let branches_for_alias: Vec<String> = self.branches.sorted.iter().filter(|(b_alias, _)| *b_alias == alias).map(|(_, name)| name.clone()).collect();
-
-                if branches_for_alias.is_empty() {
-                    return;
-                }
-
-                if branches_for_alias.len() == 1 {
-                    let branch = &branches_for_alias[0];
-
-                    if self.branches.visible_branch_names.len() == 1 && self.branches.visible_branch_names.contains(branch) {
-                        self.branches.visible_branch_names.clear();
-                    } else {
-                        self.branches.visible_branch_names.clear();
-                        self.branches.visible_branch_names.insert(branch.clone());
-                    }
-
+                if let Some(branch) = self.branch_name_at_pane_selection() {
+                    self.solo_branch_name(&branch);
                     self.reload(None);
-                } else {
-                    self.focus = Focus::ModalSolo;
                 }
             },
-
+            Focus::Viewport => self.apply_graph_branch_action(BranchModalAction::Solo),
             _ => {},
         }
     }
@@ -1554,5 +1563,108 @@ impl App {
 
     pub fn on_exit(&mut self) {
         self.exit();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::chunk::NONE;
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_non_repo_path(name: &str) -> String {
+        let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("guitar-input-navigation-{name}-{id}"));
+        fs::create_dir_all(&path).unwrap();
+        path.display().to_string()
+    }
+
+    fn branch_app() -> App {
+        let mut app = App { path: Some(temp_non_repo_path("branches")), viewport: Viewport::Graph, ..Default::default() };
+        app.branches.sorted = vec![(0, "feature".to_string()), (1, "main".to_string())];
+        app.branches.all.insert(0, vec!["feature".to_string()]);
+        app.branches.all.insert(1, vec!["main".to_string()]);
+        app.oids.sorted_aliases = vec![NONE, 1];
+        app
+    }
+
+    fn visible_branches(app: &App) -> Vec<String> {
+        let mut branches: Vec<String> = app.branches.visible_branch_names.iter().cloned().collect();
+        branches.sort();
+        branches
+    }
+
+    #[test]
+    fn solo_branch_from_pane_keeps_selected_as_only_visible() {
+        let mut app = branch_app();
+        app.focus = Focus::Branches;
+        app.branches_selected = 1;
+        app.branches.visible_branch_names.insert("main".to_string());
+
+        app.on_solo_branch();
+
+        assert_eq!(visible_branches(&app), vec!["main"]);
+    }
+
+    #[test]
+    fn toggle_branch_from_all_visible_hides_selected_branch() {
+        let mut app = branch_app();
+        app.focus = Focus::Branches;
+        app.branches_selected = 1;
+
+        app.on_toggle_branch();
+
+        assert_eq!(visible_branches(&app), vec!["feature"]);
+    }
+
+    #[test]
+    fn toggle_last_visible_branch_returns_to_all_visible() {
+        let mut app = branch_app();
+        app.focus = Focus::Branches;
+        app.branches_selected = 1;
+        app.branches.visible_branch_names.insert("main".to_string());
+
+        app.on_toggle_branch();
+
+        assert!(app.branches.visible_branch_names.is_empty());
+    }
+
+    #[test]
+    fn graph_solo_uses_selected_commit_branch() {
+        let mut app = branch_app();
+        app.focus = Focus::Viewport;
+        app.graph_selected = 1;
+
+        app.on_solo_branch();
+
+        assert_eq!(visible_branches(&app), vec!["main"]);
+    }
+
+    #[test]
+    fn graph_toggle_uses_selected_commit_branch() {
+        let mut app = branch_app();
+        app.focus = Focus::Viewport;
+        app.graph_selected = 1;
+
+        app.on_toggle_branch();
+
+        assert_eq!(visible_branches(&app), vec!["feature"]);
+    }
+
+    #[test]
+    fn graph_toggle_multiple_branch_commit_opens_toggle_modal() {
+        let mut app = branch_app();
+        app.focus = Focus::Viewport;
+        app.graph_selected = 1;
+        app.branches.sorted.push((1, "release".to_string()));
+
+        app.on_toggle_branch();
+
+        assert_eq!(app.focus, Focus::ModalSolo);
+        assert_eq!(app.modal_branch_action, BranchModalAction::Toggle);
+        assert_eq!(app.modal_solo_selected, 0);
     }
 }

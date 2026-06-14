@@ -92,7 +92,7 @@ guitar --reset
 - Incremental history loading in a background walker. Large repositories become usable while history continues loading in batches.
 - Graph rendering for commits, branches, merges, tags, stashes, worktree HEAD badges, and the synthetic uncommitted-work row.
 - Optional abbreviated SHA column.
-- Branch visibility filters and one-branch solo mode.
+- Branch visibility filters, branch toggling, and one-branch solo mode.
 - Optional HEAD reflog graph roots so reset-away or otherwise unlabeled HEAD positions can be found.
 - Navigation by row, page, half page, list midpoint, first/last row, branch labels, and first-parent commit relationships.
 - SHA-prefix jump for commits that have already been loaded.
@@ -221,9 +221,9 @@ Dangerous actions live behind action mode. By default, press `Ctrl+a`, then pres
 | Toggle Stashes | `3` |
 | Toggle Status | `4` |
 | Toggle Inspector | `5` |
-| Toggle SHAs | `6` |
-| Toggle Worktrees | `7` |
-| Toggle Reflogs | `8` |
+| Toggle Worktrees | `6` |
+| Toggle Reflogs | `7` |
+| Toggle SHAs | `8` |
 | Toggle Graph Reflogs | `9` |
 | Toggle Help / Settings | `?` |
 | Action Mode | `Ctrl+a` |
@@ -237,8 +237,8 @@ Dangerous actions live behind action mode. By default, press `Ctrl+a`, then pres
 | Create Branch | `b` |
 | Create Worktree | `w` |
 | Tag | `t` |
-| Toggle Branch | `Shift+T` |
-| Solo Branch | `Space` |
+| Toggle Selected Branch | `Shift+T` |
+| Solo Selected Branch | `Space` |
 
 #### Action Mode
 

@@ -1,4 +1,4 @@
-use crate::app::app::App;
+use crate::app::app::{App, BranchModalAction};
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -13,18 +13,17 @@ impl App {
         let mut height = 8;
         let alias = self.oids.get_alias_by_idx(self.graph_selected);
         let mut lines = Vec::new();
-        let line_text = "select a branch to solo";
+        let line_text = match self.modal_branch_action {
+            BranchModalAction::Solo => "select a branch to solo",
+            BranchModalAction::Toggle => "select a branch to toggle",
+        };
         lines.push(Line::default());
         lines.push(Line::from(vec![Span::styled(line_text, Style::default().fg(self.theme.COLOR_TEXT))]));
         lines.push(Line::default());
 
         let color = self.branches.colors.get(&alias).unwrap();
-        // Modal choices respect the active branch filter unless no filter is active.
-        let branches: Vec<String> = if self.branches.visible_branch_names.is_empty() {
-            self.branches.all.get(&alias).cloned().unwrap_or_default()
-        } else {
-            self.branches.visible_branch_names.iter().filter(|b| self.branches.all.get(&alias).is_some_and(|all| all.contains(b))).cloned().collect()
-        };
+        // Modal choices mirror the branches currently selectable from the graph row.
+        let branches = self.graph_branch_choices(alias);
 
         branches.iter().enumerate().for_each(|(idx, branch)| {
             height += 1;

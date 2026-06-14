@@ -278,10 +278,10 @@ fn default_normal_keymap() -> IndexMap<KeyBinding, Command> {
     // 'w' for worktree creation
     map.insert(KeyBinding::new(Char('w'), KeyModifiers::NONE), Command::CreateWorktree);
 
-    // 'T' for toggle branch visibility in graph
+    // 'T' for toggling selected branch visibility.
     map.insert(KeyBinding::new(Char('T'), KeyModifiers::SHIFT), Command::ToggleBranch);
 
-    // Space for solo branch (similar to vim's fold toggle, shows only one branch)
+    // Space for solo branch, keeping only the selected branch visible.
     map.insert(KeyBinding::new(Char(' '), KeyModifiers::NONE), Command::SoloBranch);
 
     map

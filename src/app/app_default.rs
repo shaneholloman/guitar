@@ -7,7 +7,7 @@ use crate::{
 };
 use crate::{
     app::{
-        app::{App, Focus, OperationKind, Viewport, WorktreeModalAction},
+        app::{App, BranchModalAction, Focus, OperationKind, Viewport, WorktreeModalAction},
         app_layout::Layout,
     },
     core::{branches::Branches, buffer::Buffer, oids::Oids, tags::Tags},
@@ -144,6 +144,7 @@ impl Default for App {
 
             // Modal solo
             modal_solo_selected: 0,
+            modal_branch_action: BranchModalAction::Solo,
 
             // Modal editor
             modal_input: TextInput::default(),

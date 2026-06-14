@@ -132,6 +132,12 @@ pub enum WorktreeModalAction {
     Remove,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum BranchModalAction {
+    Solo,
+    Toggle,
+}
+
 #[derive(PartialEq, Eq)]
 pub enum Direction {
     Down,
@@ -262,6 +268,7 @@ pub struct App {
 
     // Modal solo
     pub modal_solo_selected: i32,
+    pub modal_branch_action: BranchModalAction,
 
     // Modal editor
     pub modal_input: TextInput,
