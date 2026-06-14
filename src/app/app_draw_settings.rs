@@ -125,33 +125,17 @@ impl App {
         lines.push(Line::default());
         lines.push(Line::from(Span::styled(fill_width(" themes:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         lines.push(Line::default());
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" classic", format!("({}) ", if self.theme.name == ThemeNames::Classic { "*" } else { " " }).as_str(), heatmap_width),
-                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-            ))
-            .centered(),
-        );
 
-        self.settings_selections.push(lines.len() - 1);
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" ansi", format!("({}) ", if self.theme.name == ThemeNames::Ansi { "*" } else { " " }).as_str(), heatmap_width),
-                Style::default().fg(self.theme.COLOR_TEXT),
-            ))
-            .centered(),
-        );
-
-        self.settings_selections.push(lines.len().saturating_sub(1));
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" monochrome", format!("({}) ", if self.theme.name == ThemeNames::Monochrome { "*" } else { " " }).as_str(), heatmap_width),
-                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-            ))
-            .centered(),
-        );
-
-        self.settings_selections.push(lines.len().saturating_sub(1));
+        for (idx, preset) in Theme::presets().iter().enumerate() {
+            let label = format!(" {}", preset.label);
+            let marker = format!("({}) ", if self.theme.name == preset.theme.name { "*" } else { " " });
+            let mut style = Style::default().fg(self.theme.COLOR_TEXT);
+            if idx.is_multiple_of(2) {
+                style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+            }
+            lines.push(Line::from(Span::styled(fill_width(&label, &marker, heatmap_width), style)).centered());
+            self.settings_selections.push(lines.len().saturating_sub(1));
+        }
 
         // Keymap sections are generated from the active keymap data, not duplicated text.
         lines.push(Line::default());

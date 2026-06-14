@@ -10,6 +10,8 @@ use crate::{
     helpers::{keymap::InputMode, palette::Theme},
 };
 
+const SETTINGS_THEME_SELECTION_START: usize = 7;
+
 impl App {
     fn get_focusable_panes(&self) -> Vec<Focus> {
         let mut order = Vec::new();
@@ -42,14 +44,14 @@ impl App {
             Focus::Viewport => match self.viewport {
                 Viewport::Settings => {
                     if let Some(position) = self.settings_selections.iter().position(|&x| x == self.settings_selected) {
-                        match position {
-                            7 => self.theme = Theme::classic(),
-                            8 => self.theme = Theme::ansi(),
-                            9 => self.theme = Theme::monochrome(),
-                            _ => {
-                                return;
-                            },
-                        }
+                        let Some(theme_idx) = position.checked_sub(SETTINGS_THEME_SELECTION_START) else {
+                            return;
+                        };
+                        let Some(preset) = Theme::presets().get(theme_idx) else {
+                            return;
+                        };
+                        self.set_theme(preset.theme);
+                        self.save_theme_config();
                         self.reload(None);
                     }
                 },

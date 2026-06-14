@@ -146,13 +146,14 @@ guitar --reset
 - Mouse dragging for side-pane widths, stacked-pane heights, and the split diff divider.
 - Persistent layout toggles, pane widths, pane weights, and split diff divider position.
 - Persistent recent repository list.
-- Three built-in themes: classic, ANSI, and monochrome.
+- Built-in themes include classic, ANSI, monochrome, Dracula, Monokai, Catppuccin, Atom, and VS Code, with dark and light variants for the named palettes.
 
 Saved files live under your platform config directory in a `guitar` folder, for example `~/.config/guitar` on many Linux systems. The app currently writes:
 
 - `keymap.json`
 - `layout.json`
 - `recent.json`
+- `theme.json`
 
 ### Known Limitations and Missing Features
 
@@ -172,7 +173,6 @@ Saved files live under your platform config directory in a `guitar` folder, for 
 - Search only matches loaded commit SHA prefixes. It does not search commit messages, authors, branches, tags, filenames, or unloaded history.
 - The keymap is customizable by editing `keymap.json`, but there is no in-app keymap editor.
 - The recent repository list is append-only from inside the app; there is no in-app remove/reorder UI.
-- Theme selection is available in settings, but theme choice is not currently persisted between launches.
 
 ### Roadmap
 

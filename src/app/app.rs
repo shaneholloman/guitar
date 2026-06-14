@@ -315,6 +315,7 @@ impl App {
             // Load persisted state before the first repository scan.
             self.load_recent();
             self.load_layout();
+            self.load_theme_config();
             self.load_keymap();
             self.reload(None);
 
@@ -523,6 +524,7 @@ impl App {
         let absolute_path = absolute_path.display().to_string();
         self.path = Some(absolute_path.clone());
         self.repo = repo;
+        self.refresh_theme_assets();
 
         // Repository-specific state starts only after Repository::open succeeds.
         if let Some(repo) = &self.repo {
@@ -535,12 +537,6 @@ impl App {
             }
 
             save_recent(&self.recent);
-
-            // ColorPicker owns lane color rotation, so reset it with every fresh graph.
-            self.color = Rc::new(RefCell::new(ColorPicker::from_theme(&self.theme)));
-
-            // The logo uses theme colors and is rebuilt when the theme changes.
-            self.logo = vec![Span::styled("  guita", Style::default().fg(self.theme.COLOR_GRASS)), Span::styled("╭", Style::default().fg(self.theme.COLOR_GREEN))];
 
             // Cancel the previous walker before spawning a new one for this repository state.
             if let Some(cancel_flag) = &self.walker_cancel {
@@ -663,6 +659,24 @@ impl App {
 
     pub fn load_recent(&mut self) {
         self.recent = load_recent();
+    }
+
+    fn refresh_theme_assets(&mut self) {
+        self.color = Rc::new(RefCell::new(ColorPicker::from_theme(&self.theme)));
+        self.logo = vec![Span::styled("  guita", Style::default().fg(self.theme.COLOR_GRASS)), Span::styled("╭", Style::default().fg(self.theme.COLOR_GREEN))];
+    }
+
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.theme = theme;
+        self.refresh_theme_assets();
+    }
+
+    pub fn load_theme_config(&mut self) {
+        self.set_theme(load_theme());
+    }
+
+    pub fn save_theme_config(&self) {
+        save_theme(&self.theme);
     }
 
     pub fn exit(&mut self) {
