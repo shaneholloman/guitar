@@ -449,6 +449,19 @@ pub fn render_message_range(
             let oid = oids.get_oid_by_alias(alias);
             let commit = repo.find_commit(*oid).unwrap();
 
+            let worktrees_for_alias = worktrees.get_by_alias(&alias);
+            for worktree in &worktrees_for_alias {
+                let color = if !worktree.is_valid || worktree.locked_reason.is_some() {
+                    theme.COLOR_GREY_600
+                } else if worktree.is_current {
+                    theme.COLOR_GRASS
+                } else {
+                    theme.COLOR_TEAL
+                };
+                spans.push(Span::styled(format!("{SYM_WORKTREE} {} ", worktree.name), Style::default().fg(color)));
+            }
+            let has_worktree_label = !worktrees_for_alias.is_empty();
+
             // Branch labels respect the active branch filter to match the rendered graph.
             let mut has_visible_branch_label = false;
             if let Some(branch_list) = all_branches.get(&alias) {
@@ -473,19 +486,6 @@ pub fn render_message_range(
                 }
             }
             let has_tag_label = tags.get(&alias).is_some_and(|tags| !tags.is_empty());
-
-            let worktrees_for_alias = worktrees.get_by_alias(&alias);
-            for worktree in &worktrees_for_alias {
-                let color = if !worktree.is_valid || worktree.locked_reason.is_some() {
-                    theme.COLOR_GREY_600
-                } else if worktree.is_current {
-                    theme.COLOR_GRASS
-                } else {
-                    theme.COLOR_TEAL
-                };
-                spans.push(Span::styled(format!("{SYM_WORKTREE} {} ", worktree.name), Style::default().fg(color)));
-            }
-            let has_worktree_label = !worktrees_for_alias.is_empty();
 
             if oids.stashes.contains(&alias) {
                 spans.push(Span::styled(format!("{SYM_COMMIT_STASH} stash "), Style::default().fg(if let Some(color) = stashes_colors.get(&alias) { *color } else { theme.COLOR_TEXT })));
@@ -561,4 +561,96 @@ pub fn render_keybindings(theme: &Theme, keymap: &IndexMap<KeyBinding, Command>,
                 .alignment(ratatui::layout::Alignment::Center)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::{
+        reflogs::HeadReflogs,
+        worktrees::{WorktreeEntry, WorktreeKind},
+    };
+    use git2::Signature;
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_repo(name: &str) -> Repository {
+        let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("guitar-renderers-{name}-{id}"));
+        fs::create_dir_all(&path).unwrap();
+        Repository::init(&path).unwrap()
+    }
+
+    fn commit(repo: &Repository, file: &str, message: &str) -> git2::Oid {
+        fs::write(repo.workdir().unwrap().join(file), "content\n").unwrap();
+
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(file)).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let sig = Signature::now("Test User", "test@example.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[]).unwrap()
+    }
+
+    fn worktree(name: &str, oid: git2::Oid) -> WorktreeEntry {
+        WorktreeEntry {
+            name: name.into(),
+            path: PathBuf::from(format!("/tmp/{name}")),
+            branch: Some(name.into()),
+            head: Some(oid),
+            alias: None,
+            kind: WorktreeKind::Linked,
+            is_current: true,
+            is_valid: true,
+            is_prunable: false,
+            locked_reason: None,
+            is_dirty: false,
+        }
+    }
+
+    #[test]
+    fn message_range_renders_worktree_labels_before_branch_labels() {
+        let repo = temp_repo("label-order");
+        let oid = commit(&repo, "file.txt", "summary");
+
+        let mut oids = Oids::default();
+        let alias = oids.get_alias_by_oid(oid);
+        oids.sorted_aliases = vec![alias];
+
+        let mut worktrees = Worktrees::from_entries(vec![worktree("wt", oid)]);
+        worktrees.refresh_aliases(&oids);
+
+        let mut local = HashMap::new();
+        local.insert(alias, vec!["main".to_string()]);
+
+        let mut all_branches = HashMap::new();
+        all_branches.insert(alias, vec!["main".to_string(), "origin/main".to_string()]);
+
+        let lines = render_message_range(
+            &Theme::default(),
+            &repo,
+            &oids,
+            &local,
+            &all_branches,
+            &HashSet::new(),
+            &HashMap::new(),
+            &worktrees,
+            &HeadReflogs::default(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            false,
+            0,
+            1,
+            0,
+            &UncommittedChanges::default(),
+        );
+
+        let rendered: Vec<String> = lines[0].spans.iter().map(|span| span.content.to_string()).collect();
+        assert_eq!(rendered, vec![format!("{SYM_WORKTREE} wt "), format!("{SYM_COMMIT_BRANCH} main "), "◆ origin/main ".to_string(), "summary".to_string()]);
+    }
 }
