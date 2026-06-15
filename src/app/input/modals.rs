@@ -1,5 +1,6 @@
 use crate::{
-    app::app::{App, Focus},
+    app::app::{App, AuthInputField, Focus, PendingGraphLookup},
+    core::graph_service::GraphLookupKind,
     git::actions::{
         branching::create_branch,
         cherrypicking::{CherrypickOutcome, start_cherrypick},
@@ -7,9 +8,11 @@ use crate::{
         tagging::tag,
         worktrees::{create_worktree, is_valid_worktree_name, lock_worktree},
     },
+    git::queries::diffs::get_filenames_diff_at_oid,
+    helpers::keymap::{KeyBinding, rebind_keymap_selection, save_keymaps, save_keymaps_to_path},
 };
 use git2::Oid;
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::path::PathBuf;
 
 impl App {
@@ -26,7 +29,111 @@ impl App {
         self.modal_error_message.clear();
     }
 
+    pub(crate) fn close_key_capture(&mut self) {
+        self.modal_key_capture_selection = None;
+        self.modal_key_capture_candidate = None;
+        self.modal_key_capture_error = None;
+        self.focus = Focus::Viewport;
+    }
+
+    fn is_key_capture_cancel(key_event: &KeyEvent) -> bool {
+        matches!(key_event.code, KeyCode::Char('c') | KeyCode::Char('C')) && key_event.modifiers.contains(KeyModifiers::CONTROL)
+    }
+
+    fn preview_key_capture_candidate(&mut self, key_binding: KeyBinding) {
+        self.modal_key_capture_candidate = Some(key_binding.clone());
+        self.modal_key_capture_error = self.modal_key_capture_selection.as_ref().and_then(|selection| {
+            let mut preview = self.keymaps.clone();
+            rebind_keymap_selection(&mut preview, selection, key_binding).err()
+        });
+    }
+
+    fn save_keymaps_for_app(&self, keymaps: &crate::helpers::keymap::Keymaps) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(path) = &self.keymap_save_path { save_keymaps_to_path(path.as_path(), keymaps) } else { save_keymaps(keymaps) }
+    }
+
+    fn confirm_key_capture(&mut self) {
+        if self.modal_key_capture_error.is_some() {
+            return;
+        }
+
+        let Some(selection) = self.modal_key_capture_selection.clone() else {
+            return;
+        };
+        let Some(candidate) = self.modal_key_capture_candidate.clone() else {
+            return;
+        };
+
+        let mut updated = self.keymaps.clone();
+        match rebind_keymap_selection(&mut updated, &selection, candidate) {
+            Ok(_) => match self.save_keymaps_for_app(&updated) {
+                Ok(_) => {
+                    self.keymaps = updated;
+                    self.close_key_capture();
+                },
+                Err(error) => self.show_error(format!("Save keymap failed: {error}")),
+            },
+            Err(error) => {
+                self.modal_key_capture_error = Some(error);
+            },
+        }
+    }
+
+    fn handle_key_capture_event(&mut self, key_event: KeyEvent) -> bool {
+        if Self::is_key_capture_cancel(&key_event) {
+            self.close_key_capture();
+            return true;
+        }
+
+        if self.modal_key_capture_candidate.is_some() && self.modal_key_capture_error.is_none() && key_event.code == KeyCode::Enter && key_event.modifiers == KeyModifiers::NONE {
+            self.confirm_key_capture();
+            return true;
+        }
+
+        self.preview_key_capture_candidate(KeyBinding::new(key_event.code, key_event.modifiers));
+        true
+    }
+
+    fn toggle_auth_field(&mut self) {
+        if self.pending_auth_prompt.as_ref().is_some_and(|challenge| !challenge.protocol.is_http()) {
+            self.auth_input_field = AuthInputField::Secret;
+            return;
+        }
+
+        self.auth_input_field = match self.auth_input_field {
+            AuthInputField::Username => AuthInputField::Secret,
+            AuthInputField::Secret => AuthInputField::Username,
+        };
+    }
+
+    fn handle_auth_event(&mut self, key_event: KeyEvent) -> bool {
+        match key_event.code {
+            KeyCode::Esc => {
+                self.cancel_auth_prompt();
+            },
+            KeyCode::Enter => {
+                self.submit_auth_prompt();
+            },
+            KeyCode::Tab | KeyCode::BackTab | KeyCode::Up | KeyCode::Down => {
+                self.toggle_auth_field();
+            },
+            _ => {
+                let input = if self.auth_input_field == AuthInputField::Username { &mut self.auth_username_input } else { &mut self.auth_secret_input };
+                input.on_key(key_event);
+            },
+        }
+        true
+    }
+
     pub(super) fn handle_modal_key_event(&mut self, key_event: KeyEvent) -> bool {
+        if self.focus == Focus::ModalKeyCapture {
+            return self.handle_key_capture_event(key_event);
+        }
+
+        if self.focus == Focus::ModalAuth {
+            return self.handle_auth_event(key_event);
+        }
+
         if self.focus == Focus::ModalError {
             if matches!(key_event.code, KeyCode::Enter | KeyCode::Esc) {
                 self.close_error_modal();
@@ -44,6 +151,10 @@ impl App {
         }
 
         if self.focus == Focus::ModalOperationProgress {
+            return true;
+        }
+
+        if self.focus == Focus::ModalNetworkProgress {
             return true;
         }
 
@@ -198,8 +309,11 @@ impl App {
                             return true;
                         }
 
-                        let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                        match create_worktree(&repo, &name, &path, *oid) {
+                        let Some(oid) = self.graph_oid_at(self.graph_selected) else {
+                            self.show_error("Create worktree failed: no commit is selected");
+                            return true;
+                        };
+                        match create_worktree(&repo, &name, &path, oid) {
                             Ok(_) => {
                                 self.modal_input.clear();
                                 self.modal_worktree_name.clear();
@@ -257,6 +371,11 @@ impl App {
                             return true;
                         }
 
+                        if self.graph_tx.is_some() {
+                            self.request_graph_lookup(GraphLookupKind::ShaPrefix { prefix: sha.to_string() }, PendingGraphLookup::SelectIndex);
+                            return true;
+                        }
+
                         let oid: Option<Oid> = self.oids.oids.iter().find(|oid| oid.to_string().starts_with(sha)).copied();
 
                         if let Some(oid) = oid {
@@ -264,6 +383,14 @@ impl App {
                             let next = self.oids.get_sorted_aliases().iter().position(|&alias| alias == oid_alias).unwrap();
 
                             self.graph_selected = next;
+                            self.current_diff.clear();
+                            self.current_diff_identity = None;
+                            if let Some(repo) = self.repo.clone()
+                                && let Some(identity) = self.graph_identity_at(self.graph_selected)
+                            {
+                                self.current_diff = get_filenames_diff_at_oid(&repo, identity.oid);
+                                self.current_diff_identity = Some(identity);
+                            }
                             self.modal_input.clear();
                             self.focus = Focus::Viewport;
                         }
@@ -288,9 +415,12 @@ impl App {
                                 return true;
                             }
 
-                            let oid = self.oids.get_oid_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
+                            let Some(oid) = self.graph_oid_at(if self.graph_selected == 0 { 1 } else { self.graph_selected }) else {
+                                self.show_error("Create tag failed: no commit is selected");
+                                return true;
+                            };
 
-                            match tag(repo, *oid, tag_name) {
+                            match tag(repo, oid, tag_name) {
                                 Ok(_) => {
                                     self.reload(None);
                                     self.modal_input.clear();

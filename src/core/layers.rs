@@ -86,7 +86,7 @@ impl LayersContext {
     }
 }
 
-// Convenience macro keeps render_graph_range readable while creating a fresh layer context.
+// Convenience macro keeps graph rendering readable while creating a fresh layer context.
 #[macro_export]
 macro_rules! layers {
     ($color:expr) => {{

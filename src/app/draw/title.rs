@@ -1,14 +1,16 @@
-use crate::app::app::{App, Focus};
+use crate::app::{
+    app::{App, Focus},
+    draw::buffered::DrawTarget,
+};
 use crate::helpers::symbols::SYM_FOLDER;
 use crate::helpers::text::truncate_start_with_ellipsis;
 use ratatui::{
-    Frame,
     style::Style,
     text::{Line, Span},
     widgets::Block,
 };
 impl App {
-    pub fn draw_title(&mut self, frame: &mut Frame) {
+    pub fn draw_title(&mut self, frame: &mut impl DrawTarget) {
         let available_width = self.layout.title_left.width.saturating_sub(15) as usize;
 
         // Logo and path
@@ -43,7 +45,7 @@ impl App {
             _ => "modal",
         };
 
-        let hint_line = Line::from(Span::styled(format!("{} ", focus_name), Style::default().fg(self.theme.COLOR_GREY_700)));
+        let hint_line = Line::from(Span::styled(format!("{} ", focus_name), Style::default().fg(self.theme.COLOR_HIGHLIGHTED)));
 
         let paragraph = ratatui::widgets::Paragraph::new(hint_line).right_aligned().block(Block::default());
 

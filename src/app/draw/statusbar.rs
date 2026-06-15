@@ -1,17 +1,19 @@
 use crate::{
-    app::app::{App, Focus, Viewport},
+    app::{
+        app::{App, Focus, Viewport},
+        draw::buffered::DrawTarget,
+    },
     git::queries::commits::get_current_branch,
     helpers::{keymap::InputMode, symbols::SYM_WORKTREE},
 };
 use ratatui::{
-    Frame,
     style::Style,
     text::{Line, Span, Text},
     widgets::Block,
 };
 
 impl App {
-    pub fn draw_statusbar(&mut self, frame: &mut Frame, repo: &git2::Repository) {
+    pub fn draw_statusbar(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
         let mut left_spans: Vec<Span> = match self.worktrees.current_name() {
             Some(name) => vec![Span::styled(format!("  {SYM_WORKTREE} {name} "), Style::default().fg(self.theme.COLOR_GRASS))],
             None => vec![Span::raw("  ")],
@@ -31,7 +33,7 @@ impl App {
 
         let total = match self.focus {
             Focus::Viewport => match self.viewport {
-                Viewport::Graph => self.oids.get_commit_count(),
+                Viewport::Graph => self.graph_commit_count(),
                 Viewport::Viewer => self.viewer_row_count(),
                 _ => 0,
             },
@@ -43,10 +45,10 @@ impl App {
                 }
             },
             Focus::StatusBottom => self.uncommitted.conflicts.len() + self.uncommitted.unstaged.modified.len() + self.uncommitted.unstaged.added.len() + self.uncommitted.unstaged.deleted.len(),
-            Focus::Branches => self.branches.sorted.len(),
-            Focus::Tags => self.tags.sorted.len(),
-            Focus::Stashes => self.oids.stashes.len(),
-            Focus::Reflogs => self.reflogs.entries.len(),
+            Focus::Branches => self.graph.branches_window.as_ref().map(|window| window.total).unwrap_or(self.branches.sorted.len()),
+            Focus::Tags => self.graph.tags_window.as_ref().map(|window| window.total).unwrap_or(self.tags.sorted.len()),
+            Focus::Stashes => self.graph.stashes_window.as_ref().map(|window| window.total).unwrap_or(self.oids.stashes.len()),
+            Focus::Reflogs => self.graph.reflogs_window.as_ref().map(|window| window.total).unwrap_or(self.reflogs.entries.len()),
             Focus::Worktrees => self.worktrees.entries.len(),
             _ => 0,
         };

@@ -1,6 +1,8 @@
-use crate::app::app::{App, Focus};
+use crate::app::{
+    app::{App, Focus},
+    draw::buffered::DrawTarget,
+};
 use ratatui::{
-    Frame,
     style::Style,
     text::{Line, Span},
     widgets::{Block, List, ListItem},
@@ -8,7 +10,7 @@ use ratatui::{
 
 impl App {
     #[rustfmt::skip]
-    pub fn draw_splash(&mut self, frame: &mut Frame) {
+    pub fn draw_splash(&mut self, frame: &mut impl DrawTarget) {
         // Splash owns the full app rectangle and centers its content.
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
 

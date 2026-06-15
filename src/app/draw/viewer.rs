@@ -1,6 +1,7 @@
 use crate::{
     app::{
         app::{App, Focus, ViewerLayoutSignature, Viewport},
+        draw::buffered::DrawTarget,
         state::defaults::{SplitViewerRow, ViewerMode},
     },
     git::queries::{
@@ -11,7 +12,6 @@ use crate::{
 };
 use git2::Oid;
 use ratatui::{
-    Frame,
     style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
@@ -75,7 +75,7 @@ impl App {
         self.viewer_split_rows.iter().enumerate().min_by_key(|(_, row)| row.unified_indices.iter().map(|idx| idx.abs_diff(unified_idx)).min().unwrap_or(usize::MAX)).map(|(idx, _)| idx).unwrap_or(0)
     }
 
-    pub fn draw_viewer(&mut self, frame: &mut Frame) {
+    pub fn draw_viewer(&mut self, frame: &mut impl DrawTarget) {
         if self.viewer_mode == ViewerMode::Split {
             self.draw_split_viewer(frame);
             return;
@@ -161,7 +161,7 @@ impl App {
         frame.render_stateful_widget(scrollbar, self.layout.graph_scrollbar, &mut scrollbar_state);
     }
 
-    fn draw_split_viewer(&mut self, frame: &mut Frame) {
+    fn draw_split_viewer(&mut self, frame: &mut impl DrawTarget) {
         if self.layout.viewer_split_left.width == 0 || self.layout.viewer_split_right.width == 0 {
             return;
         }
@@ -220,7 +220,7 @@ impl App {
         frame.render_stateful_widget(scrollbar, self.layout.graph_scrollbar, &mut scrollbar_state);
     }
 
-    fn draw_split_divider(&self, frame: &mut Frame) {
+    fn draw_split_divider(&self, frame: &mut impl DrawTarget) {
         let area = self.layout.divider_viewer_split;
         if area.width == 0 || area.height == 0 {
             return;
@@ -304,8 +304,8 @@ impl App {
     pub fn open_viewer(&mut self, repo: &git2::Repository) {
         if let Some(file_name) = self.get_selected_file_name() {
             self.file_name = Some(file_name);
-            let oid = if self.graph_selected != 0 { self.oids.get_oid_by_idx(self.graph_selected) } else { &Oid::zero() };
-            self.update_viewer(*oid, repo);
+            let oid = if self.graph_selected != 0 { self.graph_oid_at(self.graph_selected).unwrap_or_else(Oid::zero) } else { Oid::zero() };
+            self.update_viewer(oid, repo);
             self.viewport = Viewport::Viewer;
         }
     }
@@ -324,7 +324,7 @@ impl App {
             ViewerMode::Hunks => self.viewer_hunks.get(self.viewer_selected).copied().unwrap_or(0),
             ViewerMode::Split => self.split_unified_index(self.viewer_selected),
         };
-        let oid = if self.graph_selected != 0 { *self.oids.get_oid_by_idx(self.graph_selected) } else { Oid::zero() };
+        let oid = if self.graph_selected != 0 { self.graph_oid_at(self.graph_selected).unwrap_or_else(Oid::zero) } else { Oid::zero() };
 
         self.update_viewer(oid, &repo);
         self.viewer_mode = old_mode;
@@ -382,7 +382,7 @@ impl App {
                     self.viewer_lines.push(ListItem::new(
                         Line::from(vec![
                             Span::styled((if idx == 0 { format!("{:3}  ", current_line + 1) } else { "     ".to_string() }).to_string(), Style::default().fg(self.theme.COLOR_BORDER)),
-                            Span::styled(line.to_string(), Style::default().fg(self.theme.COLOR_GREY_500)),
+                            Span::styled(line.to_string(), Style::default().fg(self.theme.COLOR_TEXT)),
                         ])
                         .style(Style::default()),
                     ));
@@ -419,8 +419,8 @@ impl App {
                         self.theme.COLOR_GREEN,
                         current_line + 1,
                     ),
-                    ' ' => (Style::default(), "".to_string(), self.theme.COLOR_BORDER, self.theme.COLOR_GREY_500, current_line + 1),
-                    _ => (Style::default(), "".to_string(), self.theme.COLOR_BORDER, self.theme.COLOR_GREY_500, 0),
+                    ' ' => (Style::default(), "".to_string(), self.theme.COLOR_BORDER, self.theme.COLOR_TEXT, current_line + 1),
+                    _ => (Style::default(), "".to_string(), self.theme.COLOR_BORDER, self.theme.COLOR_TEXT, 0),
                 };
 
                 let wrapped = wrap_words(format!("{}{}", prefix, text), (self.layout.graph.width as usize).saturating_sub(9));
@@ -463,7 +463,7 @@ impl App {
                 self.viewer_lines.push(
                     ListItem::new(Line::from(vec![
                         Span::styled((if idx == 0 { format!("{:3}  ", current_line + 1) } else { "     ".to_string() }).to_string(), Style::default().fg(self.theme.COLOR_BORDER)),
-                        Span::styled(line.to_string(), Style::default().fg(self.theme.COLOR_GREY_500)),
+                        Span::styled(line.to_string(), Style::default().fg(self.theme.COLOR_TEXT)),
                     ]))
                     .style(Style::default()),
                 );
@@ -527,7 +527,7 @@ impl App {
             '!' => (Style::default().fg(self.theme.COLOR_ORANGE), "! ", self.theme.COLOR_ORANGE, self.theme.COLOR_ORANGE),
             '-' => (Style::default().bg(self.theme.background_or_default(self.theme.COLOR_DARK_RED)).fg(self.theme.COLOR_RED), "- ", self.theme.COLOR_RED, self.theme.COLOR_RED),
             '+' => (Style::default().bg(self.theme.background_or_default(self.theme.COLOR_LIGHT_GREEN_900)).fg(self.theme.COLOR_GREEN), "+ ", self.theme.COLOR_GREEN, self.theme.COLOR_GREEN),
-            _ => (Style::default(), "", self.theme.COLOR_BORDER, self.theme.COLOR_GREY_500),
+            _ => (Style::default(), "", self.theme.COLOR_BORDER, self.theme.COLOR_TEXT),
         };
 
         let wrapped = wrap_words(format!("{}{}", prefix, text), (self.layout.graph.width as usize).saturating_sub(9));
@@ -804,7 +804,7 @@ impl App {
             '-' => self.theme.COLOR_RED,
             '+' => self.theme.COLOR_GREEN,
             '!' => self.theme.COLOR_ORANGE,
-            _ => self.theme.COLOR_GREY_500,
+            _ => self.theme.COLOR_TEXT,
         };
         let number = if show_number { cell.map(|cell| format!("{:3}  ", cell.number)).unwrap_or_else(|| "     ".to_string()) } else { "     ".to_string() };
 

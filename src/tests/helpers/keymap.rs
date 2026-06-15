@@ -146,3 +146,131 @@ fn action_settings_filter_hides_only_identical_inherited_bindings() {
     assert_eq!(visible.get(&KeyBinding::new(Char('C'), KeyModifiers::SHIFT)), Some(&Command::ContinueOperation));
     assert_eq!(visible.get(&KeyBinding::new(Char('A'), KeyModifiers::SHIFT)), Some(&Command::AbortOperation));
 }
+
+#[test]
+fn rebind_keymap_selection_updates_one_binding_and_preserves_order() {
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    normal.insert(KeyBinding::new(Char('r'), KeyModifiers::NONE), Command::Reload);
+    normal.insert(KeyBinding::new(Char('f'), KeyModifiers::NONE), Command::FetchAll);
+    maps.insert(InputMode::Normal, normal);
+    maps.insert(InputMode::Action, IndexMap::new());
+
+    let outcome =
+        rebind_keymap_selection(&mut maps, &KeymapSelection::new(InputMode::Normal, KeyBinding::new(Char('r'), KeyModifiers::NONE), Command::Reload), KeyBinding::new(F(2), KeyModifiers::NONE))
+            .unwrap();
+
+    let normal = maps.get(&InputMode::Normal).unwrap();
+    let keys: Vec<KeyBinding> = normal.keys().cloned().collect();
+    assert_eq!(keys, vec![KeyBinding::new(Char('j'), KeyModifiers::NONE), KeyBinding::new(F(2), KeyModifiers::NONE), KeyBinding::new(Char('f'), KeyModifiers::NONE)]);
+    assert_eq!(normal.get(&KeyBinding::new(F(2), KeyModifiers::NONE)), Some(&Command::Reload));
+    assert!(!outcome.synced_action);
+}
+
+#[test]
+fn rebind_keymap_selection_is_noop_for_same_key() {
+    let mut maps = default_keymaps();
+    let before = maps.clone();
+
+    let outcome = rebind_keymap_selection(
+        &mut maps,
+        &KeymapSelection::new(InputMode::Normal, KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown),
+        KeyBinding::new(Char('j'), KeyModifiers::NONE),
+    )
+    .unwrap();
+
+    assert_eq!(maps, before);
+    assert!(outcome.synced_action);
+}
+
+#[test]
+fn rebind_keymap_selection_collapses_same_command_duplicate() {
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    normal.insert(KeyBinding::new(Down, KeyModifiers::NONE), Command::ScrollDown);
+    maps.insert(InputMode::Normal, normal);
+    maps.insert(InputMode::Action, IndexMap::new());
+
+    rebind_keymap_selection(&mut maps, &KeymapSelection::new(InputMode::Normal, KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown), KeyBinding::new(Down, KeyModifiers::NONE))
+        .unwrap();
+
+    let normal = maps.get(&InputMode::Normal).unwrap();
+    assert_eq!(normal.len(), 1);
+    assert_eq!(normal.get(&KeyBinding::new(Down, KeyModifiers::NONE)), Some(&Command::ScrollDown));
+}
+
+#[test]
+fn rebind_keymap_selection_blocks_same_mode_conflict() {
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    normal.insert(KeyBinding::new(Char('k'), KeyModifiers::NONE), Command::ScrollUp);
+    maps.insert(InputMode::Normal, normal);
+    maps.insert(InputMode::Action, IndexMap::new());
+    let before = maps.clone();
+
+    let result = rebind_keymap_selection(
+        &mut maps,
+        &KeymapSelection::new(InputMode::Normal, KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown),
+        KeyBinding::new(Char('k'), KeyModifiers::NONE),
+    );
+
+    assert_eq!(result, Err(KeymapEditError::Conflict { mode: InputMode::Normal, key: KeyBinding::new(Char('k'), KeyModifiers::NONE), command: Command::ScrollUp }));
+    assert_eq!(maps, before);
+}
+
+#[test]
+fn rebind_keymap_selection_syncs_inherited_action_binding() {
+    let mut maps = default_keymaps();
+
+    let outcome = rebind_keymap_selection(
+        &mut maps,
+        &KeymapSelection::new(InputMode::Normal, KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown),
+        KeyBinding::new(Char('n'), KeyModifiers::ALT),
+    )
+    .unwrap();
+
+    assert!(outcome.synced_action);
+    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('n'), KeyModifiers::ALT)), Some(&Command::ScrollDown));
+    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('n'), KeyModifiers::ALT)), Some(&Command::ScrollDown));
+    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('j'), KeyModifiers::NONE)), None);
+    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('j'), KeyModifiers::NONE)), None);
+}
+
+#[test]
+fn rebind_keymap_selection_rolls_back_when_action_sync_conflicts() {
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    let mut action = IndexMap::new();
+    action.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    action.insert(KeyBinding::new(Char('x'), KeyModifiers::NONE), Command::Pop);
+    maps.insert(InputMode::Normal, normal);
+    maps.insert(InputMode::Action, action);
+    let before = maps.clone();
+
+    let result = rebind_keymap_selection(
+        &mut maps,
+        &KeymapSelection::new(InputMode::Normal, KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown),
+        KeyBinding::new(Char('x'), KeyModifiers::NONE),
+    );
+
+    assert_eq!(result, Err(KeymapEditError::Conflict { mode: InputMode::Action, key: KeyBinding::new(Char('x'), KeyModifiers::NONE), command: Command::Pop }));
+    assert_eq!(maps, before);
+}
+
+#[test]
+fn keymaps_round_trip_through_disk() {
+    let id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let path = std::env::temp_dir().join(format!("guitar-keymap-round-trip-{id}")).join("keymap.json");
+    let mut maps = default_keymaps();
+    rebind_keymap_selection(&mut maps, &KeymapSelection::new(InputMode::Normal, KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown), KeyBinding::new(Char('n'), KeyModifiers::ALT))
+        .unwrap();
+
+    save_keymaps_to_path(path.as_path(), &maps).unwrap();
+    let loaded = load_keymaps_from_path(path.as_path()).unwrap();
+
+    assert_eq!(loaded, maps);
+}

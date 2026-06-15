@@ -42,30 +42,6 @@ pub struct Walker {
     pub amount: usize,
 }
 
-// Snapshot sent from the worker thread back to the UI.
-pub struct WalkerOutput {
-    // Lane data for graph rendering.
-    pub buffer: RefCell<Buffer>,
-
-    // Alias and ref metadata for the current batch.
-    pub oids: Oids,
-
-    pub branches_lanes: HashMap<u32, usize>,
-    pub branches_local: HashMap<u32, Vec<String>>,
-    pub branches_remote: HashMap<u32, Vec<String>>,
-
-    pub tags_lanes: HashMap<u32, usize>,
-    pub tags_local: HashMap<u32, Vec<String>>,
-
-    pub stashes_lanes: HashMap<u32, usize>,
-    pub reflogs_lanes: HashMap<u32, usize>,
-    pub head_reflog_entries: Vec<HeadReflogEntry>,
-
-    // Flags that let App distinguish first batch, more batches, and completion.
-    pub is_again: bool,
-    pub is_first: bool,
-}
-
 impl Walker {
     // Open the repository and seed all metadata that does not depend on walking commits.
     pub fn new(path: String, amount: usize, visible_branch_names: HashSet<String>, include_head_reflog_roots: bool) -> Result<Self, git2::Error> {
@@ -212,7 +188,7 @@ impl Walker {
             self.oids.append_sorted_alias(alias);
         }
 
-        // Empty pages mean the worker is done; emit one backup so decompression has a final delta.
+        // Empty pages mean the worker is done; emit one backup so lane-window reconstruction has a final delta.
         if sorted_batch.is_empty() {
             buffer.backup();
             return false;

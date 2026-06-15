@@ -1,5 +1,58 @@
 use super::*;
+use crate::core::graph_service::{GraphCommand, GraphEvent, GraphLookupKind, GraphLookupResult, GraphRow};
+use git2::{Repository, Signature};
 use ratatui::{Terminal, backend::TestBackend, style::Color};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::atomic::Ordering,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+fn temp_repo(name: &str) -> (PathBuf, Repository) {
+    let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let path = std::env::temp_dir().join(format!("guitar-app-state-{name}-{id}"));
+    fs::create_dir_all(&path).unwrap();
+    let repo = Repository::init(&path).unwrap();
+    {
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Test User").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
+    }
+    (path, repo)
+}
+
+fn commit_file(repo: &Repository, file: &str, message: &str) -> git2::Oid {
+    let workdir = repo.workdir().unwrap().to_path_buf();
+    fs::write(workdir.join(file), format!("{message}\n")).unwrap();
+
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new(file)).unwrap();
+    index.write().unwrap();
+    let tree_oid = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_oid).unwrap();
+    let sig = Signature::now("Test User", "test@example.com").unwrap();
+    let parent = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
+    let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
+    repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents).unwrap()
+}
+
+fn graph_row(index: usize, alias: u32, oid: git2::Oid) -> GraphRow {
+    GraphRow { index, alias, oid, summary: "commit".to_string(), has_any_branch: false, branches: Vec::new(), tags: Vec::new(), is_stash: false, stash_lane: None, worktrees: Vec::new(), reflog: None }
+}
+
+fn stop_graph_service(app: &mut App) {
+    if let Some(tx) = app.graph_tx.take() {
+        let _ = tx.send(GraphCommand::Shutdown);
+    }
+    if let Some(cancel) = app.walker_cancel.take() {
+        cancel.store(true, Ordering::SeqCst);
+    }
+    if let Some(handle) = app.walker_handle.take() {
+        let _ = handle.join();
+    }
+}
 
 #[test]
 fn default_splash_draw_has_no_reset_backgrounds() {
@@ -11,4 +64,135 @@ fn default_splash_draw_has_no_reset_backgrounds() {
 
     let buffer = terminal.backend().buffer();
     assert!(buffer.content().iter().all(|cell| cell.bg != Color::Reset));
+}
+
+#[test]
+fn reload_captures_selected_commit_oid_and_visual_offset_for_restore() {
+    let (path, repo) = temp_repo("restore-capture");
+    let oid = commit_file(&repo, "selected.txt", "selected");
+    let path_string = path.display().to_string();
+    let mut app =
+        App { path: Some(path_string.clone()), recent: vec![path_string], repo: Some(Rc::new(repo)), viewport: Viewport::Graph, focus: Focus::Viewport, graph_selected: 4, ..Default::default() };
+    app.graph_scroll.set(2);
+    app.graph.graph_window = Some(GraphWindowCache { version: 1, start: 4, end: 5, head_alias: 9, rows: vec![graph_row(4, 9, oid)], history: Default::default() });
+
+    app.reload(None);
+
+    assert_eq!(app.graph.pending_selection_restore, Some(GraphSelectionRestore { oid, selected_offset: 2 }));
+    stop_graph_service(&mut app);
+}
+
+#[test]
+fn reload_keeps_uncommitted_row_without_restore_lookup() {
+    let (path, repo) = temp_repo("restore-uncommitted");
+    commit_file(&repo, "head.txt", "head");
+    let path_string = path.display().to_string();
+    let mut app =
+        App { path: Some(path_string.clone()), recent: vec![path_string], repo: Some(Rc::new(repo)), viewport: Viewport::Graph, focus: Focus::Viewport, graph_selected: 0, ..Default::default() };
+
+    app.reload(None);
+
+    assert_eq!(app.graph_selected, 0);
+    assert_eq!(app.graph.pending_selection_restore, None);
+    stop_graph_service(&mut app);
+}
+
+#[test]
+fn pending_restore_requests_oid_lookup_on_progress() {
+    let (_path, repo) = temp_repo("restore-progress");
+    let oid = commit_file(&repo, "selected.txt", "selected");
+    let repo = Rc::new(repo);
+    let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(repo.clone()), graph_tx: Some(cmd_tx), graph_rx: Some(event_rx), viewport: Viewport::Graph, focus: Focus::Viewport, ..Default::default() };
+    app.graph.generation = 7;
+    app.graph.pending_selection_restore = Some(GraphSelectionRestore { oid, selected_offset: 2 });
+
+    event_tx.send(GraphEvent::Progress { generation: 7, version: 1, total: 2, is_first: false, is_complete: false }).unwrap();
+    app.sync(&repo);
+
+    match cmd_rx.try_recv().unwrap() {
+        GraphCommand::Lookup { generation, request_id, kind: GraphLookupKind::Oid { oid: actual_oid } } => {
+            assert_eq!(generation, 7);
+            assert_eq!(request_id, 1);
+            assert_eq!(actual_oid, oid);
+        },
+        other => panic!("expected oid restore lookup, got {other:?}"),
+    }
+
+    let (pending_id, pending_action) = app.graph.pending_lookup.unwrap();
+    assert_eq!(pending_id, 1);
+    assert!(matches!(pending_action, PendingGraphLookup::RestoreSelection));
+}
+
+#[test]
+fn restore_lookup_success_selects_index_and_preserves_visual_offset() {
+    let (_path, repo) = temp_repo("restore-success");
+    let oid = commit_file(&repo, "selected.txt", "selected");
+    let repo = Rc::new(repo);
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(repo.clone()), graph_rx: Some(event_rx), viewport: Viewport::Graph, focus: Focus::Viewport, graph_selected: 1, ..Default::default() };
+    app.graph.generation = 7;
+    app.graph.total = 10;
+    app.graph.pending_selection_restore = Some(GraphSelectionRestore { oid, selected_offset: 2 });
+    app.graph.pending_lookup = Some((3, PendingGraphLookup::RestoreSelection));
+
+    event_tx.send(GraphEvent::LookupResult { generation: 7, request_id: 3, result: GraphLookupResult::Index(Some(4)) }).unwrap();
+    app.sync(&repo);
+
+    assert_eq!(app.graph_selected, 4);
+    assert_eq!(app.graph_scroll.get(), 2);
+    assert_eq!(app.graph.pending_selection_restore, None);
+}
+
+#[test]
+fn restore_lookup_success_clamps_scroll_offset_near_graph_top() {
+    let (_path, repo) = temp_repo("restore-top");
+    let oid = commit_file(&repo, "selected.txt", "selected");
+    let repo = Rc::new(repo);
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(repo.clone()), graph_rx: Some(event_rx), viewport: Viewport::Graph, focus: Focus::Viewport, graph_selected: 6, ..Default::default() };
+    app.graph.generation = 7;
+    app.graph.total = 10;
+    app.graph.pending_selection_restore = Some(GraphSelectionRestore { oid, selected_offset: 4 });
+    app.graph.pending_lookup = Some((3, PendingGraphLookup::RestoreSelection));
+
+    event_tx.send(GraphEvent::LookupResult { generation: 7, request_id: 3, result: GraphLookupResult::Index(Some(1)) }).unwrap();
+    app.sync(&repo);
+
+    assert_eq!(app.graph_selected, 1);
+    assert_eq!(app.graph_scroll.get(), 0);
+    assert_eq!(app.graph.pending_selection_restore, None);
+}
+
+#[test]
+fn restore_lookup_missing_after_completion_clears_pending_restore() {
+    let (_path, repo) = temp_repo("restore-missing");
+    let oid = commit_file(&repo, "selected.txt", "selected");
+    let repo = Rc::new(repo);
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(repo.clone()), graph_rx: Some(event_rx), viewport: Viewport::Graph, focus: Focus::Viewport, graph_selected: 2, ..Default::default() };
+    app.graph.generation = 7;
+    app.graph.total = 6;
+    app.graph.is_complete = true;
+    app.graph.pending_selection_restore = Some(GraphSelectionRestore { oid, selected_offset: 2 });
+    app.graph.pending_lookup = Some((3, PendingGraphLookup::RestoreSelection));
+
+    event_tx.send(GraphEvent::LookupResult { generation: 7, request_id: 3, result: GraphLookupResult::Index(None) }).unwrap();
+    app.sync(&repo);
+
+    assert_eq!(app.graph_selected, 2);
+    assert_eq!(app.graph.pending_selection_restore, None);
+}
+
+#[test]
+fn explicit_graph_navigation_clears_pending_restore() {
+    let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, graph_selected: 1, ..Default::default() };
+    app.graph.total = 5;
+    app.graph.pending_selection_restore = Some(GraphSelectionRestore { oid: git2::Oid::zero(), selected_offset: 0 });
+
+    app.on_scroll_down();
+
+    assert_eq!(app.graph_selected, 2);
+    assert_eq!(app.graph.pending_selection_restore, None);
 }

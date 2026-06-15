@@ -1,11 +1,8 @@
-use crate::core::{reflogs::HeadReflogs, worktrees::Worktrees};
+use crate::core::graph_service::{GraphHistory, GraphRow};
 use crate::helpers::keymap::{Command, KeyBinding, keycode_to_visual_string};
 use crate::helpers::text::truncate_with_ellipsis;
 use crate::{
-    core::{
-        chunk::{Chunk, NONE},
-        oids::Oids,
-    },
+    core::chunk::NONE,
     git::queries::helpers::UncommittedChanges,
     helpers::{
         colors::ColorPicker,
@@ -15,50 +12,52 @@ use crate::{
     },
     layers,
 };
-use git2::Repository;
-use im::{HashSet, Vector};
+use im::HashSet;
 use indexmap::IndexMap;
 use ratatui::{
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-// Render graph symbols for the visible alias range using precomputed lane snapshots.
-#[allow(clippy::too_many_arguments)]
-pub fn render_graph_range(
-    theme: &Theme, oids: &Oids, all: &HashMap<u32, Vec<String>>, worktrees: &Worktrees, history: &Vector<Vector<Chunk>>, head_alias: u32, start: usize, end: usize,
-) -> Vec<Line<'static>> {
+// Render graph symbols from worker-projected rows. The lane history is still
+// precomputed by Buffer, but only for the requested visible range.
+pub fn render_graph_projection(theme: &Theme, rows: &[GraphRow], history: &GraphHistory, head_alias: u32, start: usize, end: usize, render_uncommitted_row: bool) -> Vec<Line<'static>> {
     let mut layers = layers!(Rc::new(RefCell::new(ColorPicker::from_theme(theme))));
     let mut lines: Vec<Line> = Vec::new();
 
-    // Sorted aliases and history snapshots use global row indices, while history is windowed.
-    let sorted_aliases = oids.get_sorted_aliases();
-    for (global_idx, alias) in sorted_aliases.iter().enumerate().take(end).skip(start) {
-        let oid = oids.get_oid_by_alias(*alias);
+    for row in rows {
+        let global_idx = row.index;
 
         layers.clear();
         let mut spans = vec![Span::raw(" ")];
 
-        // These flags coordinate lane rendering with merge overlays on the same row.
         let mut is_commit_found = false;
         let mut is_merged_before = false;
         let mut lane_idx = 0;
 
+        if row.alias == NONE && !render_uncommitted_row {
+            lines.push(Line::default());
+            continue;
+        }
         if history.is_empty() {
             return vec![Line::default()];
         }
         let delta = (history.len() + global_idx).saturating_sub(end);
         let prev = if delta == 0 { None } else { history.get(delta - 1) };
-        let last = history.get(delta).unwrap();
+        let last = match history.get(delta) {
+            Some(snapshot) => snapshot,
+            None => {
+                lines.push(Line::default());
+                continue;
+            },
+        };
 
-        if oids.is_zero(oid) {
-            // The zero OID is the synthetic uncommitted row at the top of the graph.
+        if row.alias == NONE {
             lines.push(Line::from(Span::styled(" ◌", Style::default().fg(theme.COLOR_GREY_400))));
             continue;
         }
 
-        // Dummies that replace live lanes indicate where an upward branch connector is needed.
         let mut branching_lanes: Vec<usize> = Vec::new();
         for (lane_idx, chunk) in last.iter().enumerate() {
             if chunk.is_dummy()
@@ -101,7 +100,6 @@ pub fn render_graph_range(
                 if let Some(prev_snapshot) = prev {
                     match prev_snapshot.get(lane_idx) {
                         Some(prev) => {
-                            // A dummy over a previously active parent lane draws the branch upward.
                             if (prev.parent_a != NONE && prev.parent_b == NONE) || (prev.parent_a == NONE && prev.parent_b != NONE) {
                                 layers.commit(SYM_EMPTY, lane_idx);
                                 layers.commit(SYM_EMPTY, lane_idx);
@@ -115,7 +113,6 @@ pub fn render_graph_range(
                             }
                         },
                         None => {
-                            // New dummy space after the previous row also represents a closing branch.
                             layers.commit(SYM_EMPTY, lane_idx);
                             layers.commit(SYM_EMPTY, lane_idx);
                             layers.pipe(SYM_BRANCH_UP, lane_idx);
@@ -123,17 +120,16 @@ pub fn render_graph_range(
                         },
                     }
                 }
-            } else if *alias == chunk.alias {
+            } else if row.alias == chunk.alias {
                 is_commit_found = true;
                 let is_two_parents = chunk.parent_a != NONE && chunk.parent_b != NONE;
-                // Branch and stash commits get distinct markers before falling back to plain commits.
-                if is_two_parents && !(all.contains_key(alias)) {
+                if is_two_parents && !row.has_any_branch {
                     layers.commit(SYM_MERGE, lane_idx);
-                } else if all.contains_key(alias) {
+                } else if row.has_any_branch {
                     layers.commit(SYM_COMMIT_BRANCH, lane_idx);
-                } else if worktrees.has_detached_or_unlabeled_at(alias, all.contains_key(alias)) {
+                } else if row.worktrees.iter().any(|entry| entry.branch.is_none() || !row.has_any_branch) {
                     layers.commit(SYM_WORKTREE, lane_idx);
-                } else if oids.stashes.contains(alias) {
+                } else if row.is_stash {
                     layers.commit(SYM_COMMIT_STASH, lane_idx);
                 } else {
                     layers.commit(SYM_COMMIT, lane_idx);
@@ -142,7 +138,6 @@ pub fn render_graph_range(
                 layers.pipe(SYM_EMPTY, lane_idx);
                 layers.pipe(SYM_EMPTY, lane_idx);
 
-                // Merge rows may need a horizontal overlay connecting this lane to another lane.
                 let mut is_mergee_found = false;
                 let mut is_drawing = false;
                 if is_two_parents {
@@ -160,7 +155,7 @@ pub fn render_graph_range(
 
                     let mut mergee_idx: usize = 0;
                     for chunk_nested in last {
-                        if *alias == chunk_nested.alias {
+                        if row.alias == chunk_nested.alias {
                             break;
                         }
                         mergee_idx += 1;
@@ -168,7 +163,7 @@ pub fn render_graph_range(
 
                     for (chunk_nested_idx, chunk_nested) in last.iter().enumerate() {
                         if !is_mergee_found {
-                            if *alias == chunk_nested.alias {
+                            if row.alias == chunk_nested.alias {
                                 is_mergee_found = true;
                                 if is_merger_found {
                                     is_drawing = !is_drawing;
@@ -178,63 +173,55 @@ pub fn render_graph_range(
                                 }
                                 layers.merge(SYM_EMPTY, merger_idx);
                                 layers.merge(SYM_EMPTY, merger_idx);
-                            } else {
-                                // Before the commit, look for the lane where the merge edge starts.
-                                if !is_merger_found {
-                                    layers.merge(SYM_EMPTY, merger_idx);
-                                    layers.merge(SYM_EMPTY, merger_idx);
-                                } else if ((chunk_nested.parent_a != NONE && chunk_nested.parent_b == NONE) || (chunk_nested.parent_a == NONE && chunk_nested.parent_b != NONE))
-                                    && (chunk.parent_a == chunk_nested.parent_a || chunk.parent_b == chunk_nested.parent_a)
-                                {
-                                    // Start the edge from the merger lane, then fill until the commit lane.
-                                    if chunk_nested_idx == merger_idx {
-                                        layers.merge(SYM_MERGE_RIGHT_FROM, merger_idx);
-                                    } else {
-                                        layers.merge(SYM_HORIZONTAL, merger_idx);
-                                    }
+                            } else if !is_merger_found {
+                                layers.merge(SYM_EMPTY, merger_idx);
+                                layers.merge(SYM_EMPTY, merger_idx);
+                            } else if ((chunk_nested.parent_a != NONE && chunk_nested.parent_b == NONE) || (chunk_nested.parent_a == NONE && chunk_nested.parent_b != NONE))
+                                && (chunk.parent_a == chunk_nested.parent_a || chunk.parent_b == chunk_nested.parent_a)
+                            {
+                                if chunk_nested_idx == merger_idx {
+                                    layers.merge(SYM_MERGE_RIGHT_FROM, merger_idx);
+                                } else {
+                                    layers.merge(SYM_HORIZONTAL, merger_idx);
+                                }
 
-                                    if chunk_nested_idx + 1 == mergee_idx {
-                                        layers.merge(SYM_EMPTY, merger_idx);
-                                    } else {
-                                        layers.merge(SYM_HORIZONTAL, merger_idx);
-                                    }
-                                    is_drawing = true;
-                                } else if is_drawing {
-                                    if chunk_nested_idx + 1 == mergee_idx {
-                                        layers.merge(SYM_HORIZONTAL, merger_idx);
-                                        layers.merge(SYM_EMPTY, merger_idx);
-                                    } else {
-                                        layers.merge(SYM_HORIZONTAL, merger_idx);
-                                        layers.merge(SYM_HORIZONTAL, merger_idx);
-                                    }
+                                if chunk_nested_idx + 1 == mergee_idx {
+                                    layers.merge(SYM_EMPTY, merger_idx);
                                 } else {
-                                    layers.merge(SYM_EMPTY, merger_idx);
-                                    layers.merge(SYM_EMPTY, merger_idx);
+                                    layers.merge(SYM_HORIZONTAL, merger_idx);
                                 }
+                                is_drawing = true;
+                            } else if is_drawing {
+                                if chunk_nested_idx + 1 == mergee_idx {
+                                    layers.merge(SYM_HORIZONTAL, merger_idx);
+                                    layers.merge(SYM_EMPTY, merger_idx);
+                                } else {
+                                    layers.merge(SYM_HORIZONTAL, merger_idx);
+                                    layers.merge(SYM_HORIZONTAL, merger_idx);
+                                }
+                            } else {
+                                layers.merge(SYM_EMPTY, merger_idx);
+                                layers.merge(SYM_EMPTY, merger_idx);
                             }
-                        } else {
-                            // After the commit, keep drawing until the merge edge reaches its source.
-                            if is_merger_found && !is_merged_before {
-                                if ((chunk_nested.parent_a != NONE && chunk_nested.parent_b == NONE) || (chunk_nested.parent_a == NONE && chunk_nested.parent_b != NONE))
-                                    && (chunk.parent_a == chunk_nested.parent_a || chunk.parent_b == chunk_nested.parent_a)
-                                {
-                                    layers.merge(SYM_MERGE_LEFT_FROM, merger_idx);
-                                    layers.merge(SYM_EMPTY, merger_idx);
-                                    is_merged_before = true;
-                                    is_drawing = false;
-                                } else if is_drawing {
-                                    layers.merge(SYM_HORIZONTAL, merger_idx);
-                                    layers.merge(SYM_HORIZONTAL, merger_idx);
-                                } else {
-                                    layers.merge(SYM_EMPTY, merger_idx);
-                                    layers.merge(SYM_EMPTY, merger_idx);
-                                }
+                        } else if is_merger_found && !is_merged_before {
+                            if ((chunk_nested.parent_a != NONE && chunk_nested.parent_b == NONE) || (chunk_nested.parent_a == NONE && chunk_nested.parent_b != NONE))
+                                && (chunk.parent_a == chunk_nested.parent_a || chunk.parent_b == chunk_nested.parent_a)
+                            {
+                                layers.merge(SYM_MERGE_LEFT_FROM, merger_idx);
+                                layers.merge(SYM_EMPTY, merger_idx);
+                                is_merged_before = true;
+                                is_drawing = false;
+                            } else if is_drawing {
+                                layers.merge(SYM_HORIZONTAL, merger_idx);
+                                layers.merge(SYM_HORIZONTAL, merger_idx);
+                            } else {
+                                layers.merge(SYM_EMPTY, merger_idx);
+                                layers.merge(SYM_EMPTY, merger_idx);
                             }
                         }
                     }
 
                     if !is_merger_found {
-                        // If the second parent is off-screen, route the merge edge to the last live lane.
                         let mut idx = last.len() - 1;
                         let mut trailing_dummies = 0;
                         for (i, c) in last.iter().enumerate().rev() {
@@ -246,7 +233,6 @@ pub fn render_graph_range(
                             }
                         }
 
-                        // Previous trailing dummies prevent the edge from overshooting collapsed lanes.
                         if let Some(prev) = prev {
                             let mut prev_trailing_dummies = 0;
                             for (_, c) in prev.iter().enumerate().rev() {
@@ -265,7 +251,6 @@ pub fn render_graph_range(
                             layers.merge(SYM_BRANCH_DOWN, idx + 1);
                             layers.merge(SYM_EMPTY, idx + 1);
                         } else if trailing_dummies > 0 {
-                            // Fill the horizontal span before placing the merge endpoint.
                             for _ in lane_idx..idx {
                                 layers.merge(SYM_HORIZONTAL, idx + 1);
                                 layers.merge(SYM_HORIZONTAL, idx + 1);
@@ -274,7 +259,6 @@ pub fn render_graph_range(
                             layers.merge(SYM_MERGE_LEFT_FROM, idx + 1);
                             layers.merge(SYM_EMPTY, idx + 1);
                         } else {
-                            // No trailing dummy means the edge bends down into a still-active lane.
                             for _ in lane_idx..idx {
                                 layers.merge(SYM_HORIZONTAL, idx + 1);
                                 layers.merge(SYM_HORIZONTAL, idx + 1);
@@ -288,7 +272,6 @@ pub fn render_graph_range(
             } else {
                 layers.commit(SYM_EMPTY, lane_idx);
                 layers.commit(SYM_EMPTY, lane_idx);
-                // The first lane above HEAD is dotted to show uncommitted changes hang from HEAD.
                 if (chunk.parent_a == head_alias || chunk.parent_b == head_alias) && lane_idx == 0 {
                     layers.pipe_custom(SYM_VERTICAL_DOTTED, lane_idx, theme.COLOR_GREY_500);
                 } else if chunk.parent_a == NONE && chunk.parent_b == NONE {
@@ -303,9 +286,9 @@ pub fn render_graph_range(
         }
 
         if !is_commit_found {
-            if all.contains_key(alias) {
+            if row.has_any_branch {
                 layers.commit(SYM_COMMIT_BRANCH, lane_idx);
-            } else if worktrees.has_detached_or_unlabeled_at(alias, all.contains_key(alias)) {
+            } else if row.worktrees.iter().any(|entry| entry.branch.is_none() || !row.has_any_branch) {
                 layers.commit(SYM_WORKTREE, lane_idx);
             } else {
                 layers.commit(SYM_COMMIT, lane_idx);
@@ -315,13 +298,12 @@ pub fn render_graph_range(
             layers.pipe(SYM_EMPTY, lane_idx);
         }
 
-        // Blend commit, merge, and pipe layers into the final row.
         layers.bake(&mut spans);
-
         lines.push(Line::from(spans));
     }
 
     remove_empty_columns(&mut lines);
+    let _ = start;
     lines
 }
 
@@ -365,92 +347,30 @@ pub fn remove_empty_columns(lines: &mut Vec<Line<'_>>) {
     }
 }
 
-#[allow(dead_code)]
-pub fn render_buffer_range(theme: &Theme, oids: &Oids, history: &Vector<Vector<Chunk>>, start: usize, end: usize) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-
-    for global_idx in start..end {
-        if history.is_empty() {
-            lines.push(Line::default());
-            continue;
-        }
-
-        let delta = (history.len() + global_idx).saturating_sub(end);
-        let snapshot = match history.get(delta) {
-            Some(s) => s,
-            None => {
-                lines.push(Line::default());
-                continue;
-            },
-        };
-
-        let oid = oids.get_oid_by_idx(global_idx);
-
-        let mut spans = vec![Span::styled(format!("{:.2} ", oid), Style::default().fg(theme.COLOR_TEXT))];
-
-        let formatted_snapshot = snapshot
-            .iter()
-            .map(|chunk| {
-                let oid_str = if chunk.alias == NONE { "".to_string() } else { format!("{:.2}", oids.get_oid_by_alias(chunk.alias).to_string()) };
-
-                let parents_formatted = match (chunk.parent_a, chunk.parent_b) {
-                    (NONE, NONE) => "".to_string(),
-                    (a, NONE) => format!("{:.2},--", oids.get_oid_by_alias(a)),
-                    (NONE, b) => format!("--,{:.2}", oids.get_oid_by_alias(b)),
-                    (a, b) => format!("{:.2},{:.2}", oids.get_oid_by_alias(a), oids.get_oid_by_alias(b)),
-                };
-
-                format!("{}({})", oid_str, parents_formatted)
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        spans.push(Span::styled(formatted_snapshot, Style::default().fg(theme.COLOR_TEXT)));
-
-        lines.push(Line::from(spans));
-    }
-
-    lines
+pub fn render_sha_projection(theme: &Theme, rows: &[GraphRow], selected: usize) -> Vec<Line<'static>> {
+    rows.iter()
+        .map(|row| {
+            if row.alias != NONE {
+                let color = if row.index == selected { theme.COLOR_HIGHLIGHTED } else { theme.COLOR_TEXT };
+                Line::from(Span::styled(format!("{:.9} ", row.oid), Style::default().fg(color)))
+            } else {
+                Line::from("")
+            }
+        })
+        .collect()
 }
 
-// Render abbreviated object IDs aligned to graph rows.
-pub fn render_sha_range(theme: &Theme, oids: &Oids, start: usize, end: usize) -> Vec<Line<'static>> {
+pub fn render_message_projection(theme: &Theme, rows: &[GraphRow], show_reflog_labels: bool, selected: usize, uncommitted: &UncommittedChanges, render_uncommitted_row: bool) -> Vec<Line<'static>> {
+    let color_picker = ColorPicker::from_theme(theme);
     let mut lines = Vec::new();
 
-    for global_idx in start..end {
-        let alias = oids.get_alias_by_idx(global_idx);
-
-        if alias != NONE {
-            let oid = oids.get_oid_by_alias(alias);
-
-            lines.push(Line::from(Span::styled(format!("{:.9} ", oid), Style::default().fg(theme.COLOR_GREY_700))));
-        } else {
-            lines.push(Line::from(""));
-        }
-    }
-
-    lines
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn render_message_range(
-    theme: &Theme, repo: &Repository, oids: &Oids, local: &HashMap<u32, Vec<String>>, all_branches: &HashMap<u32, Vec<String>>, visible_branch_names: &HashSet<String>,
-    tags: &HashMap<u32, Vec<String>>, worktrees: &Worktrees, reflogs: &HeadReflogs, branch_colors: &mut HashMap<u32, Color>, tag_colors: &mut HashMap<u32, Color>,
-    stashes_colors: &mut HashMap<u32, Color>, show_reflog_labels: bool, start: usize, end: usize, selected: usize, uncommitted: &UncommittedChanges,
-) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line> = Vec::new();
-
-    // The message column combines refs, stash markers, and commit summary text.
-    for global_idx in start..end {
-        let alias = oids.get_alias_by_idx(global_idx);
+    for row in rows {
         let mut spans = Vec::new();
 
-        if alias != NONE {
-            let oid = oids.get_oid_by_alias(alias);
-            let commit = repo.find_commit(*oid).unwrap();
-
-            let worktrees_for_alias = worktrees.get_by_alias(&alias);
-            for worktree in &worktrees_for_alias {
+        if row.alias == NONE && !render_uncommitted_row {
+            lines.push(Line::default());
+        } else if row.alias != NONE {
+            for worktree in &row.worktrees {
                 let color = if !worktree.is_valid || worktree.locked_reason.is_some() {
                     theme.COLOR_GREY_600
                 } else if worktree.is_current {
@@ -460,55 +380,41 @@ pub fn render_message_range(
                 };
                 spans.push(Span::styled(format!("{SYM_WORKTREE} {} ", worktree.name), Style::default().fg(color)));
             }
-            let has_worktree_label = !worktrees_for_alias.is_empty();
+            let has_worktree_label = !row.worktrees.is_empty();
 
-            // Branch labels respect the active branch filter to match the rendered graph.
-            let mut has_visible_branch_label = false;
-            if let Some(branch_list) = all_branches.get(&alias) {
-                for branch in branch_list {
-                    if visible_branch_names.contains(branch) || visible_branch_names.is_empty() {
-                        has_visible_branch_label = true;
-                        let is_local = local.values().any(|branches| branches.iter().any(|b| b == branch));
-                        spans.push(Span::styled(
-                            format!("{} {} ", if is_local { SYM_COMMIT_BRANCH } else { "◆" }, branch),
-                            Style::default().fg(*branch_colors.get(&alias).unwrap_or(&theme.COLOR_TEXT)),
-                        ));
-                    }
-                }
+            for branch in &row.branches {
+                let color = branch.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                spans.push(Span::styled(format!("{} {} ", if branch.is_local { SYM_COMMIT_BRANCH } else { "◆" }, branch.name), Style::default().fg(color)));
             }
+            let has_visible_branch_label = !row.branches.is_empty();
 
-            if let Some(tags) = tags.get(&alias) {
-                for tag in tags {
-                    // Tags are always local refs, so they render independent of branch filters.
-                    if tags.iter().any(|b| b == tag) {
-                        spans.push(Span::styled(format!("{} {} ", SYM_TAG, tag), Style::default().fg(if let Some(color) = tag_colors.get(&alias) { *color } else { theme.COLOR_TEXT })));
-                    }
-                }
+            for tag in &row.tags {
+                let color = tag.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                spans.push(Span::styled(format!("{} {} ", SYM_TAG, tag.name), Style::default().fg(color)));
             }
-            let has_tag_label = tags.get(&alias).is_some_and(|tags| !tags.is_empty());
+            let has_tag_label = !row.tags.is_empty();
 
-            if oids.stashes.contains(&alias) {
-                spans.push(Span::styled(format!("{SYM_COMMIT_STASH} stash "), Style::default().fg(if let Some(color) = stashes_colors.get(&alias) { *color } else { theme.COLOR_TEXT })));
+            if row.is_stash {
+                let color = row.stash_lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                spans.push(Span::styled(format!("{SYM_COMMIT_STASH} stash "), Style::default().fg(color)));
             }
-            let has_stash_label = oids.stashes.contains(&alias);
+            let has_stash_label = row.is_stash;
 
             if show_reflog_labels
                 && !has_visible_branch_label
                 && !has_tag_label
                 && !has_stash_label
                 && !has_worktree_label
-                && let Some(entry) = reflogs.latest_for_alias(alias)
+                && let Some(reflog) = &row.reflog
             {
-                let color = reflogs.get_color(alias).unwrap_or(theme.COLOR_TEXT);
-                spans.push(Span::styled(format!("{SYM_REFLOG} {} ", entry.selector), Style::default().fg(color)));
+                let color = reflog.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                spans.push(Span::styled(format!("{SYM_REFLOG} {} ", reflog.selector), Style::default().fg(color)));
             }
 
-            spans.push(Span::styled(commit.summary().unwrap_or("⊘ no message").to_string(), Style::default().fg(if global_idx == selected { theme.COLOR_GREY_500 } else { theme.COLOR_TEXT })));
-
+            spans.push(Span::styled(row.summary.clone(), Style::default().fg(if row.index == selected { theme.COLOR_HIGHLIGHTED } else { theme.COLOR_TEXT })));
             lines.push(Line::from(spans));
         } else {
-            // Alias NONE renders the uncommitted summary instead of a commit message.
-            let color = if global_idx == selected { theme.COLOR_GREY_500 } else { theme.COLOR_GREY_600 };
+            let color = if row.index == selected { theme.COLOR_HIGHLIGHTED } else { theme.COLOR_TEXT };
             if uncommitted.conflict_count > 0 {
                 spans.push(Span::styled("! ", Style::default().fg(theme.COLOR_ORANGE)));
                 spans.push(Span::styled(format!("{} ", uncommitted.conflict_count), Style::default().fg(theme.COLOR_ORANGE)));
@@ -566,91 +472,45 @@ pub fn render_keybindings(theme: &Theme, keymap: &IndexMap<KeyBinding, Command>,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{
-        reflogs::HeadReflogs,
-        worktrees::{WorktreeEntry, WorktreeKind},
-    };
-    use git2::Signature;
-    use std::{
-        fs,
-        path::{Path, PathBuf},
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use git2::Oid;
 
-    fn temp_repo(name: &str) -> Repository {
-        let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let path = std::env::temp_dir().join(format!("guitar-renderers-{name}-{id}"));
-        fs::create_dir_all(&path).unwrap();
-        Repository::init(&path).unwrap()
-    }
-
-    fn commit(repo: &Repository, file: &str, message: &str) -> git2::Oid {
-        fs::write(repo.workdir().unwrap().join(file), "content\n").unwrap();
-
-        let mut index = repo.index().unwrap();
-        index.add_path(Path::new(file)).unwrap();
-        index.write().unwrap();
-        let tree_oid = index.write_tree().unwrap();
-        let tree = repo.find_tree(tree_oid).unwrap();
-        let sig = Signature::now("Test User", "test@example.com").unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[]).unwrap()
-    }
-
-    fn worktree(name: &str, oid: git2::Oid) -> WorktreeEntry {
-        WorktreeEntry {
-            name: name.into(),
-            path: PathBuf::from(format!("/tmp/{name}")),
-            branch: Some(name.into()),
-            head: Some(oid),
-            alias: None,
-            kind: WorktreeKind::Linked,
-            is_current: true,
-            is_valid: true,
-            is_prunable: false,
-            locked_reason: None,
-            is_dirty: false,
+    fn graph_row(index: usize, oid: Oid, summary: &str) -> GraphRow {
+        GraphRow {
+            index,
+            alias: index as u32 + 1,
+            oid,
+            summary: summary.to_string(),
+            has_any_branch: false,
+            branches: Vec::new(),
+            tags: Vec::new(),
+            is_stash: false,
+            stash_lane: None,
+            worktrees: Vec::new(),
+            reflog: None,
         }
     }
 
     #[test]
-    fn message_range_renders_worktree_labels_before_branch_labels() {
-        let repo = temp_repo("label-order");
-        let oid = commit(&repo, "file.txt", "summary");
+    fn sha_projection_uses_text_and_highlighted_text_colors() {
+        let theme = Theme::classic();
+        let rows =
+            vec![graph_row(0, Oid::from_str("1111111111111111111111111111111111111111").unwrap(), "first"), graph_row(1, Oid::from_str("2222222222222222222222222222222222222222").unwrap(), "second")];
 
-        let mut oids = Oids::default();
-        let alias = oids.get_alias_by_oid(oid);
-        oids.sorted_aliases = vec![alias];
+        let lines = render_sha_projection(&theme, &rows, 1);
 
-        let mut worktrees = Worktrees::from_entries(vec![worktree("wt", oid)]);
-        worktrees.refresh_aliases(&oids);
+        assert_eq!(lines[0].spans[0].style.fg, Some(theme.COLOR_TEXT));
+        assert_eq!(lines[1].spans[0].style.fg, Some(theme.COLOR_HIGHLIGHTED));
+    }
 
-        let mut local = HashMap::new();
-        local.insert(alias, vec!["main".to_string()]);
+    #[test]
+    fn message_projection_uses_text_and_highlighted_text_colors() {
+        let theme = Theme::classic();
+        let rows =
+            vec![graph_row(0, Oid::from_str("1111111111111111111111111111111111111111").unwrap(), "first"), graph_row(1, Oid::from_str("2222222222222222222222222222222222222222").unwrap(), "second")];
 
-        let mut all_branches = HashMap::new();
-        all_branches.insert(alias, vec!["main".to_string(), "origin/main".to_string()]);
+        let lines = render_message_projection(&theme, &rows, false, 1, &UncommittedChanges::default(), true);
 
-        let lines = render_message_range(
-            &Theme::default(),
-            &repo,
-            &oids,
-            &local,
-            &all_branches,
-            &HashSet::new(),
-            &HashMap::new(),
-            &worktrees,
-            &HeadReflogs::default(),
-            &mut HashMap::new(),
-            &mut HashMap::new(),
-            &mut HashMap::new(),
-            false,
-            0,
-            1,
-            0,
-            &UncommittedChanges::default(),
-        );
-
-        let rendered: Vec<String> = lines[0].spans.iter().map(|span| span.content.to_string()).collect();
-        assert_eq!(rendered, vec![format!("{SYM_WORKTREE} wt "), format!("{SYM_COMMIT_BRANCH} main "), "◆ origin/main ".to_string(), "summary".to_string()]);
+        assert_eq!(lines[0].spans[0].style.fg, Some(theme.COLOR_TEXT));
+        assert_eq!(lines[1].spans[0].style.fg, Some(theme.COLOR_HIGHLIGHTED));
     }
 }

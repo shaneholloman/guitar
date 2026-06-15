@@ -2,6 +2,7 @@ use super::*;
 use crate::core::chunk::NONE;
 use crate::core::reflogs::HeadReflogAliasEntry;
 use crate::git::actions::merging::{MergeOutcome, start_merge};
+use crate::git::auth::{AuthChallenge, AuthProtocol};
 use git2::{Signature, build::CheckoutBuilder};
 use std::{
     fs,
@@ -148,4 +149,72 @@ fn create_branch_from_reflog_uses_reflog_commit_target() {
 
     assert_eq!(app.focus, Focus::ModalCreateBranch);
     assert_eq!(app.selected_branch_target_oid(), Some(reflog_oid));
+}
+
+#[test]
+fn auth_required_network_result_opens_auth_modal() {
+    let challenge = AuthChallenge {
+        url: "https://github.com/asinglebit/guitar.git".to_string(),
+        username: Some("octo".to_string()),
+        protocol: AuthProtocol::Https,
+        operation: "Fetch".to_string(),
+        key_path: None,
+    };
+    let mut app = App {
+        pending_network_request: Some(NetworkRequest::Fetch { repo_path: ".".to_string(), remote_name: "origin".to_string() }),
+        viewport: Viewport::Graph,
+        focus: Focus::ModalNetworkProgress,
+        ..Default::default()
+    };
+
+    app.handle_network_result(NetworkResult::AuthRequired(AuthRequired { challenge: challenge.clone(), rejected: Vec::new() }));
+
+    assert_eq!(app.focus, Focus::ModalAuth);
+    assert_eq!(app.pending_auth_prompt, Some(challenge));
+    assert_eq!(app.auth_username_input.value(), "octo");
+    assert_eq!(app.auth_input_field, AuthInputField::Secret);
+}
+
+#[test]
+fn submitting_https_auth_stores_session_secret_and_retries_request() {
+    let challenge = AuthChallenge { url: "https://github.com/asinglebit/guitar.git".to_string(), username: None, protocol: AuthProtocol::Https, operation: "Fetch".to_string(), key_path: None };
+    let mut app = App {
+        pending_network_request: Some(NetworkRequest::Fetch { repo_path: "/tmp/missing".to_string(), remote_name: "origin".to_string() }),
+        pending_auth_prompt: Some(challenge.clone()),
+        focus: Focus::ModalAuth,
+        ..Default::default()
+    };
+    app.auth_username_input.set_value("octo");
+    app.auth_secret_input.set_value("token");
+
+    app.submit_auth_prompt();
+
+    assert_eq!(app.pending_auth_prompt, None);
+    assert_eq!(app.network_auth_attempts, 1);
+    assert_eq!(app.focus, Focus::ModalNetworkProgress);
+    let handle = app.network_handle.take().expect("retry should start a worker");
+    let _ = handle.join();
+    assert!(app.auth_session.has_secret_for(&challenge, Some("octo")));
+}
+
+#[test]
+fn cancelling_auth_prompt_clears_pending_network_state() {
+    let mut app = App {
+        pending_network_request: Some(NetworkRequest::Fetch { repo_path: ".".to_string(), remote_name: "origin".to_string() }),
+        pending_auth_prompt: Some(AuthChallenge {
+            url: "https://github.com/asinglebit/guitar.git".to_string(),
+            username: None,
+            protocol: AuthProtocol::Https,
+            operation: "Fetch".to_string(),
+            key_path: None,
+        }),
+        focus: Focus::ModalAuth,
+        ..Default::default()
+    };
+
+    app.cancel_auth_prompt();
+
+    assert!(app.pending_network_request.is_none());
+    assert!(app.pending_auth_prompt.is_none());
+    assert_eq!(app.focus, Focus::ModalError);
 }

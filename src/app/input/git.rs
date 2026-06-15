@@ -1,32 +1,154 @@
 use crate::{
-    app::app::{App, Focus, OperationKind, PendingOperationAction, Viewport},
+    app::app::{App, AuthInputField, Focus, OperationKind, PendingOperationAction, Viewport},
+    core::graph_service::GraphPaneRow,
     git::{
         actions::{
             branching::delete_branch,
             checkout::{checkout_branch, checkout_head},
             cherrypicking::{CherrypickOutcome, abort_cherrypick, continue_cherrypick, is_cherrypick_in_progress},
-            fetching::fetch_over_ssh,
             merging::{MergeOutcome, abort_merge, continue_merge, is_merge_in_progress, start_merge},
-            pushing::{push_over_ssh, push_tags_over_ssh},
+            network::NetworkRequest,
             rebasing::{RebaseOutcome, abort_rebase, continue_rebase, is_rebase_in_progress, start_rebase},
             resetting::{reset_file, reset_to_commit},
             staging::{stage_all, stage_file, unstage_all, unstage_file},
             stashing::{pop, stash},
             tagging::untag,
         },
+        auth::{AuthRequired, AuthSecret, NetworkResult},
         queries::commits::get_current_branch,
     },
 };
-use git2::{Repository, RepositoryState};
-use std::{path::Path, thread::JoinHandle};
+use git2::{BranchType, Repository, RepositoryState};
+use std::path::Path;
 
 impl App {
-    fn finish_threaded_git_action(&mut self, label: &str, handle: JoinHandle<Result<(), git2::Error>>) {
-        match handle.join() {
-            Ok(Ok(_)) => self.reload(None),
-            Ok(Err(error)) => self.show_error(format!("{label} failed: {error}")),
-            Err(_) => self.show_error(format!("{label} failed: worker thread panicked")),
+    const MAX_AUTH_ATTEMPTS: usize = 3;
+
+    fn start_network_request(&mut self, request: NetworkRequest) {
+        if self.network_handle.is_some() {
+            self.show_error("Git network operation failed: another network operation is already running");
+            return;
         }
+
+        self.pending_network_request = Some(request);
+        self.network_auth_attempts = 0;
+        self.spawn_pending_network_request();
+    }
+
+    pub(crate) fn retry_pending_network_request(&mut self) {
+        self.network_auth_attempts = self.network_auth_attempts.saturating_add(1);
+        self.spawn_pending_network_request();
+    }
+
+    fn spawn_pending_network_request(&mut self) {
+        let Some(request) = self.pending_network_request.clone() else {
+            return;
+        };
+        self.modal_network_title = request.label().to_string();
+        self.modal_network_message = request.progress_message();
+        self.focus = Focus::ModalNetworkProgress;
+        self.network_handle = Some(request.spawn(self.auth_session.clone()));
+    }
+
+    pub fn poll_network_request(&mut self) {
+        let is_finished = self.network_handle.as_ref().is_some_and(|handle| handle.is_finished());
+        if !is_finished {
+            return;
+        }
+
+        let Some(handle) = self.network_handle.take() else {
+            return;
+        };
+
+        match handle.join() {
+            Ok(result) => self.handle_network_result(result),
+            Err(_) => self.finish_network_failure("Git network operation failed: worker thread panicked".to_string()),
+        }
+    }
+
+    pub(crate) fn handle_network_result(&mut self, result: NetworkResult) {
+        match result {
+            NetworkResult::Success => {
+                self.pending_network_request = None;
+                self.network_auth_attempts = 0;
+                self.pending_auth_prompt = None;
+                self.auth_username_input.clear();
+                self.auth_secret_input.clear();
+                self.modal_network_title.clear();
+                self.modal_network_message.clear();
+                self.focus = Focus::Viewport;
+                self.reload(None);
+            },
+            NetworkResult::AuthRequired(AuthRequired { challenge, rejected }) => {
+                self.auth_session.evict(&rejected);
+                if self.network_auth_attempts >= Self::MAX_AUTH_ATTEMPTS {
+                    self.finish_network_failure(format!("{} failed: authentication failed after {} attempts", challenge.operation, Self::MAX_AUTH_ATTEMPTS));
+                    return;
+                }
+
+                self.pending_auth_prompt = Some(challenge.clone());
+                self.auth_username_input.clear();
+                self.auth_secret_input.clear();
+                if let Some(username) = challenge.username {
+                    self.auth_username_input.set_value(username);
+                }
+                self.auth_input_field = if challenge.protocol.is_http() && self.auth_username_input.value().is_empty() { AuthInputField::Username } else { AuthInputField::Secret };
+                self.focus = Focus::ModalAuth;
+            },
+            NetworkResult::Failure(message) => self.finish_network_failure(message),
+        }
+    }
+
+    fn finish_network_failure(&mut self, message: String) {
+        self.pending_network_request = None;
+        self.network_auth_attempts = 0;
+        self.pending_auth_prompt = None;
+        self.auth_username_input.clear();
+        self.auth_secret_input.clear();
+        self.modal_network_title.clear();
+        self.modal_network_message.clear();
+        self.focus = Focus::Viewport;
+        self.show_error(message);
+    }
+
+    pub(crate) fn cancel_auth_prompt(&mut self) {
+        let operation = self.pending_auth_prompt.as_ref().map(|challenge| challenge.operation.clone()).unwrap_or_else(|| "Git network operation".to_string());
+        self.pending_network_request = None;
+        self.network_auth_attempts = 0;
+        self.pending_auth_prompt = None;
+        self.auth_username_input.clear();
+        self.auth_secret_input.clear();
+        self.modal_network_title.clear();
+        self.modal_network_message.clear();
+        self.focus = Focus::Viewport;
+        self.show_error(format!("{operation} cancelled: authentication was not provided"));
+    }
+
+    pub(crate) fn submit_auth_prompt(&mut self) {
+        let Some(challenge) = self.pending_auth_prompt.clone() else {
+            return;
+        };
+
+        let secret = if challenge.protocol.is_http() {
+            let username = self.auth_username_input.value().trim().to_string();
+            let password = self.auth_secret_input.value().to_string();
+            if username.is_empty() || password.is_empty() {
+                return;
+            }
+            AuthSecret::Https { username, password }
+        } else {
+            let passphrase = self.auth_secret_input.value().to_string();
+            if passphrase.is_empty() {
+                return;
+            }
+            AuthSecret::SshKeyPassphrase { passphrase }
+        };
+
+        self.auth_session.store(&challenge, secret);
+        self.pending_auth_prompt = None;
+        self.auth_username_input.clear();
+        self.auth_secret_input.clear();
+        self.retry_pending_network_request();
     }
 
     pub fn run_pending_operation_action(&mut self) {
@@ -187,10 +309,13 @@ impl App {
 
     pub fn on_drop(&mut self) {
         if self.repo.is_some() && self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
-            let alias = self.oids.get_alias_by_idx(self.graph_selected);
-            if !self.oids.stashes.contains(&alias) {
+            let Some(row) = self.graph_row_at(self.graph_selected) else {
+                return;
+            };
+            if !row.is_stash {
                 return;
             }
+            let oid = row.oid;
 
             let Some(path) = self.repo.as_ref().map(|repo| repo.path().to_path_buf()) else {
                 return;
@@ -202,9 +327,7 @@ impl App {
                     return;
                 },
             };
-            let oid = self.oids.get_oid_by_alias(alias);
-
-            match pop(&mut repo, oid, false) {
+            match pop(&mut repo, &oid, false) {
                 Ok(_) => self.reload(None),
                 Err(error) => self.show_error(format!("Drop stash failed: {error}")),
             }
@@ -213,10 +336,13 @@ impl App {
 
     pub fn on_pop(&mut self) {
         if self.repo.is_some() && self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
-            let alias = self.oids.get_alias_by_idx(self.graph_selected);
-            if !self.oids.stashes.contains(&alias) {
+            let Some(row) = self.graph_row_at(self.graph_selected) else {
+                return;
+            };
+            if !row.is_stash {
                 return;
             }
+            let oid = row.oid;
 
             let Some(path) = self.repo.as_ref().map(|repo| repo.path().to_path_buf()) else {
                 return;
@@ -228,9 +354,7 @@ impl App {
                     return;
                 },
             };
-            let oid = self.oids.get_oid_by_alias(alias);
-
-            match pop(&mut repo, oid, true) {
+            match pop(&mut repo, &oid, true) {
                 Ok(_) => self.reload(None),
                 Err(error) => self.show_error(format!("Pop stash failed: {error}")),
             }
@@ -266,8 +390,7 @@ impl App {
     pub fn on_fetch_all(&mut self) {
         if self.viewport != Viewport::Settings {
             let repo_path = self.path.as_deref().unwrap_or(".");
-            let handle = fetch_over_ssh(repo_path, "origin");
-            self.finish_threaded_git_action("Fetch", handle);
+            self.start_network_request(NetworkRequest::Fetch { repo_path: repo_path.to_string(), remote_name: "origin".to_string() });
         }
     }
 
@@ -277,14 +400,24 @@ impl App {
         match self.focus {
             Focus::Branches => {
                 // Branch pane checkout uses the selected row directly.
-                let Some((alias, branch)) = self.branches.sorted.get(self.branches_selected).cloned() else {
+                let projected = self.graph.branches_window.as_ref().and_then(|window| {
+                    if self.branches_selected >= window.start
+                        && self.branches_selected < window.end
+                        && let Some(GraphPaneRow::Branch { alias, name, graph_index, .. }) = window.rows.get(self.branches_selected - window.start)
+                    {
+                        Some((*alias, name.clone(), *graph_index))
+                    } else {
+                        None
+                    }
+                });
+                let Some((alias, branch, graph_index)) = projected.or_else(|| self.branches.sorted.get(self.branches_selected).cloned().map(|(alias, branch)| (alias, branch, None))) else {
                     return;
                 };
 
                 match checkout_branch(repo, &mut self.branches.visible_branch_names, &mut self.branches.local, alias, &branch) {
                     Ok(_) => {
                         // Keep graph selection on the commit that owns the checked-out branch.
-                        self.graph_selected = self.oids.get_sorted_aliases().iter().position(|o| o == &alias).unwrap_or(0);
+                        self.graph_selected = graph_index.or_else(|| self.oids.get_sorted_aliases().iter().position(|o| o == &alias)).unwrap_or(0);
 
                         self.focus = Focus::Viewport;
                         self.reload(None);
@@ -299,8 +432,12 @@ impl App {
                     return;
                 }
 
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let oid = self.oids.get_oid_by_alias(alias);
+                let Some(alias) = self.graph_alias_at(self.graph_selected) else {
+                    return;
+                };
+                let Some(oid) = self.graph_oid_at(self.graph_selected) else {
+                    return;
+                };
 
                 // Ambiguous commits are checked out through a branch-selection modal.
                 let branches_for_alias = self.graph_branch_choices(alias);
@@ -308,7 +445,7 @@ impl App {
                 match branches_for_alias.len() {
                     0 => {
                         // No branch label means detached checkout is the only option.
-                        match checkout_head(repo, *oid) {
+                        match checkout_head(repo, oid) {
                             Ok(_) => {
                                 self.focus = Focus::Viewport;
                                 self.reload(None);
@@ -343,8 +480,10 @@ impl App {
                     if self.viewport != Viewport::Graph {
                         return;
                     }
-                    let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                    match reset_to_commit(repo, *oid, git2::ResetType::Hard) {
+                    let Some(oid) = self.graph_oid_at(self.graph_selected) else {
+                        return;
+                    };
+                    match reset_to_commit(repo, oid, git2::ResetType::Hard) {
                         Ok(_) => {
                             self.reload(None);
                             self.focus = Focus::Viewport;
@@ -373,8 +512,10 @@ impl App {
             if self.focus == Focus::Viewport && self.viewport != Viewport::Graph {
                 return;
             }
-            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-            match reset_to_commit(repo, *oid, git2::ResetType::Mixed) {
+            let Some(oid) = self.graph_oid_at(self.graph_selected) else {
+                return;
+            };
+            match reset_to_commit(repo, oid, git2::ResetType::Mixed) {
                 Ok(_) => {
                     self.reload(None);
                     self.focus = Focus::Viewport;
@@ -469,8 +610,7 @@ impl App {
                         self.show_error("Push failed: detached HEAD has no current branch");
                         return;
                     };
-                    let handle = push_over_ssh(repo_path, "origin", branch.as_str(), true);
-                    self.finish_threaded_git_action("Push", handle);
+                    self.start_network_request(NetworkRequest::PushBranch { repo_path: repo_path.to_string(), remote_name: "origin".to_string(), branch, force: true });
                 },
             }
         }
@@ -482,8 +622,7 @@ impl App {
                 Viewport::Settings | Viewport::Viewer => {},
                 _ => {
                     let repo_path = self.path.as_deref().unwrap_or(".");
-                    let handle = push_tags_over_ssh(repo_path, "origin");
-                    self.finish_threaded_git_action("Push tags", handle);
+                    self.start_network_request(NetworkRequest::PushTags { repo_path: repo_path.to_string(), remote_name: "origin".to_string() });
                 },
             }
         }
@@ -514,11 +653,40 @@ impl App {
             return Some(oid);
         }
 
-        if self.graph_selected != 0 { Some(*self.oids.get_oid_by_idx(self.graph_selected)) } else { None }
+        if self.graph_selected != 0 { self.graph_oid_at(self.graph_selected) } else { None }
     }
 
     pub fn clear_pending_branch_target(&mut self) {
         self.pending_branch_target_oid = None;
+    }
+
+    pub(crate) fn delete_branch_from_ui(&mut self, branch: &str) {
+        let Some(repo) = self.repo.clone() else {
+            return;
+        };
+
+        if repo.find_branch(branch, BranchType::Local).is_ok() {
+            match delete_branch(&repo, branch) {
+                Ok(_) => {
+                    self.branches.visible_branch_names.remove(branch);
+                    self.modal_delete_branch_selected = 0;
+                    self.focus = Focus::Viewport;
+                    self.reload(None);
+                },
+                Err(error) => self.show_error(format!("Delete branch failed: {error}")),
+            }
+            return;
+        }
+
+        let (remote_name, remote_branch) = branch.split_once('/').unwrap_or(("origin", branch));
+        if remote_name.is_empty() || remote_branch.is_empty() {
+            self.show_error("Delete branch failed: remote branch name is invalid");
+            return;
+        }
+
+        let repo_path = self.path.as_deref().unwrap_or(".");
+        self.modal_delete_branch_selected = 0;
+        self.start_network_request(NetworkRequest::DeleteRemoteBranch { repo_path: repo_path.to_string(), remote_name: remote_name.to_string(), branch: remote_branch.to_string() });
     }
 
     pub fn on_delete_branch(&mut self) {
@@ -531,7 +699,17 @@ impl App {
 
         match self.focus {
             Focus::Branches => {
-                let Some((_, branch)) = self.branches.sorted.get(self.branches_selected).cloned() else {
+                let projected = self.graph.branches_window.as_ref().and_then(|window| {
+                    if self.branches_selected >= window.start
+                        && self.branches_selected < window.end
+                        && let Some(GraphPaneRow::Branch { name, .. }) = window.rows.get(self.branches_selected - window.start)
+                    {
+                        Some(name.clone())
+                    } else {
+                        None
+                    }
+                });
+                let Some(branch) = projected.or_else(|| self.branches.sorted.get(self.branches_selected).map(|(_, branch)| branch.clone())) else {
                     return;
                 };
 
@@ -542,14 +720,7 @@ impl App {
                 };
 
                 if proceed {
-                    match delete_branch(repo, &branch) {
-                        Ok(_) => {
-                            // Remove stale filter entries before reload repopulates branches.
-                            self.branches.visible_branch_names.remove(&branch);
-                            self.reload(None);
-                        },
-                        Err(error) => self.show_error(format!("Delete branch failed: {error}")),
-                    }
+                    self.delete_branch_from_ui(&branch);
                 } else {
                     self.show_error("Delete branch failed: cannot delete the current branch");
                 }
@@ -560,7 +731,9 @@ impl App {
                     return;
                 }
 
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                let Some(alias) = self.graph_alias_at(self.graph_selected) else {
+                    return;
+                };
                 let current = get_current_branch(repo);
 
                 // Current branch is excluded so graph deletion cannot remove checked-out HEAD.
@@ -568,13 +741,7 @@ impl App {
 
                 match visible_branches.len() {
                     0 => {},
-                    1 => match delete_branch(repo, &visible_branches[0]) {
-                        Ok(_) => {
-                            self.branches.visible_branch_names.remove(&visible_branches[0]);
-                            self.reload(None);
-                        },
-                        Err(error) => self.show_error(format!("Delete branch failed: {error}")),
-                    },
+                    1 => self.delete_branch_from_ui(&visible_branches[0]),
                     _ => {
                         self.focus = Focus::ModalDeleteBranch;
                     },
@@ -602,7 +769,17 @@ impl App {
                 Viewport::Settings | Viewport::Viewer => {},
                 _ => match self.focus {
                     Focus::Tags => {
-                        let Some((_, tag)) = self.tags.sorted.get(self.tags_selected).cloned() else {
+                        let projected = self.graph.tags_window.as_ref().and_then(|window| {
+                            if self.tags_selected >= window.start
+                                && self.tags_selected < window.end
+                                && let Some(GraphPaneRow::Tag { name, .. }) = window.rows.get(self.tags_selected - window.start)
+                            {
+                                Some(name.clone())
+                            } else {
+                                None
+                            }
+                        });
+                        let Some(tag) = projected.or_else(|| self.tags.sorted.get(self.tags_selected).map(|(_, tag)| tag.clone())) else {
                             return;
                         };
                         match untag(repo, &tag) {
@@ -612,18 +789,20 @@ impl App {
                     },
                     Focus::Viewport => {
                         if self.graph_selected != 0 {
-                            let alias = self.oids.get_alias_by_idx(if self.graph_selected == 0 { 1 } else { self.graph_selected });
-                            if let Some(tag_names) = self.tags.local.get(&alias) {
-                                match tag_names.len() {
-                                    0 => {},
-                                    1 => match untag(repo, tag_names[0].as_str()) {
-                                        Ok(_) => self.reload(None),
-                                        Err(error) => self.show_error(format!("Delete tag failed: {error}")),
-                                    },
-                                    _ => {
-                                        self.focus = Focus::ModalDeleteTag;
-                                    },
-                                }
+                            let tag_names: Vec<String> = self
+                                .graph_row_at(if self.graph_selected == 0 { 1 } else { self.graph_selected })
+                                .map(|row| row.tags.iter().map(|tag| tag.name.clone()).collect())
+                                .or_else(|| self.graph_alias_at(if self.graph_selected == 0 { 1 } else { self.graph_selected }).map(|alias| self.tags.local.get(&alias).cloned().unwrap_or_default()))
+                                .unwrap_or_default();
+                            match tag_names.len() {
+                                0 => {},
+                                1 => match untag(repo, tag_names[0].as_str()) {
+                                    Ok(_) => self.reload(None),
+                                    Err(error) => self.show_error(format!("Delete tag failed: {error}")),
+                                },
+                                _ => {
+                                    self.focus = Focus::ModalDeleteTag;
+                                },
                             }
                         }
                     },
@@ -640,7 +819,9 @@ impl App {
             && let Some(repo) = &self.repo
         {
             let idx = if self.graph_selected == 0 { 1 } else { self.graph_selected };
-            let oid = *self.oids.get_oid_by_idx(idx);
+            let Some(oid) = self.graph_oid_at(idx) else {
+                return;
+            };
 
             let original_message = match repo.find_commit(oid) {
                 Ok(commit) => Ok(commit.summary().unwrap_or("Cherry-pick commit").to_string()),
@@ -673,7 +854,9 @@ impl App {
             return;
         }
 
-        let oid = *self.oids.get_oid_by_idx(self.graph_selected);
+        let Some(oid) = self.graph_oid_at(self.graph_selected) else {
+            return;
+        };
         self.pending_operation_action = Some(PendingOperationAction::Start { kind: OperationKind::Rebase, oid });
         self.modal_operation_kind = OperationKind::Rebase;
         self.modal_operation_message = "Rebasing the current branch onto the selected commit...".to_string();
@@ -695,7 +878,9 @@ impl App {
             return;
         }
 
-        let oid = *self.oids.get_oid_by_idx(self.graph_selected);
+        let Some(oid) = self.graph_oid_at(self.graph_selected) else {
+            return;
+        };
         self.pending_operation_action = Some(PendingOperationAction::Start { kind: OperationKind::Merge, oid });
         self.modal_operation_kind = OperationKind::Merge;
         self.modal_operation_message = "Merging the selected commit into the current branch...".to_string();

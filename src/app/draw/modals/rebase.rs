@@ -1,9 +1,11 @@
 use crate::{
-    app::app::{App, Focus},
+    app::{
+        app::{App, Focus},
+        draw::buffered::DrawTarget,
+    },
     helpers::text::wrap_words,
 };
 use ratatui::{
-    Frame,
     layout::Alignment,
     style::Style,
     text::{Line, Span, Text},
@@ -11,7 +13,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_rebase(&mut self, frame: &mut Frame) {
+    pub fn draw_modal_rebase(&mut self, frame: &mut impl DrawTarget) {
         let (title, hint) = match self.focus {
             Focus::ModalOperationProgress => (self.modal_operation_kind.label().to_string(), "working..."),
             Focus::ModalOperationConflict => (format!("{} conflict", self.modal_operation_kind.label()), "resolve conflicts in your editor, then press Enter and action+Shift+C"),
@@ -29,7 +31,7 @@ impl App {
             lines.push(Line::from(Span::styled(line, Style::default().fg(self.theme.COLOR_TEXT))));
         }
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled(hint, Style::default().fg(self.theme.COLOR_GREY_500))));
+        lines.push(Line::from(Span::styled(hint, Style::default().fg(self.theme.COLOR_HIGHLIGHTED))));
 
         let content_width = lines.iter().map(|line| line.width()).max().unwrap_or(0);
         let modal_width = (content_width + 10).max(34).min(max_modal_width) as u16;

@@ -1,5 +1,8 @@
 use crate::{
-    app::app::{App, Focus},
+    app::{
+        app::{App, Focus},
+        draw::{buffered::DrawTarget, pane_window::zebra_list_items},
+    },
     helpers::{
         symbols::{SYM_COMMIT_BRANCH, SYM_WORKTREE, SYM_WORKTREE_DIRTY, SYM_WORKTREE_EMPTY, SYM_WORKTREE_INVALID, SYM_WORKTREE_LOCKED, SYM_WORKTREE_OTHER},
         text::{center_line, empty_state_top_padding, truncate_with_ellipsis},
@@ -7,15 +10,14 @@ use crate::{
 };
 use ratatui::widgets::Borders;
 use ratatui::{
-    Frame,
     layout::Rect,
     style::Style,
     text::{Line, Span},
-    widgets::{Block, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{Block, List, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 impl App {
-    pub fn draw_worktrees(&mut self, frame: &mut Frame) {
+    pub fn draw_worktrees(&mut self, frame: &mut impl DrawTarget) {
         let padding = ratatui::widgets::Padding { left: if self.layout_config.is_zen { 1 } else { 2 }, right: 0, top: 0, bottom: 0 };
         let available_width = self.layout.worktrees.width.saturating_sub(1) as usize;
         let max_text_width = available_width.saturating_sub(3);
@@ -78,20 +80,7 @@ impl App {
         let start = self.worktrees_scroll.get().min(total_lines.saturating_sub(visible_height));
         let end = (start + visible_height).min(total_lines);
 
-        let list_items: Vec<ListItem> = lines[start..end]
-            .iter()
-            .enumerate()
-            .map(|(idx, line)| {
-                if start + idx == self.worktrees_selected && self.focus == Focus::Worktrees && !worktrees_empty {
-                    let spans: Vec<Span> = line.iter().map(|span| Span::styled(span.content.clone(), span.style)).collect();
-                    ListItem::new(Line::from(spans)).style(Style::default().bg(self.theme.background_or_default(self.theme.COLOR_GREY_800)))
-                } else if (idx + start).is_multiple_of(2) && !worktrees_empty {
-                    ListItem::new(Line::from(line.clone().spans)).style(Style::default().bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)))
-                } else {
-                    ListItem::new(line.clone())
-                }
-            })
-            .collect();
+        let list_items = zebra_list_items(&lines[start..end], visible_height, start, self.worktrees_selected, self.focus == Focus::Worktrees, !worktrees_empty, &self.theme);
 
         if self.layout_config.is_zen {
             let list = List::new(list_items).block(Block::default().borders(Borders::ALL).padding(padding).border_type(ratatui::widgets::BorderType::Rounded));
@@ -134,3 +123,7 @@ impl App {
         frame.render_stateful_widget(scrollbar, self.layout.worktrees_scrollbar, &mut scrollbar_state);
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/app/draw/worktrees.rs"]
+mod tests;

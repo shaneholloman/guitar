@@ -1,24 +1,26 @@
 use crate::helpers::heatmap::heat_cell;
-use crate::helpers::keymap::{InputMode, action_keymap_visible_entries};
+use crate::helpers::keymap::{InputMode, KeymapSelection, action_keymap_visible_entries};
 use crate::helpers::palette::*;
 use crate::helpers::symbols::WEEKDAY_LABELS;
 use crate::helpers::version::VERSION;
 use crate::{
-    app::app::{App, Direction, Focus},
+    app::{
+        app::{App, Direction, Focus, SettingsSelection, SettingsSelectionKind},
+        draw::buffered::DrawTarget,
+    },
     core::renderers::render_keybindings,
     git::queries::commits::get_git_user_info,
     helpers::text::fill_width,
 };
 use ratatui::widgets::Borders;
 use ratatui::{
-    Frame,
     style::Style,
     text::{Line, Span},
     widgets::{Block, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 impl App {
-    pub fn draw_settings(&mut self, frame: &mut Frame, repo: &git2::Repository) {
+    pub fn draw_settings(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
         // Settings owns the center viewport and uses centered rows throughout.
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
 
@@ -27,7 +29,7 @@ impl App {
         // Credentials are read live so the settings view reflects git config changes.
         let (name, email) = get_git_user_info(repo).unwrap();
 
-        // settings_selections maps interactive rows back to their line indices.
+        // settings_selections maps selectable line indices to their settings action.
         let mut lines: Vec<Line> = Vec::new();
         self.settings_selections = Vec::new();
         lines.push(Line::default());
@@ -59,7 +61,7 @@ impl App {
             ))
             .centered(),
         );
-        self.settings_selections.push(lines.len().saturating_sub(1));
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
 
         // Heatmap rows use weekday labels followed by the cropped commit grid.
         lines.push(Line::default());
@@ -84,17 +86,19 @@ impl App {
             ))
             .centered(),
         );
-        self.settings_selections.push(lines.len().saturating_sub(1));
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
         lines.push(Line::from(Span::styled(fill_width(" layout:", format!(" {}/layout.json ", path).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
-        self.settings_selections.push(lines.len().saturating_sub(1));
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
         lines.push(
             Line::from(Span::styled(
-                fill_width(" recent repositories:", format!(" {}/recent.json ", path).as_str(), heatmap_width),
+                fill_width(" theme:", format!(" {}/theme.json ", path).as_str(), heatmap_width),
                 Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
             ))
             .centered(),
         );
-        self.settings_selections.push(lines.len().saturating_sub(1));
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
+        lines.push(Line::from(Span::styled(fill_width(" recent repositories:", format!(" {}/recent.json ", path).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
 
         // Credential rows are selectable because they are important setup information.
         lines.push(Line::default());
@@ -109,22 +113,45 @@ impl App {
         );
 
         // Selectable rows are recorded immediately after being pushed.
-        self.settings_selections.push(lines.len().saturating_sub(1));
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
         lines.push(Line::from(Span::styled(fill_width(" email:", format!("{} ", email.unwrap()).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
 
-        self.settings_selections.push(lines.len().saturating_sub(1));
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
         lines.push(
             Line::from(Span::styled(
-                fill_width(" authorization:", "external ssh agent ", heatmap_width),
+                fill_width(" authorization:", "ssh-agent when available ", heatmap_width),
                 Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
             ))
             .centered(),
         );
 
-        self.settings_selections.push(lines.len().saturating_sub(1));
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
+        lines.push(Line::from(Span::styled(fill_width(" ssh fallback:", "key passphrase prompt ", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
+        lines.push(
+            Line::from(Span::styled(
+                fill_width(" https:", "username/password or token prompt ", heatmap_width),
+                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
+            ))
+            .centered(),
+        );
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
+        lines.push(Line::from(Span::styled(fill_width(" secrets:", "session only ", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
         lines.push(Line::default());
         lines.push(Line::from(Span::styled(fill_width(" themes:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         lines.push(Line::default());
+
+        if self.theme.name == ThemeNames::Custom {
+            lines.push(
+                Line::from(Span::styled(
+                    fill_width(" active custom:", format!(" {} ", self.theme.label()).as_str(), heatmap_width),
+                    Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
+                ))
+                .centered(),
+            );
+            lines.push(Line::default());
+        }
 
         for (idx, preset) in Theme::presets().iter().enumerate() {
             let label = format!(" {}", preset.label);
@@ -134,7 +161,7 @@ impl App {
                 style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
             }
             lines.push(Line::from(Span::styled(fill_width(&label, &marker, heatmap_width), style)).centered());
-            self.settings_selections.push(lines.len().saturating_sub(1));
+            self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Theme(idx) });
         }
 
         // Keymap sections are generated from the active keymap data, not duplicated text.
@@ -142,9 +169,9 @@ impl App {
         lines.push(Line::from(Span::styled(fill_width(" shortcuts / normal mode:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         lines.push(Line::default());
         if let Some(mode_keymap) = self.keymaps.get(&InputMode::Normal) {
-            render_keybindings(&self.theme, mode_keymap, heatmap_width).iter().enumerate().for_each(|(idx, kb_line)| {
+            let rendered = render_keybindings(&self.theme, mode_keymap, heatmap_width);
+            mode_keymap.iter().zip(rendered).enumerate().for_each(|(idx, ((kb, cmd), kb_line))| {
                 let spans: Vec<Span> = kb_line
-                    .clone()
                     .spans
                     .iter()
                     .map(|span| {
@@ -157,7 +184,8 @@ impl App {
                     .collect();
                 lines.push(Line::from(spans).centered());
 
-                self.settings_selections.push(lines.len().saturating_sub(1));
+                self.settings_selections
+                    .push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::KeyBinding(KeymapSelection::new(InputMode::Normal, kb.clone(), cmd.clone())) });
             });
         }
         lines.push(Line::default());
@@ -167,9 +195,9 @@ impl App {
             // Action mode hides inherited duplicates, but shows keys whose command changes.
             let unique_action = action_keymap_visible_entries(self.keymaps.get(&InputMode::Normal), action_keymap);
 
-            render_keybindings(&self.theme, &unique_action, heatmap_width).iter().enumerate().for_each(|(idx, kb_line)| {
+            let rendered = render_keybindings(&self.theme, &unique_action, heatmap_width);
+            unique_action.iter().zip(rendered).enumerate().for_each(|(idx, ((kb, cmd), kb_line))| {
                 let spans: Vec<Span> = kb_line
-                    .clone()
                     .spans
                     .iter()
                     .map(|span| {
@@ -182,7 +210,8 @@ impl App {
                     .collect();
 
                 lines.push(Line::from(spans).centered());
-                self.settings_selections.push(lines.len().saturating_sub(1));
+                self.settings_selections
+                    .push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::KeyBinding(KeymapSelection::new(InputMode::Action, kb.clone(), cmd.clone())) });
             });
         }
 
@@ -191,20 +220,20 @@ impl App {
         let visible_height = if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(2) as usize } else { self.layout.graph.height as usize };
 
         // Navigation lands on selectable rows even when the rendered list contains headings.
-        if !self.settings_selections.contains(&self.settings_selected) {
+        if !self.settings_selections.iter().any(|selection| selection.line == self.settings_selected) {
             let mut nearest = None;
 
             if self.last_input_direction == Some(Direction::Down) {
-                nearest = self.settings_selections.iter().copied().find(|&i| i > self.settings_selected);
+                nearest = self.settings_selections.iter().map(|selection| selection.line).find(|&i| i > self.settings_selected);
             }
 
             if nearest.is_none() && self.last_input_direction == Some(Direction::Up) {
-                nearest = self.settings_selections.iter().rev().copied().find(|&i| i < self.settings_selected);
+                nearest = self.settings_selections.iter().rev().map(|selection| selection.line).find(|&i| i < self.settings_selected);
             }
 
             // Without direction, choose the closest selectable row by distance.
             if nearest.is_none() {
-                nearest = self.settings_selections.iter().min_by_key(|&&i| i.abs_diff(self.settings_selected)).copied();
+                nearest = self.settings_selections.iter().map(|selection| selection.line).min_by_key(|&i| i.abs_diff(self.settings_selected));
             }
 
             if let Some(target) = nearest {

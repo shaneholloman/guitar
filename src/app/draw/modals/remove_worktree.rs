@@ -1,6 +1,5 @@
-use crate::app::app::App;
+use crate::app::{app::App, draw::buffered::DrawTarget};
 use ratatui::{
-    Frame,
     layout::{Alignment, Rect},
     style::Style,
     text::{Line, Span, Text},
@@ -8,7 +7,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_remove_worktree(&mut self, frame: &mut Frame) {
+    pub fn draw_modal_remove_worktree(&mut self, frame: &mut impl DrawTarget) {
         let mut length = 42;
         let mut lines = Vec::new();
 
@@ -24,7 +23,7 @@ impl App {
         }
 
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled("Enter confirms", Style::default().fg(self.theme.COLOR_GREY_500))));
+        lines.push(Line::from(Span::styled("Enter confirms", Style::default().fg(self.theme.COLOR_HIGHLIGHTED))));
 
         let bg_block = Block::default().style(Style::default().fg(self.theme.COLOR_BORDER));
         bg_block.render(frame.area(), frame.buffer_mut());
@@ -40,7 +39,7 @@ impl App {
         let modal_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(self.theme.COLOR_GREY_600))
-            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_GREY_500)))
+            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_HIGHLIGHTED)))
             .title_alignment(Alignment::Right)
             .padding(padding)
             .border_type(ratatui::widgets::BorderType::Rounded);

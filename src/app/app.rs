@@ -1,16 +1,18 @@
 use crate::{
+    app::draw::buffered::{DrawSurface, SurfaceBuffers},
     app::input::TextInput,
     core::reflogs::HeadReflogs,
     core::stashes::Stashes,
     core::worktrees::Worktrees,
     git::{
+        auth::{AuthChallenge, AuthSession, NetworkResult},
         os::path::try_into_git_repo_root,
         queries::{diffs::get_filenames_diff_at_oid, worktrees::list_worktrees},
     },
     helpers::{
         copy::{STR_CHERRYPICK_COMMIT, STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_CREATE_WORKTREE_NAME, STR_CREATE_WORKTREE_PATH, STR_FIND_SHA, STR_LOCK_WORKTREE},
         heatmap::{DAYS, WEEKS, empty_heatmap},
-        keymap::{Command, KeyBinding},
+        keymap::{Command, KeyBinding, KeymapEditError, KeymapSelection},
         layout::LayoutConfig,
         recent::{load_recent, save_recent},
     },
@@ -22,17 +24,22 @@ use crate::{
     },
     core::{
         branches::Branches,
-        buffer::Buffer,
+        graph_service::{
+            Generation, GraphCommand, GraphEvent, GraphHistory, GraphIndexIdentity, GraphLookupKind, GraphLookupResult, GraphPane, GraphPaneRow, GraphRow, GraphServiceConfig, GraphVersion, RequestId,
+            spawn_graph_service,
+        },
         oids::Oids,
         tags::Tags,
-        walker::{Walker, WalkerOutput},
     },
-    git::queries::{
-        commits::get_git_user_info,
-        diffs::get_filenames_diff_at_workdir,
-        helpers::{FileChange, UncommittedChanges},
+    git::{
+        actions::network::NetworkRequest,
+        queries::{
+            commits::get_git_user_info,
+            diffs::get_filenames_diff_at_workdir,
+            helpers::{FileChange, UncommittedChanges},
+        },
     },
-    helpers::{colors::ColorPicker, heatmap::build_heatmap, keymap::InputMode, palette::*, spinner::Spinner},
+    helpers::{colors::ColorPicker, keymap::InputMode, palette::*, spinner::Spinner},
 };
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
@@ -50,10 +57,11 @@ use ratatui::{
 };
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     io,
     rc::Rc,
     sync::{Arc, atomic::AtomicBool, mpsc::channel},
-    thread,
+    thread::JoinHandle,
     time::Duration,
 };
 use std::{env, io::stdout, path::PathBuf};
@@ -91,6 +99,9 @@ pub enum Focus {
     ModalGrep,
     ModalTag,
     ModalDeleteTag,
+    ModalKeyCapture,
+    ModalAuth,
+    ModalNetworkProgress,
     ModalOperationProgress,
     ModalOperationConflict,
     ModalOperationSuccess,
@@ -135,15 +146,97 @@ pub enum WorktreeModalAction {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum AuthInputField {
+    Username,
+    Secret,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BranchModalAction {
     Solo,
     Toggle,
+}
+
+#[derive(Default)]
+pub struct GraphWindowCache {
+    pub version: GraphVersion,
+    pub start: usize,
+    pub end: usize,
+    pub head_alias: u32,
+    pub rows: Vec<GraphRow>,
+    pub history: GraphHistory,
+}
+
+#[derive(Default)]
+pub struct PaneWindowCache {
+    pub version: GraphVersion,
+    pub start: usize,
+    pub end: usize,
+    pub total: usize,
+    pub rows: Vec<GraphPaneRow>,
+}
+
+#[derive(Clone, Copy)]
+pub enum PendingGraphLookup {
+    SelectIndex,
+    SelectPaneRow,
+    CacheGraphRow,
+    OpenInspector,
+    RestoreSelection,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GraphSelectionRestore {
+    pub oid: Oid,
+    pub selected_offset: usize,
+}
+
+#[derive(Default)]
+pub struct GraphClientCache {
+    pub generation: Generation,
+    pub version: GraphVersion,
+    pub total: usize,
+    pub is_complete: bool,
+    pub next_request_id: RequestId,
+    pub requested_graph: Option<(RequestId, usize, usize)>,
+    pub pending_lookup: Option<(RequestId, PendingGraphLookup)>,
+    pub pending_selection_restore: Option<GraphSelectionRestore>,
+    pub index_rows: HashMap<usize, GraphRow>,
+    pub graph_window: Option<GraphWindowCache>,
+    pub branches_window: Option<PaneWindowCache>,
+    pub tags_window: Option<PaneWindowCache>,
+    pub stashes_window: Option<PaneWindowCache>,
+    pub reflogs_window: Option<PaneWindowCache>,
+}
+
+impl GraphClientCache {
+    pub fn next_request_id(&mut self) -> RequestId {
+        self.next_request_id = self.next_request_id.saturating_add(1);
+        self.next_request_id
+    }
+
+    pub fn row_at(&self, index: usize) -> Option<&GraphRow> {
+        self.graph_window.as_ref().and_then(|window| window.rows.iter().find(|row| row.index == index)).or_else(|| self.index_rows.get(&index))
+    }
 }
 
 #[derive(PartialEq, Eq)]
 pub enum Direction {
     Down,
     Up,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsSelectionKind {
+    Info,
+    Theme(usize),
+    KeyBinding(KeymapSelection),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsSelection {
+    pub line: usize,
+    pub kind: SettingsSelectionKind,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -184,8 +277,9 @@ pub struct App {
 
     // Background history walker and graph rendering helpers.
     pub color: Rc<RefCell<ColorPicker>>,
-    pub buffer: RefCell<Buffer>,
-    pub walker_rx: Option<std::sync::mpsc::Receiver<WalkerOutput>>,
+    pub graph: GraphClientCache,
+    pub graph_tx: Option<std::sync::mpsc::Sender<GraphCommand>>,
+    pub graph_rx: Option<std::sync::mpsc::Receiver<GraphEvent>>,
     pub walker_cancel: Option<Arc<AtomicBool>>,
     pub walker_handle: Option<std::thread::JoinHandle<()>>,
 
@@ -200,6 +294,8 @@ pub struct App {
 
     // Cached file and diff data for the currently selected graph or status row.
     pub current_diff: Vec<FileChange>,
+    pub current_diff_identity: Option<GraphIndexIdentity>,
+    pub is_uncommitted_loaded: bool,
     pub file_name: Option<String>,
     pub viewer_lines: Vec<ListItem<'static>>,
     pub viewer_split_rows: Vec<SplitViewerRow>,
@@ -211,6 +307,7 @@ pub struct App {
 
     // Last computed terminal rectangles.
     pub layout: Layout,
+    pub surface_buffers: SurfaceBuffers,
 
     // Persistent layout switches and current interaction target.
     pub layout_config: LayoutConfig,
@@ -251,7 +348,11 @@ pub struct App {
 
     // Settings
     pub settings_selected: usize,
-    pub settings_selections: Vec<usize>,
+    pub settings_selections: Vec<SettingsSelection>,
+    pub modal_key_capture_selection: Option<KeymapSelection>,
+    pub modal_key_capture_candidate: Option<KeyBinding>,
+    pub modal_key_capture_error: Option<KeymapEditError>,
+    pub keymap_save_path: Option<PathBuf>,
 
     // Inspector
     pub inspector_selected: usize,
@@ -298,6 +399,18 @@ pub struct App {
     pub modal_operation_message: String,
     pub pending_operation_action: Option<PendingOperationAction>,
 
+    // Modal network operation and authentication prompts.
+    pub auth_session: AuthSession,
+    pub pending_network_request: Option<NetworkRequest>,
+    pub network_handle: Option<JoinHandle<NetworkResult>>,
+    pub network_auth_attempts: usize,
+    pub pending_auth_prompt: Option<AuthChallenge>,
+    pub auth_username_input: TextInput,
+    pub auth_secret_input: TextInput,
+    pub auth_input_field: AuthInputField,
+    pub modal_network_title: String,
+    pub modal_network_message: String,
+
     // Main loop shutdown flag.
     pub is_exit: bool,
 }
@@ -330,6 +443,7 @@ impl App {
                 if let Some(repo) = &self.repo.clone() {
                     self.sync(repo);
                 }
+                self.poll_network_request();
 
                 terminal.draw(|frame| self.draw(frame))?;
                 self.run_pending_operation_action();
@@ -350,7 +464,11 @@ impl App {
 
     pub fn draw(&mut self, frame: &mut Frame) {
         // Layout must be recomputed every frame because terminal size and focus can change.
+        let previous_layout = self.layout;
         self.layout(frame);
+        if self.layout != previous_layout {
+            self.surface_buffers.clear();
+        }
         if self.viewport == Viewport::Viewer {
             let signature = self.current_viewer_layout_signature();
             if self.viewer_layout_signature != Some(signature) {
@@ -380,21 +498,21 @@ impl App {
             // The central viewport is mutually exclusive, while side panes can be toggled.
             match self.viewport {
                 Viewport::Graph => {
-                    self.draw_graph(frame, repo);
+                    self.draw_surface(frame, DrawSurface::Graph, |app, surface| app.draw_graph(surface, repo));
                 },
                 Viewport::Viewer => {
-                    self.draw_viewer(frame);
+                    self.draw_surface(frame, DrawSurface::Viewer, |app, surface| app.draw_viewer(surface));
                 },
                 Viewport::Splash => {
-                    self.draw_splash(frame);
+                    self.draw_surface(frame, DrawSurface::Splash, |app, surface| app.draw_splash(surface));
                 },
                 Viewport::Settings => {
-                    self.draw_settings(frame, repo);
+                    self.draw_surface(frame, DrawSurface::Settings, |app, surface| app.draw_settings(surface, repo));
                 },
             }
 
             if !is_splash {
-                self.draw_title(frame);
+                self.draw_surface(frame, DrawSurface::Title, |app, surface| app.draw_title(surface));
             }
 
             // Side panes are hidden on splash/settings because those views own the frame.
@@ -403,97 +521,118 @@ impl App {
                 Viewport::Settings => {},
                 _ => {
                     if self.layout_config.is_branches {
-                        self.draw_branches(frame);
+                        self.draw_surface(frame, DrawSurface::Branches, |app, surface| app.draw_branches(surface));
                     }
                     if self.layout_config.is_tags {
-                        self.draw_tags(frame);
+                        self.draw_surface(frame, DrawSurface::Tags, |app, surface| app.draw_tags(surface));
                     }
                     if self.layout_config.is_stashes {
-                        self.draw_stashes(frame, repo);
+                        self.draw_surface(frame, DrawSurface::Stashes, |app, surface| app.draw_stashes(surface, repo));
                     }
                     if self.layout_config.is_reflogs {
-                        self.draw_reflogs(frame);
+                        self.draw_surface(frame, DrawSurface::Reflogs, |app, surface| app.draw_reflogs(surface));
                     }
                     if self.layout_config.is_worktrees {
-                        self.draw_worktrees(frame);
+                        self.draw_surface(frame, DrawSurface::Worktrees, |app, surface| app.draw_worktrees(surface));
                     }
                     if self.layout_config.is_status {
-                        self.draw_status(frame);
+                        self.draw_surface(frame, DrawSurface::Status, |app, surface| app.draw_status(surface));
                     }
                     if self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts) {
-                        self.draw_inspector(frame, repo);
+                        self.draw_surface(frame, DrawSurface::Inspector, |app, surface| app.draw_inspector(surface, repo));
                     }
                 },
             }
 
             if !is_splash {
-                self.draw_statusbar(frame, repo);
+                self.draw_surface(frame, DrawSurface::Statusbar, |app, surface| app.draw_statusbar(surface, repo));
             }
 
             // Modals render last so they overlay panes without changing pane layout.
             match self.focus {
                 Focus::ModalCheckout => {
-                    self.draw_modal_checkout(frame);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_checkout(surface));
                 },
                 Focus::ModalSolo => {
-                    self.draw_modal_solo(frame);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_solo(surface));
                 },
                 Focus::ModalDeleteBranch => {
-                    self.draw_modal_delete_branch(frame, repo);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_delete_branch(surface, repo));
                 },
                 Focus::ModalWorktreeChooser => {
-                    self.draw_modal_worktree_chooser(frame);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_worktree_chooser(surface));
                 },
                 Focus::ModalRemoveWorktree => {
-                    self.draw_modal_remove_worktree(frame);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_remove_worktree(surface));
                 },
                 Focus::ModalDeleteTag => {
-                    self.draw_modal_delete_tag(frame);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_delete_tag(surface));
                 },
                 Focus::ModalOperationProgress | Focus::ModalOperationConflict | Focus::ModalOperationSuccess => {
-                    self.draw_modal_rebase(frame);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_rebase(surface));
                 },
                 Focus::ModalError => {
-                    self.draw_modal_error(frame);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_error(surface));
                 },
                 Focus::ModalCommit => {
-                    self.draw_modal_input(frame, STR_CREATE_COMMIT);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_COMMIT));
                 },
                 Focus::ModalCherrypick => {
-                    self.draw_modal_input(frame, STR_CHERRYPICK_COMMIT);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CHERRYPICK_COMMIT));
                 },
                 Focus::ModalCreateBranch => {
-                    self.draw_modal_input(frame, STR_CREATE_BRANCH);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_BRANCH));
                 },
                 Focus::ModalCreateWorktreeName => {
-                    self.draw_modal_input(frame, STR_CREATE_WORKTREE_NAME);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_WORKTREE_NAME));
                 },
                 Focus::ModalCreateWorktreePath => {
-                    self.draw_modal_input(frame, STR_CREATE_WORKTREE_PATH);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_WORKTREE_PATH));
                 },
                 Focus::ModalLockWorktree => {
-                    self.draw_modal_input(frame, STR_LOCK_WORKTREE);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_LOCK_WORKTREE));
                 },
                 Focus::ModalGrep => {
-                    self.draw_modal_input(frame, STR_FIND_SHA);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_FIND_SHA));
                 },
                 Focus::ModalTag => {
-                    self.draw_modal_input(frame, STR_CREATE_TAG);
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_TAG));
+                },
+                Focus::ModalKeyCapture => {
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_key_capture(surface));
+                },
+                Focus::ModalAuth => {
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_auth(surface));
+                },
+                Focus::ModalNetworkProgress => {
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_network_progress(surface));
                 },
                 _ => {},
             }
         } else {
-            self.draw_splash(frame);
+            self.draw_surface(frame, DrawSurface::Splash, |app, surface| app.draw_splash(surface));
         }
     }
 
     pub fn reload(&mut self, override_path: Option<String>) {
+        self.surface_buffers.clear();
+
         // Preserve branch filters across reloads because reload also follows git actions.
         let visible_branch_names = self.branches.visible_branch_names.clone();
+        let pending_selection_restore = if override_path.is_none() && self.graph_selected != 0 {
+            self.graph_identity_at(self.graph_selected)
+                .map(|identity| GraphSelectionRestore { oid: identity.oid, selected_offset: self.graph_selected.saturating_sub(self.graph_scroll.get()) })
+                .filter(|restore| restore.oid != Oid::zero())
+        } else {
+            None
+        };
 
         // Clear derived data; the walker will repopulate it asynchronously.
         self.heatmap = empty_heatmap();
         self.current_diff = Vec::new();
+        self.current_diff_identity = None;
+        self.is_uncommitted_loaded = false;
+        self.uncommitted = UncommittedChanges::default();
         self.viewer_lines = Vec::new();
         self.viewer_split_rows = Vec::new();
         self.viewer_edges = Vec::new();
@@ -536,11 +675,15 @@ impl App {
             // Recent paths are append-only here; the splash screen controls selection.
             if !self.recent.iter().any(|v| v == &absolute_path) {
                 self.recent.push(absolute_path.clone());
+                save_recent(&self.recent);
             }
 
-            save_recent(&self.recent);
-
             // Cancel the previous walker before spawning a new one for this repository state.
+            if let Some(tx) = self.graph_tx.take() {
+                let _ = tx.send(GraphCommand::Shutdown);
+            }
+            self.graph_rx = None;
+
             if let Some(cancel_flag) = &self.walker_cancel {
                 cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
             }
@@ -565,102 +708,304 @@ impl App {
             let cancel_clone = cancel.clone();
             self.walker_cancel = Some(cancel);
 
-            let (tx, rx) = channel();
-            self.walker_rx = Some(rx);
+            let generation = self.graph.generation.saturating_add(1);
+            self.graph = GraphClientCache { generation, pending_selection_restore, ..Default::default() };
+
+            let (command_tx, command_rx) = channel();
+            let (event_tx, event_rx) = channel();
+            self.graph_tx = Some(command_tx);
+            self.graph_rx = Some(event_rx);
 
             // Move only serializable state into the worker thread.
             let visible_branch_names = self.branches.visible_branch_names.clone();
             let include_head_reflog_roots = self.layout_config.is_graph_reflogs;
+            let worktrees = self.worktrees.entries.clone();
 
             // The worker streams partial graph state so large repositories become usable quickly.
-            let handle = thread::spawn(move || {
-                let mut walk_ctx = Walker::new(absolute_path, 10000, visible_branch_names, include_head_reflog_roots).expect("Error");
-                let mut is_first = true;
-
-                loop {
-                    if cancel_clone.load(std::sync::atomic::Ordering::SeqCst) {
-                        break;
-                    }
-
-                    let is_again = walk_ctx.walk();
-
-                    if tx
-                        .send(WalkerOutput {
-                            oids: walk_ctx.oids.clone(),
-                            branches_lanes: walk_ctx.branches_lanes.clone(),
-                            branches_local: walk_ctx.branches_local.clone(),
-                            branches_remote: walk_ctx.branches_remote.clone(),
-                            tags_lanes: walk_ctx.tags_lanes.clone(),
-                            tags_local: walk_ctx.tags_local.clone(),
-                            stashes_lanes: walk_ctx.stashes_lanes.clone(),
-                            reflogs_lanes: walk_ctx.reflogs_lanes.clone(),
-                            head_reflog_entries: walk_ctx.head_reflog_entries.clone(),
-                            buffer: walk_ctx.buffer.clone(),
-                            is_first,
-                            is_again,
-                        })
-                        .is_err()
-                    {
-                        break;
-                    }
-
-                    if !is_again {
-                        break;
-                    } else {
-                        is_first = false;
-                    }
-                }
-            });
+            let handle = spawn_graph_service(
+                GraphServiceConfig { generation, path: absolute_path, amount: 10000, visible_branch_names, include_head_reflog_roots, worktrees },
+                command_rx,
+                event_tx,
+                cancel_clone,
+            );
 
             self.walker_handle = Some(handle);
         }
     }
 
     pub fn sync(&mut self, repo: &git2::Repository) {
-        if let Some(rx) = &self.walker_rx
-            && let Ok(result) = rx.try_recv()
-        {
-            // First batch is the moment the graph can replace the splash screen.
-            if result.is_first {
-                if self.viewport == Viewport::Splash {
-                    self.viewport = Viewport::Graph;
+        let mut events = Vec::new();
+        if let Some(rx) = &self.graph_rx {
+            while let Ok(event) = rx.try_recv() {
+                events.push(event);
+            }
+        }
+
+        for event in events {
+            self.handle_graph_event(repo, event);
+        }
+    }
+
+    fn handle_graph_event(&mut self, repo: &git2::Repository, event: GraphEvent) {
+        match event {
+            GraphEvent::Progress { generation, version, total, is_first, is_complete } => {
+                if generation != self.graph.generation {
+                    return;
+                }
+                self.graph.version = version;
+                self.graph.total = total;
+                self.graph.is_complete = is_complete;
+
+                if is_first {
+                    if self.viewport == Viewport::Splash {
+                        self.viewport = Viewport::Graph;
+                    }
+
+                    self.uncommitted = get_filenames_diff_at_workdir(repo).expect("Couldn't get the file diff");
+                    self.is_uncommitted_loaded = true;
                 }
 
-                // Workdir state is cheap enough to refresh once at the start of a reload.
-                self.uncommitted = get_filenames_diff_at_workdir(repo).expect("Couldn't get the file diff");
-            }
+                if is_complete {
+                    self.spinner.stop();
+                }
+                self.request_pending_graph_selection_restore_lookup();
+            },
+            GraphEvent::GraphWindow { generation, request_id, version, start, end, total, head_alias, rows, history } => {
+                if generation != self.graph.generation {
+                    return;
+                }
+                let Some((pending_id, pending_start, pending_end)) = self.graph.requested_graph else {
+                    return;
+                };
+                if request_id < pending_id || start != pending_start || end != pending_end {
+                    return;
+                }
+                self.graph.version = self.graph.version.max(version);
+                self.graph.total = total;
+                self.graph.graph_window = Some(GraphWindowCache { version, start, end, head_alias, rows, history });
+                self.graph.requested_graph = None;
 
-            // Swap all walker-owned data together so panes stay in sync.
-            self.oids = result.oids;
-            self.worktrees.refresh_aliases(&self.oids);
-
-            self.buffer = result.buffer;
-
-            self.branches.feed(&self.oids, &self.color, &result.branches_lanes, result.branches_local, result.branches_remote);
-
-            self.tags.feed(&self.oids, &self.color, &result.tags_lanes, result.tags_local);
-
-            self.stashes.feed(&self.color, &result.stashes_lanes);
-
-            self.reflogs.feed(&self.oids, &self.color, &result.reflogs_lanes, result.head_reflog_entries);
-
-            // Keep the selected commit's file list fresh as more history arrives.
-            if self.graph_selected != 0 && self.graph_selected < self.oids.get_commit_count() {
-                let oid = self.oids.get_oid_by_idx(self.graph_selected);
-                self.current_diff = get_filenames_diff_at_oid(repo, *oid);
-            }
-
-            // Heatmap waits for the full walk so its counts include every loaded commit.
-            if !result.is_again {
-                self.spinner.stop();
-
-                self.heatmap = build_heatmap(repo, &self.oids.oids);
-            }
+                if self.graph_selected != 0
+                    && let Some(identity) = self.graph_identity_at(self.graph_selected)
+                {
+                    self.current_diff = get_filenames_diff_at_oid(repo, identity.oid);
+                    self.current_diff_identity = Some(identity);
+                }
+            },
+            GraphEvent::PaneWindow { generation, version, pane, start, end, total, rows } => {
+                if generation != self.graph.generation {
+                    return;
+                }
+                let cache = PaneWindowCache { version, start, end, total, rows };
+                match pane {
+                    GraphPane::Branches => self.graph.branches_window = Some(cache),
+                    GraphPane::Tags => self.graph.tags_window = Some(cache),
+                    GraphPane::Stashes => self.graph.stashes_window = Some(cache),
+                    GraphPane::Reflogs => self.graph.reflogs_window = Some(cache),
+                }
+            },
+            GraphEvent::LookupResult { generation, request_id, result, .. } => {
+                if generation != self.graph.generation {
+                    return;
+                }
+                let Some((pending_id, action)) = self.graph.pending_lookup.take() else {
+                    return;
+                };
+                if request_id != pending_id {
+                    self.graph.pending_lookup = Some((pending_id, action));
+                    return;
+                }
+                let was_restore_lookup = matches!(action, PendingGraphLookup::RestoreSelection);
+                match (action, result) {
+                    (PendingGraphLookup::SelectIndex, GraphLookupResult::Index(Some(index))) => {
+                        self.select_graph_index_from_lookup(repo, index);
+                        self.modal_input.clear();
+                        self.focus = Focus::Viewport;
+                    },
+                    (PendingGraphLookup::RestoreSelection, GraphLookupResult::Index(Some(index))) => {
+                        let selected_offset = self.graph.pending_selection_restore.map(|restore| restore.selected_offset).unwrap_or_default();
+                        self.graph.pending_selection_restore = None;
+                        self.restore_graph_index_from_lookup(repo, index, selected_offset);
+                    },
+                    (PendingGraphLookup::RestoreSelection, GraphLookupResult::Index(None)) => {
+                        if self.graph.is_complete {
+                            self.graph.pending_selection_restore = None;
+                        }
+                    },
+                    (PendingGraphLookup::SelectPaneRow, GraphLookupResult::PaneRow(Some(row))) => {
+                        self.open_graph_pane_row(row);
+                        self.modal_input.clear();
+                    },
+                    (PendingGraphLookup::CacheGraphRow, GraphLookupResult::GraphRow(Some(row))) => {
+                        let index = row.index;
+                        let oid = row.oid;
+                        self.cache_graph_row(row);
+                        if index == self.graph_selected && index != 0 {
+                            self.current_diff = get_filenames_diff_at_oid(repo, oid);
+                            self.current_diff_identity = self.graph_identity_at(index);
+                        }
+                    },
+                    (PendingGraphLookup::OpenInspector, GraphLookupResult::GraphRow(Some(row))) => {
+                        let index = row.index;
+                        let oid = row.oid;
+                        self.cache_graph_row(row);
+                        if index == self.graph_selected {
+                            self.current_diff = get_filenames_diff_at_oid(repo, oid);
+                            self.current_diff_identity = self.graph_identity_at(index);
+                            self.layout_config.is_inspector = true;
+                            self.focus = Focus::Inspector;
+                        }
+                    },
+                    _ => {},
+                }
+                if !was_restore_lookup {
+                    self.request_pending_graph_selection_restore_lookup();
+                }
+            },
+            GraphEvent::Heatmap { generation, heatmap } => {
+                if generation == self.graph.generation {
+                    self.heatmap = heatmap;
+                }
+            },
+            GraphEvent::Error { generation, message } => {
+                if generation == self.graph.generation {
+                    self.show_error(message);
+                    self.spinner.stop();
+                }
+            },
         }
     }
 
     pub fn load_recent(&mut self) {
         self.recent = load_recent();
+    }
+
+    pub(crate) fn graph_commit_count(&self) -> usize {
+        self.graph.total.max(self.oids.get_commit_count())
+    }
+
+    pub(crate) fn graph_row_at(&self, index: usize) -> Option<&GraphRow> {
+        self.graph.row_at(index)
+    }
+
+    pub(crate) fn graph_identity_at(&self, index: usize) -> Option<GraphIndexIdentity> {
+        if let Some(row) = self.graph_row_at(index) {
+            return Some(GraphIndexIdentity { index: row.index, alias: row.alias, oid: row.oid });
+        }
+
+        if self.graph_tx.is_some() {
+            return None;
+        }
+
+        self.oids.get_sorted_aliases().get(index).map(|&alias| GraphIndexIdentity { index, alias, oid: *self.oids.get_oid_by_alias(alias) })
+    }
+
+    pub(crate) fn graph_alias_at(&self, index: usize) -> Option<u32> {
+        self.graph_identity_at(index).map(|identity| identity.alias)
+    }
+
+    pub(crate) fn graph_oid_at(&self, index: usize) -> Option<Oid> {
+        self.graph_identity_at(index).map(|identity| identity.oid)
+    }
+
+    pub(crate) fn selected_commit_diff_is_loaded(&self) -> bool {
+        self.graph_selected != 0 && self.graph_identity_at(self.graph_selected).is_some_and(|identity| self.current_diff_identity == Some(identity))
+    }
+
+    pub(crate) fn request_graph_window(&mut self, start: usize, end: usize) {
+        let Some(tx) = self.graph_tx.clone() else {
+            return;
+        };
+
+        if self.graph.graph_window.as_ref().is_some_and(|window| window.start == start && window.end == end && window.version >= self.graph.version) {
+            return;
+        }
+
+        if self.graph.requested_graph.is_some_and(|(_, requested_start, requested_end)| requested_start == start && requested_end == end) {
+            return;
+        }
+
+        let request_id = self.graph.next_request_id();
+        self.graph.requested_graph = Some((request_id, start, end));
+        let _ = tx.send(GraphCommand::QueryGraphWindow { generation: self.graph.generation, request_id, start, end });
+    }
+
+    pub(crate) fn request_pane_window(&mut self, pane: GraphPane, start: usize, end: usize) {
+        let Some(tx) = self.graph_tx.clone() else {
+            return;
+        };
+
+        let cache = match pane {
+            GraphPane::Branches => self.graph.branches_window.as_ref(),
+            GraphPane::Tags => self.graph.tags_window.as_ref(),
+            GraphPane::Stashes => self.graph.stashes_window.as_ref(),
+            GraphPane::Reflogs => self.graph.reflogs_window.as_ref(),
+        };
+
+        if cache.is_some_and(|window| window.start == start && window.end == end && window.version >= self.graph.version) {
+            return;
+        }
+
+        let _ = tx.send(GraphCommand::QueryPaneWindow { generation: self.graph.generation, pane, start, end });
+    }
+
+    pub(crate) fn request_graph_lookup(&mut self, kind: GraphLookupKind, action: PendingGraphLookup) {
+        let Some(tx) = self.graph_tx.clone() else {
+            return;
+        };
+
+        if matches!(action, PendingGraphLookup::SelectIndex | PendingGraphLookup::SelectPaneRow) {
+            self.graph.pending_selection_restore = None;
+        }
+
+        let request_id = self.graph.next_request_id();
+        self.graph.pending_lookup = Some((request_id, action));
+        let _ = tx.send(GraphCommand::Lookup { generation: self.graph.generation, request_id, kind });
+    }
+
+    fn request_pending_graph_selection_restore_lookup(&mut self) {
+        let Some(restore) = self.graph.pending_selection_restore else {
+            return;
+        };
+        if self.graph.pending_lookup.is_some() {
+            return;
+        }
+        self.request_graph_lookup(GraphLookupKind::Oid { oid: restore.oid }, PendingGraphLookup::RestoreSelection);
+    }
+
+    pub(crate) fn request_graph_row_lookup(&mut self, index: usize, action: PendingGraphLookup) {
+        if self.graph_row_at(index).is_some() {
+            return;
+        }
+        self.request_graph_lookup(GraphLookupKind::GraphRowAt { index }, action);
+    }
+
+    pub(crate) fn cache_graph_row(&mut self, row: GraphRow) {
+        self.graph.index_rows.insert(row.index, row);
+    }
+
+    fn select_graph_index_from_lookup(&mut self, repo: &git2::Repository, index: usize) {
+        self.graph.pending_selection_restore = None;
+        self.set_graph_index_from_lookup(repo, index);
+    }
+
+    fn restore_graph_index_from_lookup(&mut self, repo: &git2::Repository, index: usize, selected_offset: usize) {
+        self.set_graph_index_from_lookup(repo, index);
+        self.graph_scroll.set(self.graph_selected.saturating_sub(selected_offset));
+    }
+
+    fn set_graph_index_from_lookup(&mut self, repo: &git2::Repository, index: usize) {
+        self.graph_selected = index.min(self.graph_commit_count().saturating_sub(1));
+        self.graph_scroll.set(self.graph_selected);
+        self.current_diff.clear();
+        self.current_diff_identity = None;
+
+        if self.graph_selected != 0
+            && let Some(identity) = self.graph_identity_at(self.graph_selected)
+        {
+            self.current_diff = get_filenames_diff_at_oid(repo, identity.oid);
+            self.current_diff_identity = Some(identity);
+        }
     }
 
     fn refresh_theme_assets(&mut self) {
@@ -670,6 +1015,7 @@ impl App {
 
     pub fn set_theme(&mut self, theme: Theme) {
         self.theme = theme;
+        self.surface_buffers.clear();
         self.refresh_theme_assets();
     }
 

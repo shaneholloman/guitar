@@ -58,7 +58,7 @@ fn left_stack_rects(area: Rect, has_previous_active: bool) -> (Rect, Rect) {
     (content, scrollbar)
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct Layout {
     pub title_left: Rect,
     pub title_right: Rect,
@@ -295,6 +295,9 @@ impl App {
                     | Focus::ModalGrep
                     | Focus::ModalTag
                     | Focus::ModalDeleteTag
+                    | Focus::ModalKeyCapture
+                    | Focus::ModalAuth
+                    | Focus::ModalNetworkProgress
                     | Focus::ModalOperationProgress
                     | Focus::ModalOperationConflict
                     | Focus::ModalOperationSuccess
@@ -362,6 +365,9 @@ impl App {
                         | Focus::ModalGrep
                         | Focus::ModalTag
                         | Focus::ModalDeleteTag
+                        | Focus::ModalKeyCapture
+                        | Focus::ModalAuth
+                        | Focus::ModalNetworkProgress
                         | Focus::ModalOperationProgress
                         | Focus::ModalOperationConflict
                         | Focus::ModalOperationSuccess

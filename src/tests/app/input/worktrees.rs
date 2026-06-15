@@ -30,7 +30,6 @@ fn app_with_graph_worktrees(entries: Vec<WorktreeEntry>) -> App {
     let uncommitted = app.oids.sorted_aliases[0];
     app.oids.sorted_aliases = vec![uncommitted, alias];
     app.worktrees = Worktrees::from_entries(entries);
-    app.worktrees.refresh_aliases(&app.oids);
     app
 }
 

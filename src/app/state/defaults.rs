@@ -7,10 +7,11 @@ use crate::{
 };
 use crate::{
     app::{
-        app::{App, BranchModalAction, Focus, OperationKind, Viewport, WorktreeModalAction},
+        app::{App, AuthInputField, BranchModalAction, Focus, OperationKind, Viewport, WorktreeModalAction},
+        draw::buffered::SurfaceBuffers,
         state::layout::Layout,
     },
-    core::{branches::Branches, buffer::Buffer, oids::Oids, tags::Tags},
+    core::{branches::Branches, oids::Oids, tags::Tags},
     git::queries::helpers::UncommittedChanges,
     helpers::{colors::ColorPicker, palette::*, spinner::Spinner},
 };
@@ -58,8 +59,9 @@ impl Default for App {
 
             // Walker utilities
             color,
-            buffer: RefCell::new(Buffer::default()),
-            walker_rx: None,
+            graph: Default::default(),
+            graph_tx: None,
+            graph_rx: None,
             walker_cancel: None,
             walker_handle: None,
 
@@ -74,6 +76,8 @@ impl Default for App {
 
             // Cache
             current_diff: Vec::new(),
+            current_diff_identity: None,
+            is_uncommitted_loaded: false,
             file_name: None,
             viewer_lines: Vec::new(),
             viewer_split_rows: Vec::new(),
@@ -85,6 +89,7 @@ impl Default for App {
 
             // Interface
             layout: Layout::default(),
+            surface_buffers: SurfaceBuffers::default(),
 
             // Focus
             layout_config: load_layout_config(),
@@ -122,6 +127,10 @@ impl Default for App {
             // Settings
             settings_selected: 0,
             settings_selections: Vec::new(),
+            modal_key_capture_selection: None,
+            modal_key_capture_candidate: None,
+            modal_key_capture_error: None,
+            keymap_save_path: None,
 
             // Viewer
             viewer_selected: 0,
@@ -169,6 +178,18 @@ impl Default for App {
             modal_operation_kind: OperationKind::Rebase,
             modal_operation_message: String::new(),
             pending_operation_action: None,
+
+            // Modal network operation and authentication prompts.
+            auth_session: Default::default(),
+            pending_network_request: None,
+            network_handle: None,
+            network_auth_attempts: 0,
+            pending_auth_prompt: None,
+            auth_username_input: TextInput::default(),
+            auth_secret_input: TextInput::default(),
+            auth_input_field: AuthInputField::Username,
+            modal_network_title: String::new(),
+            modal_network_message: String::new(),
 
             // Exit
             is_exit: false,

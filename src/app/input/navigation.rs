@@ -1,16 +1,15 @@
 use crate::{
     app::{
-        app::{App, BranchModalAction, Direction, Focus, Viewport},
+        app::{App, BranchModalAction, Direction, Focus, PendingGraphLookup, SettingsSelectionKind, Viewport},
         state::defaults::ViewerMode,
     },
+    core::graph_service::{GraphLookupKind, GraphPane, GraphPaneRow},
     git::{
-        actions::{branching::delete_branch, checkout::checkout_branch, tagging::untag},
+        actions::{checkout::checkout_branch, tagging::untag},
         queries::{commits::get_current_branch, diffs::get_filenames_diff_at_oid},
     },
     helpers::{keymap::InputMode, layout::LayoutConfig, palette::Theme},
 };
-
-const SETTINGS_THEME_SELECTION_START: usize = 7;
 
 impl App {
     fn last_index(len: usize) -> usize {
@@ -41,22 +40,34 @@ impl App {
 
     fn refresh_current_diff_for_graph_selection(&mut self) {
         self.current_diff.clear();
-        if self.graph_selected == 0 || self.graph_selected >= self.oids.get_commit_count() {
+        self.current_diff_identity = None;
+        if self.graph_selected == 0 || self.graph_selected >= self.graph_commit_count() {
             return;
         }
 
         if let Some(repo) = self.repo.clone() {
-            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-            self.current_diff = get_filenames_diff_at_oid(&repo, *oid);
+            let Some(identity) = self.graph_identity_at(self.graph_selected) else {
+                return;
+            };
+            self.current_diff = get_filenames_diff_at_oid(&repo, identity.oid);
+            self.current_diff_identity = Some(identity);
         }
     }
 
     fn select_graph_index(&mut self, idx: usize) {
-        self.graph_selected = Self::clamp_selection(idx, self.oids.get_commit_count());
+        self.graph.pending_selection_restore = None;
+        self.graph_selected = Self::clamp_selection(idx, self.graph_commit_count());
         self.refresh_current_diff_for_graph_selection();
     }
 
     fn select_graph_alias(&mut self, alias: u32) -> bool {
+        if let Some(window) = &self.graph.graph_window
+            && let Some(idx) = window.rows.iter().find(|row| row.alias == alias).map(|row| row.index)
+        {
+            self.select_graph_index(idx);
+            return true;
+        }
+
         let Some(idx) = self.oids.get_sorted_aliases().iter().position(|&current| current == alias) else {
             return false;
         };
@@ -73,18 +84,154 @@ impl App {
         true
     }
 
+    pub(crate) fn open_graph_pane_row(&mut self, row: GraphPaneRow) -> bool {
+        let graph_index = match row {
+            GraphPaneRow::Branch { graph_index, .. } | GraphPaneRow::Tag { graph_index, .. } | GraphPaneRow::Stash { graph_index, .. } => graph_index,
+            GraphPaneRow::Reflog { graph_index, .. } => {
+                if graph_index.is_none() {
+                    self.show_error("Reflog commit is hidden from the graph. Press 9 to show graph reflogs.");
+                }
+                graph_index
+            },
+        };
+
+        let Some(graph_index) = graph_index else {
+            return false;
+        };
+
+        self.select_graph_index(graph_index);
+        self.graph_scroll.set(self.graph_selected);
+        self.viewport = Viewport::Graph;
+        self.focus = Focus::Viewport;
+        true
+    }
+
+    fn cached_graph_pane_row(&self, pane: GraphPane) -> Option<GraphPaneRow> {
+        let (selection, window) = match pane {
+            GraphPane::Branches => (self.branches_selected, self.graph.branches_window.as_ref()),
+            GraphPane::Tags => (self.tags_selected, self.graph.tags_window.as_ref()),
+            GraphPane::Stashes => (self.stashes_selected, self.graph.stashes_window.as_ref()),
+            GraphPane::Reflogs => (self.reflogs_selected, self.graph.reflogs_window.as_ref()),
+        };
+
+        let window = window?;
+        if selection < window.start || selection >= window.end {
+            return None;
+        }
+        window.rows.get(selection - window.start).cloned()
+    }
+
+    fn selected_graph_pane_index(&self, pane: GraphPane) -> usize {
+        match pane {
+            GraphPane::Branches => self.branches_selected,
+            GraphPane::Tags => self.tags_selected,
+            GraphPane::Stashes => self.stashes_selected,
+            GraphPane::Reflogs => self.reflogs_selected,
+        }
+    }
+
+    fn request_selected_graph_pane_row(&mut self, pane: GraphPane) {
+        let index = self.selected_graph_pane_index(pane);
+        self.request_graph_lookup(GraphLookupKind::PaneRowAt { pane, index }, PendingGraphLookup::SelectPaneRow);
+    }
+
+    fn open_selected_graph_pane_row(&mut self, pane: GraphPane) {
+        if self.repo.is_none() {
+            return;
+        }
+
+        if let Some(row) = self.cached_graph_pane_row(pane) {
+            self.open_graph_pane_row(row);
+            return;
+        }
+
+        if self.graph_tx.is_some() {
+            self.request_selected_graph_pane_row(pane);
+            return;
+        }
+
+        let alias = match pane {
+            GraphPane::Branches => self.branch_alias_at_pane_selection(),
+            GraphPane::Tags => self.tag_alias_at_pane_selection(),
+            GraphPane::Stashes => self.stash_alias_at_pane_selection(),
+            GraphPane::Reflogs => self.reflog_alias_at_pane_selection(),
+        };
+
+        if let Some(alias) = alias
+            && !self.open_graph_at_alias(alias)
+            && pane == GraphPane::Reflogs
+        {
+            self.show_error("Reflog commit is hidden from the graph. Press 9 to show graph reflogs.");
+        }
+    }
+
     fn branch_alias_at_pane_selection(&self) -> Option<u32> {
+        if let Some(window) = &self.graph.branches_window
+            && self.branches_selected >= window.start
+            && self.branches_selected < window.end
+            && let Some(GraphPaneRow::Branch { alias, .. }) = window.rows.get(self.branches_selected - window.start)
+        {
+            return Some(*alias);
+        }
         self.branches.sorted.get(self.branches_selected).map(|(alias, _)| *alias)
     }
 
+    fn tag_alias_at_pane_selection(&self) -> Option<u32> {
+        if let Some(window) = &self.graph.tags_window
+            && self.tags_selected >= window.start
+            && self.tags_selected < window.end
+            && let Some(GraphPaneRow::Tag { alias, .. }) = window.rows.get(self.tags_selected - window.start)
+        {
+            return Some(*alias);
+        }
+        self.tags.sorted.get(self.tags_selected).map(|(alias, _)| *alias)
+    }
+
+    fn stash_alias_at_pane_selection(&self) -> Option<u32> {
+        if let Some(window) = &self.graph.stashes_window
+            && self.stashes_selected >= window.start
+            && self.stashes_selected < window.end
+            && let Some(GraphPaneRow::Stash { alias, .. }) = window.rows.get(self.stashes_selected - window.start)
+        {
+            return Some(*alias);
+        }
+        self.oids.stashes.get(self.stashes_selected).copied()
+    }
+
+    fn reflog_alias_at_pane_selection(&self) -> Option<u32> {
+        if let Some(window) = &self.graph.reflogs_window
+            && self.reflogs_selected >= window.start
+            && self.reflogs_selected < window.end
+            && let Some(GraphPaneRow::Reflog { alias, .. }) = window.rows.get(self.reflogs_selected - window.start)
+        {
+            return Some(*alias);
+        }
+        self.reflogs.entries.get(self.reflogs_selected).map(|entry| entry.new_alias)
+    }
+
     fn graph_visible_branch_indices(&self) -> Vec<usize> {
+        if let Some(window) = &self.graph.branches_window {
+            let mut visible_indices: Vec<usize> = window
+                .rows
+                .iter()
+                .filter_map(|row| match row {
+                    GraphPaneRow::Branch { name, graph_index, .. } if self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(name) => *graph_index,
+                    _ => None,
+                })
+                .collect();
+            visible_indices.sort_unstable();
+            if !visible_indices.is_empty() {
+                return visible_indices;
+            }
+        }
+
         let mut visible_indices: Vec<usize> = self
             .branches
             .all
             .iter()
             .filter_map(|(&alias, all_branches)| {
                 let has_visible_branch = all_branches.iter().any(|branch| self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(branch));
-                if has_visible_branch { self.branches.indices.get(alias as usize).copied() } else { None }
+                has_visible_branch.then(|| self.oids.get_sorted_aliases().iter().position(|&current| current == alias)).flatten()
             })
             .collect();
         visible_indices.sort_unstable();
@@ -121,20 +268,31 @@ impl App {
         self.mode = InputMode::Action;
     }
 
+    fn begin_key_capture(&mut self, selection: crate::helpers::keymap::KeymapSelection) {
+        self.modal_key_capture_selection = Some(selection);
+        self.modal_key_capture_candidate = None;
+        self.modal_key_capture_error = None;
+        self.focus = Focus::ModalKeyCapture;
+    }
+
     pub fn on_select(&mut self) {
         match self.focus {
             Focus::Viewport => match self.viewport {
                 Viewport::Settings => {
-                    if let Some(position) = self.settings_selections.iter().position(|&x| x == self.settings_selected) {
-                        let Some(theme_idx) = position.checked_sub(SETTINGS_THEME_SELECTION_START) else {
-                            return;
-                        };
-                        let Some(preset) = Theme::presets().get(theme_idx) else {
-                            return;
-                        };
-                        self.set_theme(preset.theme);
-                        self.save_theme_config();
-                        self.reload(None);
+                    let selected = self.settings_selections.iter().find(|selection| selection.line == self.settings_selected).map(|selection| selection.kind.clone());
+                    match selected {
+                        Some(SettingsSelectionKind::Theme(theme_idx)) => {
+                            let Some(preset) = Theme::presets().get(theme_idx) else {
+                                return;
+                            };
+                            self.set_theme(preset.theme);
+                            self.save_theme_config();
+                            self.reload(None);
+                        },
+                        Some(SettingsSelectionKind::KeyBinding(selection)) => {
+                            self.begin_key_capture(selection);
+                        },
+                        _ => {},
                     }
                 },
                 Viewport::Splash => {
@@ -149,35 +307,16 @@ impl App {
                 _ => {},
             },
             Focus::Branches => {
-                if self.repo.is_some()
-                    && let Some(alias) = self.branch_alias_at_pane_selection()
-                {
-                    self.open_graph_at_alias(alias);
-                }
+                self.open_selected_graph_pane_row(GraphPane::Branches);
             },
             Focus::Tags => {
-                if self.repo.is_some()
-                    && let Some((alias, _)) = self.tags.sorted.get(self.tags_selected)
-                {
-                    self.open_graph_at_alias(*alias);
-                }
+                self.open_selected_graph_pane_row(GraphPane::Tags);
             },
             Focus::Stashes => {
-                if self.repo.is_some()
-                    && let Some(alias) = self.oids.stashes.get(self.stashes_selected)
-                {
-                    self.open_graph_at_alias(*alias);
-                }
+                self.open_selected_graph_pane_row(GraphPane::Stashes);
             },
             Focus::Reflogs => {
-                if self.repo.is_some()
-                    && let Some(entry) = self.reflogs.entries.get(self.reflogs_selected)
-                {
-                    if !self.open_graph_at_alias(entry.new_alias) {
-                        self.show_error("Reflog commit is hidden from the graph. Press 9 to show graph reflogs.");
-                        return;
-                    }
-                }
+                self.open_selected_graph_pane_row(GraphPane::Reflogs);
             },
             Focus::Worktrees => {
                 self.open_selected_worktree();
@@ -193,7 +332,9 @@ impl App {
             },
             Focus::ModalCheckout => {
                 if let Some(repo) = &self.repo {
-                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                    let Some(alias) = self.graph_alias_at(self.graph_selected) else {
+                        return;
+                    };
                     let visible_branch_names = self.graph_branch_choices(alias);
 
                     if let Some(branch_name) = visible_branch_names.get(self.modal_checkout_selected as usize) {
@@ -209,7 +350,9 @@ impl App {
                 }
             },
             Focus::ModalSolo => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                let Some(alias) = self.graph_alias_at(self.graph_selected) else {
+                    return;
+                };
                 let branch_names = self.graph_branch_choices(alias);
                 let mut should_reload = false;
 
@@ -231,26 +374,22 @@ impl App {
 
             Focus::ModalDeleteBranch => {
                 if let Some(repo) = &self.repo {
-                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                    let Some(alias) = self.graph_alias_at(self.graph_selected) else {
+                        return;
+                    };
                     let current = get_current_branch(repo);
                     let visible_branch_names = self.graph_deletable_branch_choices(alias, current.as_deref());
 
                     if let Some(branch) = visible_branch_names.get(self.modal_delete_branch_selected as usize) {
-                        match delete_branch(repo, branch) {
-                            Ok(_) => {
-                                self.branches.visible_branch_names.remove(branch);
-                                self.modal_delete_branch_selected = 0;
-                                self.focus = Focus::Viewport;
-                                self.reload(None);
-                            },
-                            Err(error) => self.show_error(format!("Delete branch failed: {error}")),
-                        }
+                        self.delete_branch_from_ui(branch);
                     }
                 }
             },
             Focus::ModalDeleteTag => {
                 if let Some(repo) = &self.repo {
-                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
+                    let Some(alias) = self.graph_alias_at(self.graph_selected) else {
+                        return;
+                    };
                     let tags = self.tags.local.get(&alias).cloned().unwrap_or_default();
                     if let Some(tag) = tags.get(self.modal_delete_tag_selected as usize) {
                         match untag(repo, tag) {
@@ -320,7 +459,18 @@ impl App {
                 Viewport::Graph => {
                     if self.graph_selected != 0 {
                         self.layout_config.is_inspector = true;
-                        self.focus = Focus::Inspector;
+                        if self.layout_config.is_zen {
+                            self.focus = Focus::Inspector;
+                            if let Some(row) = self.graph_row_at(self.graph_selected).cloned() {
+                                self.cache_graph_row(row);
+                            } else {
+                                self.request_graph_row_lookup(self.graph_selected, PendingGraphLookup::OpenInspector);
+                            }
+                        } else if self.graph_row_at(self.graph_selected).is_some() || self.graph_tx.is_none() {
+                            self.focus = Focus::Inspector;
+                        } else {
+                            self.request_graph_row_lookup(self.graph_selected, PendingGraphLookup::OpenInspector);
+                        }
                     } else {
                         if self.uncommitted.is_clean {
                             return;
@@ -346,35 +496,16 @@ impl App {
                 self.focus = Focus::StatusTop;
             },
             Focus::Branches => {
-                if self.repo.is_some()
-                    && let Some(alias) = self.branch_alias_at_pane_selection()
-                {
-                    self.open_graph_at_alias(alias);
-                }
+                self.open_selected_graph_pane_row(GraphPane::Branches);
             },
             Focus::Tags => {
-                if self.repo.is_some()
-                    && let Some((alias, _)) = self.tags.sorted.get(self.tags_selected)
-                {
-                    self.open_graph_at_alias(*alias);
-                }
+                self.open_selected_graph_pane_row(GraphPane::Tags);
             },
             Focus::Stashes => {
-                if self.repo.is_some()
-                    && let Some(alias) = self.oids.stashes.get(self.stashes_selected)
-                {
-                    self.open_graph_at_alias(*alias);
-                }
+                self.open_selected_graph_pane_row(GraphPane::Stashes);
             },
             Focus::Reflogs => {
-                if self.repo.is_some()
-                    && let Some(entry) = self.reflogs.entries.get(self.reflogs_selected)
-                {
-                    if !self.open_graph_at_alias(entry.new_alias) {
-                        self.show_error("Reflog commit is hidden from the graph. Press 9 to show graph reflogs.");
-                        return;
-                    }
-                }
+                self.open_selected_graph_pane_row(GraphPane::Reflogs);
             },
             Focus::Worktrees => {
                 self.open_selected_worktree();
@@ -583,26 +714,32 @@ impl App {
                 self.status_bottom_selected = self.status_bottom_selected.saturating_sub(1);
             },
             Focus::ModalCheckout => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let branch_names = self.graph_branch_choices(alias);
-                Self::wrap_modal_selection(&mut self.modal_checkout_selected, branch_names.len(), Direction::Up);
+                if let Some(alias) = self.graph_alias_at(self.graph_selected) {
+                    let branch_names = self.graph_branch_choices(alias);
+                    Self::wrap_modal_selection(&mut self.modal_checkout_selected, branch_names.len(), Direction::Up);
+                }
             },
             Focus::ModalSolo => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let branch_names = self.graph_branch_choices(alias);
-                Self::wrap_modal_selection(&mut self.modal_solo_selected, branch_names.len(), Direction::Up);
+                if let Some(alias) = self.graph_alias_at(self.graph_selected) {
+                    let branch_names = self.graph_branch_choices(alias);
+                    Self::wrap_modal_selection(&mut self.modal_solo_selected, branch_names.len(), Direction::Up);
+                }
             },
             Focus::ModalDeleteBranch => {
                 if let Some(repo) = &self.repo {
-                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                    let current = get_current_branch(repo);
-                    let branch_names = self.graph_deletable_branch_choices(alias, current.as_deref());
-                    Self::wrap_modal_selection(&mut self.modal_delete_branch_selected, branch_names.len(), Direction::Up);
+                    if let Some(alias) = self.graph_alias_at(self.graph_selected) {
+                        let current = get_current_branch(repo);
+                        let branch_names = self.graph_deletable_branch_choices(alias, current.as_deref());
+                        Self::wrap_modal_selection(&mut self.modal_delete_branch_selected, branch_names.len(), Direction::Up);
+                    }
                 }
             },
             Focus::ModalDeleteTag => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let tags = self.tags.local.get(&alias).cloned().unwrap_or_default();
+                let tags: Vec<String> = self
+                    .graph_row_at(self.graph_selected)
+                    .map(|row| row.tags.iter().map(|tag| tag.name.clone()).collect())
+                    .or_else(|| self.graph_alias_at(self.graph_selected).map(|alias| self.tags.local.get(&alias).cloned().unwrap_or_default()))
+                    .unwrap_or_default();
                 Self::wrap_modal_selection(&mut self.modal_delete_tag_selected, tags.len(), Direction::Up);
             },
             Focus::ModalWorktreeChooser => {
@@ -658,26 +795,32 @@ impl App {
                 self.status_bottom_selected += 1;
             },
             Focus::ModalCheckout => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let branch_names = self.graph_branch_choices(alias);
-                Self::wrap_modal_selection(&mut self.modal_checkout_selected, branch_names.len(), Direction::Down);
+                if let Some(alias) = self.graph_alias_at(self.graph_selected) {
+                    let branch_names = self.graph_branch_choices(alias);
+                    Self::wrap_modal_selection(&mut self.modal_checkout_selected, branch_names.len(), Direction::Down);
+                }
             },
             Focus::ModalSolo => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let branch_names = self.graph_branch_choices(alias);
-                Self::wrap_modal_selection(&mut self.modal_solo_selected, branch_names.len(), Direction::Down);
+                if let Some(alias) = self.graph_alias_at(self.graph_selected) {
+                    let branch_names = self.graph_branch_choices(alias);
+                    Self::wrap_modal_selection(&mut self.modal_solo_selected, branch_names.len(), Direction::Down);
+                }
             },
             Focus::ModalDeleteBranch => {
                 if let Some(repo) = &self.repo {
-                    let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                    let current = get_current_branch(repo);
-                    let branch_names = self.graph_deletable_branch_choices(alias, current.as_deref());
-                    Self::wrap_modal_selection(&mut self.modal_delete_branch_selected, branch_names.len(), Direction::Down);
+                    if let Some(alias) = self.graph_alias_at(self.graph_selected) {
+                        let current = get_current_branch(repo);
+                        let branch_names = self.graph_deletable_branch_choices(alias, current.as_deref());
+                        Self::wrap_modal_selection(&mut self.modal_delete_branch_selected, branch_names.len(), Direction::Down);
+                    }
                 }
             },
             Focus::ModalDeleteTag => {
-                let alias = self.oids.get_alias_by_idx(self.graph_selected);
-                let tags = self.tags.local.get(&alias).cloned().unwrap_or_default();
+                let tags: Vec<String> = self
+                    .graph_row_at(self.graph_selected)
+                    .map(|row| row.tags.iter().map(|tag| tag.name.clone()).collect())
+                    .or_else(|| self.graph_alias_at(self.graph_selected).map(|alias| self.tags.local.get(&alias).cloned().unwrap_or_default()))
+                    .unwrap_or_default();
                 Self::wrap_modal_selection(&mut self.modal_delete_tag_selected, tags.len(), Direction::Down);
             },
             Focus::ModalWorktreeChooser => {
@@ -707,7 +850,7 @@ impl App {
         match self.focus {
             Focus::Viewport => {
                 if self.viewport == Viewport::Graph {
-                    let total = self.oids.get_commit_count();
+                    let total = self.graph_commit_count();
                     let next = self.graph_selected.saturating_add(total.saturating_sub(self.graph_selected) / 2);
                     self.select_graph_index(next);
                 }
@@ -896,23 +1039,44 @@ impl App {
             && self.focus == Focus::Viewport
             && self.viewport == Viewport::Graph
         {
-            let oid = self.oids.get_oid_by_idx(self.graph_selected);
-
-            if self.oids.is_zero(oid) {
+            if self.graph_tx.is_some() {
+                self.request_graph_lookup(GraphLookupKind::ChildIndex { index: self.graph_selected }, PendingGraphLookup::SelectIndex);
                 return;
             }
 
-            let child_positions: Vec<usize> = self
-                .oids
-                .get_sorted_aliases()
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, &alias)| {
-                    let child_oid = self.oids.get_oid_by_alias(alias);
-                    let commit = repo.find_commit(*child_oid).ok()?;
-                    if commit.parent_ids().any(|parent_oid| parent_oid == *oid) { Some(idx) } else { None }
+            let Some(oid) = self.graph_oid_at(self.graph_selected) else {
+                return;
+            };
+
+            if oid == git2::Oid::zero() {
+                return;
+            }
+
+            let mut child_positions: Vec<usize> = self
+                .graph
+                .graph_window
+                .as_ref()
+                .into_iter()
+                .flat_map(|window| window.rows.iter())
+                .filter_map(|row| {
+                    let commit = repo.find_commit(row.oid).ok()?;
+                    if commit.parent_ids().any(|parent_oid| parent_oid == oid) { Some(row.index) } else { None }
                 })
                 .collect();
+
+            if child_positions.is_empty() {
+                child_positions = self
+                    .oids
+                    .get_sorted_aliases()
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, &alias)| {
+                        let child_oid = self.oids.get_oid_by_alias(alias);
+                        let commit = repo.find_commit(*child_oid).ok()?;
+                        if commit.parent_ids().any(|parent_oid| parent_oid == oid) { Some(idx) } else { None }
+                    })
+                    .collect();
+            }
 
             if let Some(&next) = child_positions.first() {
                 self.select_graph_index(next);
@@ -925,22 +1089,31 @@ impl App {
             && self.focus == Focus::Viewport
             && self.viewport == Viewport::Graph
         {
-            let oid = self.oids.get_oid_by_idx(self.graph_selected);
+            if self.graph_tx.is_some() {
+                self.request_graph_lookup(GraphLookupKind::ParentIndex { index: self.graph_selected }, PendingGraphLookup::SelectIndex);
+                return;
+            }
 
-            if self.oids.is_zero(oid) {
+            let Some(oid) = self.graph_oid_at(self.graph_selected) else {
+                return;
+            };
+
+            if oid == git2::Oid::zero() {
                 self.select_graph_index(1);
                 return;
             }
 
             let next = {
-                let Ok(commit) = repo.find_commit(*oid) else {
+                let Ok(commit) = repo.find_commit(oid) else {
                     return;
                 };
                 let Some(parent_oid) = commit.parent_ids().next() else {
                     return;
                 };
-                let parent_alias = self.oids.get_alias_by_oid(parent_oid);
-                self.oids.get_sorted_aliases().iter().position(|&alias| alias == parent_alias)
+                self.graph.graph_window.as_ref().and_then(|window| window.rows.iter().find(|row| row.oid == parent_oid).map(|row| row.index)).or_else(|| {
+                    let parent_alias = self.oids.aliases.get(&parent_oid).copied()?;
+                    self.oids.get_sorted_aliases().iter().position(|&alias| alias == parent_alias)
+                })
             };
 
             if let Some(next) = next {
@@ -1066,7 +1239,7 @@ impl App {
             },
             Focus::Viewport => match self.viewport {
                 Viewport::Graph => {
-                    self.select_graph_index(Self::last_index(self.oids.get_commit_count()));
+                    self.select_graph_index(Self::last_index(self.graph_commit_count()));
                 },
                 Viewport::Viewer => {
                     self.viewer_selected = usize::MAX;
@@ -1092,11 +1265,26 @@ impl App {
     }
 
     fn branch_name_at_pane_selection(&self) -> Option<String> {
+        if let Some(window) = &self.graph.branches_window
+            && self.branches_selected >= window.start
+            && self.branches_selected < window.end
+            && let Some(GraphPaneRow::Branch { name, .. }) = window.rows.get(self.branches_selected - window.start)
+        {
+            return Some(name.clone());
+        }
         self.branches.sorted.get(self.branches_selected).map(|(_, branch)| branch.clone())
     }
 
     fn all_branch_names(&self) -> im::HashSet<String> {
-        self.branches.sorted.iter().map(|(_, branch)| branch.clone()).collect()
+        let mut names: im::HashSet<String> = self.branches.sorted.iter().map(|(_, branch)| branch.clone()).collect();
+        if let Some(window) = &self.graph.branches_window {
+            for row in &window.rows {
+                if let GraphPaneRow::Branch { name, .. } = row {
+                    names.insert(name.clone());
+                }
+            }
+        }
+        names
     }
 
     fn solo_branch_name(&mut self, branch: &str) {
@@ -1125,12 +1313,29 @@ impl App {
     }
 
     pub(crate) fn graph_branch_choices(&self, alias: u32) -> Vec<String> {
-        self.branches
+        let mut choices: Vec<String> = self
+            .graph
+            .graph_window
+            .as_ref()
+            .into_iter()
+            .flat_map(|window| window.rows.iter())
+            .find(|row| row.alias == alias)
+            .map(|row| row.branches.iter().map(|branch| branch.name.clone()).collect())
+            .unwrap_or_default();
+
+        if !choices.is_empty() {
+            return choices;
+        }
+
+        choices = self
+            .branches
             .sorted
             .iter()
             .filter(|(branch_alias, branch)| *branch_alias == alias && (self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(branch)))
             .map(|(_, branch)| branch.clone())
-            .collect()
+            .collect();
+
+        choices
     }
 
     fn apply_graph_branch_action(&mut self, action: BranchModalAction) {
@@ -1138,7 +1343,9 @@ impl App {
             return;
         }
 
-        let alias = self.oids.get_alias_by_idx(self.graph_selected);
+        let Some(alias) = self.graph_alias_at(self.graph_selected) else {
+            return;
+        };
         let branch_names = self.graph_branch_choices(alias);
 
         match branch_names.as_slice() {
@@ -1212,6 +1419,13 @@ impl App {
                 self.modal_input.clear();
                 self.focus = Focus::Worktrees;
             },
+            Focus::ModalKeyCapture => {
+                self.close_key_capture();
+            },
+            Focus::ModalAuth => {
+                self.cancel_auth_prompt();
+            },
+            Focus::ModalNetworkProgress => {},
             Focus::ModalCheckout => {
                 self.modal_checkout_selected = 0;
                 self.focus = Focus::Viewport;
@@ -1275,6 +1489,15 @@ impl App {
             Focus::ModalCommit | Focus::ModalCreateBranch | Focus::ModalCreateWorktreeName | Focus::ModalCreateWorktreePath | Focus::ModalLockWorktree => {
                 self.modal_input.clear();
                 self.clear_pending_branch_target();
+                self.focus = Focus::Viewport;
+            },
+            Focus::ModalAuth | Focus::ModalNetworkProgress => {
+                self.pending_auth_prompt = None;
+                self.auth_username_input.clear();
+                self.auth_secret_input.clear();
+                self.pending_network_request = None;
+                self.network_handle = None;
+                self.network_auth_attempts = 0;
                 self.focus = Focus::Viewport;
             },
             Focus::ModalCheckout => {

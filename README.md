@@ -42,7 +42,7 @@ I wanted a terminal-based, cross-platform Git client that makes it easy to under
 
 - A Rust toolchain with Cargo and Rust support.
 - `user.name` and `user.email` configured in Git before launching a repository. The app reads them on repository load and uses them for commits.
-- An external `ssh-agent` for network operations such as fetch, force push, tag push, and remote branch deletion.
+- Network credentials for private remotes. `guitar` uses `ssh-agent` when available, can prompt for SSH key passphrases, and can prompt for HTTPS username/password or token credentials. Prompted secrets are kept in memory for the current session only.
 
 ### Install
 
@@ -119,12 +119,12 @@ guitar --reset
 - Stage all unstaged files from the graph row, or stage one selected unstaged file from the status pane.
 - Unstage all staged files from the graph row, or unstage one selected staged file from the status pane.
 - Commit staged changes with an in-app commit message prompt.
-- Fetch `origin` heads and tags over SSH, with pruning enabled.
-- Force push the current branch to `origin` over SSH.
-- Push all local tags to `origin` over SSH.
+- Fetch `origin` heads and tags over SSH or HTTPS, with pruning enabled.
+- Force push the current branch to `origin` over SSH or HTTPS.
+- Push all local tags to `origin` over SSH or HTTPS.
 - Checkout local branches, materialize and checkout remote branches, or checkout an unlabeled commit in detached HEAD mode.
 - Create a branch at the selected graph or HEAD reflog commit.
-- Delete a local branch, or delete a remote branch over SSH when the selected branch is remote.
+- Delete a local branch, or delete a remote branch over SSH or HTTPS when the selected branch is remote.
 - Create and delete lightweight local tags.
 - Create linked worktrees from the selected commit, using the new worktree name as the new local branch name.
 - Open a selected valid worktree from the worktree pane, or press `Enter` on a graph worktree badge.
@@ -159,12 +159,10 @@ Saved files live under your platform config directory in a `guitar` folder, for 
 ### Known Limitations and Missing Features
 
 - There is no filesystem watcher. Use reload when repository state changes outside the app.
-- Network operations assume the `origin` remote and SSH-agent auth. There is no remote picker, HTTPS credential prompt, or in-app credential flow.
-- There is no normal non-force branch push command yet. The current branch push command is force push only.
+- Network operations still assume the current operation remote, usually `origin`; there is no remote picker or upstream-aware push routing yet.
+- The current branch push command is force push only.
 - There is no pull UI.
 - Conflict resolution editing is external; guitar detects conflicts, displays conflicted files, and continues rebases, cherry-picks, or merges after you resolve files in another editor.
-- Rebasing requires a checked-out local branch. Detached `HEAD` rebases are intentionally refused.
-- Merging requires a checked-out local branch. Detached `HEAD` merges are intentionally refused.
 - Worktree move/repair and custom separate worktree branch names are not implemented.
 - Submodules are ignored in commit diffs.
 - Merge commit file lists and file diffs are compared to the first parent only.
@@ -172,7 +170,6 @@ Saved files live under your platform config directory in a `guitar` folder, for 
 - Tags are lightweight only. There is no annotated-tag message flow and no remote tag deletion flow.
 - Branch rename, remote management, and branch upstream editing are not implemented.
 - Search only matches loaded commit SHA prefixes. It does not search commit messages, authors, branches, tags, filenames, or unloaded history.
-- The keymap is customizable by editing `keymap.json`, but there is no in-app keymap editor.
 - The recent repository list is append-only from inside the app; there is no in-app remove/reorder UI.
 
 ### Roadmap

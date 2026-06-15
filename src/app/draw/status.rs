@@ -1,17 +1,19 @@
 use crate::{
-    app::app::{App, Focus},
+    app::{
+        app::{App, Focus},
+        draw::buffered::DrawTarget,
+    },
     git::queries::helpers::FileStatus,
     helpers::text::*,
 };
 use ratatui::{
-    Frame,
     style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 impl App {
-    pub fn draw_status(&mut self, frame: &mut Frame) {
+    pub fn draw_status(&mut self, frame: &mut impl DrawTarget) {
         // Status panes keep icons close to the border and filenames flush after them.
         let padding = ratatui::widgets::Padding { left: 1, right: 0, top: 0, bottom: 0 };
 
@@ -31,9 +33,16 @@ impl App {
         let max_status_bottom_width = self.layout.status_bottom.width.saturating_sub(5) as usize;
         let visible_height_status_top = self.layout.status_top.height.saturating_sub(2) as usize;
         let visible_height_status_bottom = self.layout.status_bottom.height.saturating_sub(2) as usize;
+        let is_uncommitted_loading = is_showing_uncommitted && !self.is_uncommitted_loaded;
+        let is_commit_diff_loading = !is_showing_uncommitted && !self.selected_commit_diff_is_loaded();
 
         // The pseudo-row splits uncommitted files into staged and unstaged panes.
-        if is_showing_uncommitted {
+        if is_uncommitted_loading {
+            status_top_empty = true;
+            status_bottom_empty = true;
+            lines_status_top = centered_loading_lines(visible_height_status_top, max_status_top_width + 3, Style::default().fg(self.theme.COLOR_GREY_800));
+            lines_status_bottom = centered_loading_lines(visible_height_status_bottom, max_status_bottom_width + 3, Style::default().fg(self.theme.COLOR_GREY_800));
+        } else if is_showing_uncommitted {
             for file in self.uncommitted.conflicts.iter() {
                 lines_status_top.push(Line::from(vec![
                     Span::styled("! ", Style::default().fg(self.theme.COLOR_ORANGE)),
@@ -113,6 +122,9 @@ impl App {
             } else {
                 is_unstaged_changes = true;
             }
+        } else if is_commit_diff_loading {
+            status_top_empty = true;
+            lines_status_top = centered_loading_lines(visible_height_status_top, max_status_top_width + 3, Style::default().fg(self.theme.COLOR_GREY_800));
         } else {
             // Commit rows use the selected commit's file diff in the top pane only.
             for file_change in self.current_diff.iter() {
@@ -161,24 +173,8 @@ impl App {
             let end = (start + visible_height).min(total_lines);
 
             // Selection is disabled for synthetic empty-state rows.
-            let list_items: Vec<ListItem> = lines_status_top[start..end]
-                .iter()
-                .enumerate()
-                .map(|(idx, line)| {
-                    if is_staged_changes && start + idx == self.status_top_selected && self.focus == Focus::StatusTop {
-                        let spans: Vec<Span> = line.iter().map(|span| Span::styled(span.content.clone(), span.style.fg(self.theme.COLOR_GREY_500))).collect();
-                        ListItem::new(Line::from(spans)).style(Style::default().bg(self.theme.background_or_default(self.theme.COLOR_GREY_800)).fg(self.theme.COLOR_GREY_500))
-                    } else if !status_top_empty {
-                        if (idx + start).is_multiple_of(2) {
-                            ListItem::new(Line::from(line.clone().spans)).style(Style::default().bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)))
-                        } else {
-                            ListItem::new(line.clone())
-                        }
-                    } else {
-                        ListItem::new(line.clone())
-                    }
-                })
-                .collect();
+            let list_items =
+                status_list_items(&lines_status_top[start..end], visible_height, start, self.status_top_selected, self.focus == Focus::StatusTop, is_staged_changes && !status_top_empty, &self.theme);
 
             if self.layout_config.is_zen {
                 // Zen mode frames the pane as a full standalone list.
@@ -238,24 +234,15 @@ impl App {
                 let end = (start + visible_height).min(total_lines);
 
                 // Selection is disabled for synthetic empty-state rows.
-                let list_items: Vec<ListItem> = lines_status_bottom[start..end]
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, line)| {
-                        if is_unstaged_changes && start + idx == self.status_bottom_selected && self.focus == Focus::StatusBottom {
-                            let spans: Vec<Span> = line.iter().map(|span| Span::styled(span.content.clone(), span.style.fg(self.theme.COLOR_GREY_500))).collect();
-                            ListItem::new(Line::from(spans)).style(Style::default().bg(self.theme.background_or_default(self.theme.COLOR_GREY_800)).fg(self.theme.COLOR_GREY_500))
-                        } else if !status_bottom_empty {
-                            if (idx + start).is_multiple_of(2) {
-                                ListItem::new(Line::from(line.clone().spans)).style(Style::default().bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)))
-                            } else {
-                                ListItem::new(line.clone())
-                            }
-                        } else {
-                            ListItem::new(line.clone())
-                        }
-                    })
-                    .collect();
+                let list_items = status_list_items(
+                    &lines_status_bottom[start..end],
+                    visible_height,
+                    start,
+                    self.status_bottom_selected,
+                    self.focus == Focus::StatusBottom,
+                    is_unstaged_changes && !status_bottom_empty,
+                    &self.theme,
+                );
 
                 if self.layout_config.is_zen {
                     // Zen mode frames the pane as a full standalone list.
@@ -295,3 +282,41 @@ impl App {
         }
     }
 }
+
+fn centered_loading_lines(visible_height: usize, width: usize, style: Style) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    for _ in 0..empty_state_top_padding(visible_height) {
+        lines.push(Line::from(""));
+    }
+    lines.push(Line::from(Span::styled(center_line(&truncate_with_ellipsis("loading", width), width), style)));
+    lines
+}
+
+fn status_list_items<'a>(
+    lines: &[Line<'a>], visible_height: usize, start: usize, selected: usize, is_focused: bool, selection_enabled: bool, theme: &crate::helpers::palette::Theme,
+) -> Vec<ListItem<'a>> {
+    (0..visible_height)
+        .map(|idx| {
+            let line = lines.get(idx).cloned().unwrap_or_default();
+            let global_idx = start + idx;
+            let is_selected = selection_enabled && is_focused && global_idx == selected;
+
+            let mut item = if is_selected {
+                let spans: Vec<Span> = line.iter().map(|span| Span::styled(span.content.clone(), span.style.fg(theme.COLOR_HIGHLIGHTED))).collect();
+                ListItem::new(Line::from(spans)).style(Style::default().bg(theme.background_or_default(theme.COLOR_GREY_800)).fg(theme.COLOR_HIGHLIGHTED))
+            } else {
+                ListItem::new(line)
+            };
+
+            if !is_selected && global_idx.is_multiple_of(2) {
+                item = item.style(Style::default().bg(theme.background_or_default(theme.COLOR_GREY_900)));
+            }
+
+            item
+        })
+        .collect()
+}
+
+#[cfg(test)]
+#[path = "../../tests/app/draw/status.rs"]
+mod tests;

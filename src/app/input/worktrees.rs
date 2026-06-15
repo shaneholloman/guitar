@@ -17,7 +17,25 @@ impl App {
             return Vec::new();
         }
 
-        self.oids.get_sorted_aliases().get(self.graph_selected).and_then(|alias| self.worktrees.by_alias.get(alias)).cloned().unwrap_or_default()
+        if let Some(alias) = self.graph_alias_at(self.graph_selected) {
+            if let Some(row) = self.graph_row_at(self.graph_selected) {
+                let indices: Vec<usize> =
+                    row.worktrees.iter().filter_map(|projected| self.worktrees.entries.iter().position(|entry| entry.path == projected.path && entry.name == projected.name)).collect();
+                if !indices.is_empty() {
+                    return indices;
+                }
+            }
+
+            return self
+                .worktrees
+                .entries
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, entry)| entry.head.and_then(|oid| self.oids.aliases.get(&oid)).is_some_and(|current| *current == alias).then_some(idx))
+                .collect();
+        }
+
+        Vec::new()
     }
 
     fn graph_open_worktree_indices(&self) -> Vec<usize> {

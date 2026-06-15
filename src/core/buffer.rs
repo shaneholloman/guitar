@@ -15,8 +15,6 @@ pub enum DeltaOp {
 
 #[derive(Default, Clone)]
 pub struct Buffer {
-    // Each snapshot describes the active graph lanes after one commit is processed.
-    pub history: Vector<Vector<Chunk>>,
     pub curr: Vector<Chunk>,
     // Deltas keep memory bounded while still allowing visible ranges to be reconstructed.
     pub deltas: Vector<Delta>,
@@ -105,8 +103,8 @@ impl Buffer {
         }
     }
 
-    pub fn decompress(&mut self, start: usize, end: usize) {
-        self.history.clear();
+    pub fn window(&self, start: usize, end: usize) -> Vector<Vector<Chunk>> {
+        let mut history = Vector::new();
 
         // Start from the nearest checkpoint before the requested range.
         let checkpoint_idx = self.checkpoints.keys().rev().find(|&&idx| idx <= start).copied();
@@ -131,8 +129,10 @@ impl Buffer {
                     },
                 }
             }
-            self.history.push_back(curr.clone());
+            history.push_back(curr.clone());
         }
+
+        history
     }
 }
 

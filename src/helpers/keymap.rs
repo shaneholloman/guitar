@@ -1,8 +1,9 @@
+use crate::helpers::text::{modifiers_to_string, pascal_to_spaced};
 use facet::Facet;
 use indexmap::IndexMap;
 use ratatui::crossterm::event::{KeyCode, KeyCode::*, KeyModifiers};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Facet)]
 #[repr(C)]
@@ -93,8 +94,118 @@ pub enum Command {
 pub type ModeKeymap = IndexMap<KeyBinding, Command>;
 pub type Keymaps = IndexMap<InputMode, ModeKeymap>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeymapSelection {
+    pub mode: InputMode,
+    pub key: KeyBinding,
+    pub command: Command,
+}
+
+impl KeymapSelection {
+    pub fn new(mode: InputMode, key: KeyBinding, command: Command) -> Self {
+        Self { mode, key, command }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeymapEditError {
+    MissingMode(InputMode),
+    MissingBinding { mode: InputMode, key: KeyBinding },
+    CommandChanged { mode: InputMode, key: KeyBinding, expected: Command, actual: Command },
+    Conflict { mode: InputMode, key: KeyBinding, command: Command },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeymapEditOutcome {
+    pub synced_action: bool,
+}
+
 pub fn action_keymap_visible_entries(normal: Option<&ModeKeymap>, action: &ModeKeymap) -> ModeKeymap {
     action.iter().filter(|(kb, cmd)| normal.and_then(|normal| normal.get(*kb)) != Some(*cmd)).map(|(kb, cmd)| (kb.clone(), cmd.clone())).collect()
+}
+
+pub fn input_mode_to_visual_string(mode: InputMode) -> &'static str {
+    match mode {
+        InputMode::Normal => "normal",
+        InputMode::Action => "action",
+    }
+}
+
+pub fn command_to_visual_string(command: &Command) -> String {
+    pascal_to_spaced(&format!("{command:?}"))
+}
+
+pub fn keybinding_to_visual_string(binding: &KeyBinding) -> String {
+    let mut key_string = modifiers_to_string(binding.modifiers);
+    if !key_string.is_empty() {
+        key_string = format!("{} + ", key_string);
+    }
+    key_string.push_str(&keycode_to_visual_string(binding.code));
+    key_string
+}
+
+fn rebind_key_in_mode(maps: &mut Keymaps, mode: InputMode, old_key: &KeyBinding, command: &Command, new_key: &KeyBinding) -> Result<(), KeymapEditError> {
+    let Some(mode_map) = maps.get_mut(&mode) else {
+        return Err(KeymapEditError::MissingMode(mode));
+    };
+
+    let Some(actual) = mode_map.get(old_key).cloned() else {
+        return Err(KeymapEditError::MissingBinding { mode, key: old_key.clone() });
+    };
+
+    if actual != *command {
+        return Err(KeymapEditError::CommandChanged { mode, key: old_key.clone(), expected: command.clone(), actual });
+    }
+
+    if old_key == new_key {
+        return Ok(());
+    }
+
+    match mode_map.get(new_key) {
+        Some(existing) if existing != command => {
+            return Err(KeymapEditError::Conflict { mode, key: new_key.clone(), command: existing.clone() });
+        },
+        Some(_) => {
+            let mut updated = IndexMap::with_capacity(mode_map.len().saturating_sub(1));
+            for (key, value) in mode_map.iter() {
+                if key != old_key {
+                    updated.insert(key.clone(), value.clone());
+                }
+            }
+            *mode_map = updated;
+            return Ok(());
+        },
+        None => {},
+    }
+
+    let mut updated = IndexMap::with_capacity(mode_map.len());
+    for (key, value) in mode_map.iter() {
+        if key == old_key {
+            updated.insert(new_key.clone(), value.clone());
+        } else {
+            updated.insert(key.clone(), value.clone());
+        }
+    }
+    *mode_map = updated;
+    Ok(())
+}
+
+fn should_sync_action_binding(maps: &Keymaps, selection: &KeymapSelection) -> bool {
+    selection.mode == InputMode::Normal && maps.get(&InputMode::Action).and_then(|action| action.get(&selection.key)) == Some(&selection.command)
+}
+
+pub fn rebind_keymap_selection(maps: &mut Keymaps, selection: &KeymapSelection, new_key: KeyBinding) -> Result<KeymapEditOutcome, KeymapEditError> {
+    let synced_action = should_sync_action_binding(maps, selection);
+    let mut updated = maps.clone();
+
+    rebind_key_in_mode(&mut updated, selection.mode, &selection.key, &selection.command, &new_key)?;
+
+    if synced_action {
+        rebind_key_in_mode(&mut updated, InputMode::Action, &selection.key, &selection.command, &new_key)?;
+    }
+
+    *maps = updated;
+    Ok(KeymapEditOutcome { synced_action })
 }
 
 fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
@@ -550,18 +661,30 @@ fn config_to_keymaps(cfg: KeymapConfig) -> Result<Keymaps, String> {
     Ok(maps)
 }
 
-fn load_keymaps_from_disk(path: &Path) -> Result<Keymaps, Box<dyn std::error::Error>> {
+pub fn load_keymaps_from_path(path: &Path) -> Result<Keymaps, Box<dyn std::error::Error>> {
     let text = fs::read_to_string(path)?;
     let cfg: KeymapConfig = facet_json::from_str(&text)?;
     Ok(config_to_keymaps(cfg)?)
 }
 
-fn save_keymaps_to_disk(path: &Path, maps: &Keymaps) -> Result<(), Box<dyn std::error::Error>> {
+pub fn save_keymaps_to_path(path: &Path, maps: &Keymaps) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = keymaps_to_config(maps);
     let json = facet_json::to_string_pretty(&cfg)?;
     fs::create_dir_all(path.parent().unwrap())?;
     fs::write(path, json)?;
     Ok(())
+}
+
+pub fn keymap_config_path() -> PathBuf {
+    let mut pathbuf = dirs::config_dir().unwrap();
+    pathbuf.push("guitar");
+    pathbuf.push("keymap.json");
+    pathbuf
+}
+
+pub fn save_keymaps(maps: &Keymaps) -> Result<(), Box<dyn std::error::Error>> {
+    let path = keymap_config_path();
+    save_keymaps_to_path(path.as_path(), maps)
 }
 
 fn add_default_binding(maps: &mut Keymaps, mode: InputMode, key: KeyBinding, command: Command) -> bool {
@@ -639,22 +762,20 @@ fn migrate_default_bindings(maps: &mut Keymaps) -> bool {
 }
 
 pub fn load_or_init_keymaps() -> Keymaps {
-    let mut pathbuf = dirs::config_dir().unwrap();
-    pathbuf.push("guitar");
-    pathbuf.push("keymap.json");
+    let pathbuf = keymap_config_path();
     let path = pathbuf.as_path();
 
-    match load_keymaps_from_disk(path) {
+    match load_keymaps_from_path(path) {
         Ok(mut maps) => {
             let changed = migrate_default_bindings(&mut maps);
             if changed {
-                let _ = save_keymaps_to_disk(path, &maps);
+                let _ = save_keymaps_to_path(path, &maps);
             }
             maps
         },
         Err(_) => {
             let defaults = default_keymaps();
-            let _ = save_keymaps_to_disk(path, &defaults);
+            let _ = save_keymaps_to_path(path, &defaults);
             defaults
         },
     }

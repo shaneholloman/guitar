@@ -1,4 +1,4 @@
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Markers {
     Uncommitted,
     Commit,
@@ -8,7 +8,7 @@ pub enum Markers {
 pub const NONE: u32 = u32::MAX;
 
 // A lane entry points at the commit alias currently occupying that graph lane.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Chunk {
     pub alias: u32,
     pub parent_a: u32,

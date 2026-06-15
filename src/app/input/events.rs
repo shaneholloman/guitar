@@ -184,6 +184,9 @@ impl App {
                 | Focus::ModalGrep
                 | Focus::ModalTag
                 | Focus::ModalDeleteTag
+                | Focus::ModalKeyCapture
+                | Focus::ModalAuth
+                | Focus::ModalNetworkProgress
                 | Focus::ModalOperationProgress
                 | Focus::ModalOperationConflict
                 | Focus::ModalOperationSuccess

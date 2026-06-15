@@ -1,6 +1,5 @@
-use crate::app::app::App;
+use crate::app::{app::App, draw::buffered::DrawTarget};
 use ratatui::{
-    Frame,
     layout::{Alignment, Rect},
     style::Style,
     text::{Line, Span, Text},
@@ -8,7 +7,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_input(&mut self, frame: &mut Frame, title: &str) {
+    pub fn draw_modal_input(&mut self, frame: &mut impl DrawTarget, title: &str) {
         // Fixed content dimensions are later clamped against the terminal size.
         let length = 60;
         let height = 13;
@@ -21,7 +20,7 @@ impl App {
 
         lines.extend(vec![Line::default(); fill]);
 
-        lines.push(Line::from(Span::styled("(enter)".to_string(), Style::default().fg(self.theme.COLOR_GREY_500))));
+        lines.push(Line::from(Span::styled("(enter)".to_string(), Style::default().fg(self.theme.COLOR_HIGHLIGHTED))));
 
         // Paint a plain overlay before clearing the modal rectangle.
         let bg_block = Block::default().style(Style::default().fg(self.theme.COLOR_BORDER));
@@ -40,7 +39,7 @@ impl App {
         let modal_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(self.theme.COLOR_GREY_600))
-            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_GREY_500)))
+            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_HIGHLIGHTED)))
             .title_alignment(Alignment::Right)
             .padding(Padding { left: 3, right: 3, top: 1, bottom: 1 })
             .border_type(ratatui::widgets::BorderType::Rounded);

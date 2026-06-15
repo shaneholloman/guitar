@@ -6,6 +6,7 @@ mod core {
     pub mod branches;
     pub mod buffer;
     pub mod chunk;
+    pub mod graph_service;
     pub mod layers;
     pub mod oids;
     pub mod reflogs;
@@ -16,6 +17,7 @@ mod core {
     pub mod worktrees;
 }
 pub mod git {
+    pub mod auth;
     pub mod actions {
         pub mod branching;
         pub mod checkout;
@@ -24,6 +26,7 @@ pub mod git {
         pub mod conflicts;
         pub mod fetching;
         pub mod merging;
+        pub mod network;
         pub mod pushing;
         pub mod rebasing;
         pub mod resetting;

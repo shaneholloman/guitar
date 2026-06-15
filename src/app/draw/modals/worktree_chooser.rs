@@ -1,12 +1,14 @@
 use crate::{
-    app::app::{App, WorktreeModalAction},
+    app::{
+        app::{App, WorktreeModalAction},
+        draw::buffered::DrawTarget,
+    },
     helpers::{
         symbols::{SYM_COMMIT_BRANCH, SYM_WORKTREE, SYM_WORKTREE_DIRTY, SYM_WORKTREE_INVALID, SYM_WORKTREE_LOCKED, SYM_WORKTREE_OTHER},
         text::truncate_with_ellipsis,
     },
 };
 use ratatui::{
-    Frame,
     layout::{Alignment, Rect},
     style::Style,
     text::{Line, Span, Text},
@@ -14,7 +16,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_worktree_chooser(&mut self, frame: &mut Frame) {
+    pub fn draw_modal_worktree_chooser(&mut self, frame: &mut impl DrawTarget) {
         let title = match self.modal_worktree_action {
             WorktreeModalAction::Open => "select a worktree to open",
             WorktreeModalAction::Remove => "select a worktree to remove",
@@ -40,11 +42,12 @@ impl App {
             let label = truncate_with_ellipsis(&label, max_line_width);
             length = length.max(label.len());
             height += 1;
+            let is_selected = idx == self.modal_worktree_selected as usize;
 
-            let color = if !entry.is_valid {
+            let color = if is_selected {
+                self.theme.COLOR_GRASS
+            } else if !entry.is_valid {
                 self.theme.COLOR_GREY_800
-            } else if idx == self.modal_worktree_selected as usize {
-                self.theme.COLOR_TEAL
             } else if entry.is_current {
                 self.theme.COLOR_GRASS
             } else if entry.locked_reason.is_some() {
@@ -53,7 +56,9 @@ impl App {
                 self.theme.COLOR_TEXT
             };
 
-            lines.push(Line::from(Span::styled(label, Style::default().fg(color))));
+            let style = Style::default().fg(color);
+
+            lines.push(Line::from(Span::styled(label, style)));
         }
 
         let bg_block = Block::default().style(Style::default().fg(self.theme.COLOR_BORDER));
@@ -70,7 +75,7 @@ impl App {
         let modal_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(self.theme.COLOR_GREY_600))
-            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_GREY_500)))
+            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_HIGHLIGHTED)))
             .title_alignment(Alignment::Right)
             .padding(padding)
             .border_type(ratatui::widgets::BorderType::Rounded);

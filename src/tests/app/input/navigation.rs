@@ -1,6 +1,17 @@
 use super::*;
-use crate::{core::chunk::NONE, core::reflogs::HeadReflogAliasEntry};
+use crate::app::app::GraphWindowCache;
+use crate::core::{
+    chunk::NONE,
+    graph_service::{GraphCommand, GraphEvent, GraphLookupKind, GraphLookupResult, GraphPane, GraphReflogLabel, GraphRow},
+    reflogs::HeadReflogAliasEntry,
+};
+use crate::{
+    app::app::{SettingsSelection, SettingsSelectionKind},
+    helpers::keymap::{Command, InputMode, KeyBinding, KeymapSelection, Keymaps, load_keymaps_from_path},
+};
 use git2::{Repository, Signature};
+use indexmap::IndexMap;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::{
     fs,
     path::Path,
@@ -13,6 +24,23 @@ fn temp_non_repo_path(name: &str) -> String {
     let path = std::env::temp_dir().join(format!("guitar-input-navigation-{name}-{id}"));
     fs::create_dir_all(&path).unwrap();
     path.display().to_string()
+}
+
+fn temp_keymap_path(name: &str) -> std::path::PathBuf {
+    let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    std::env::temp_dir().join(format!("guitar-input-navigation-{name}-{id}")).join("keymap.json")
+}
+
+fn minimal_keymaps() -> Keymaps {
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    normal.insert(KeyBinding::new(KeyCode::Char('k'), KeyModifiers::NONE), Command::ScrollUp);
+    let mut action = IndexMap::new();
+    action.insert(KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    maps.insert(InputMode::Normal, normal);
+    maps.insert(InputMode::Action, action);
+    maps
 }
 
 fn temp_repo(name: &str) -> (std::path::PathBuf, Repository) {
@@ -55,11 +83,6 @@ fn graph_app_with_history() -> (App, git2::Oid, git2::Oid, git2::Oid) {
     let child_alias = app.oids.get_alias_by_oid(child_oid);
     app.oids.sorted_aliases = vec![NONE, child_alias, parent_alias, root_alias];
 
-    let max_alias = [root_alias, parent_alias, child_alias].into_iter().max().unwrap() as usize;
-    app.branches.indices = vec![usize::MAX; max_alias + 1];
-    app.branches.indices[root_alias as usize] = 3;
-    app.branches.indices[parent_alias as usize] = 2;
-    app.branches.indices[child_alias as usize] = 1;
     app.branches.all.insert(parent_alias, vec!["parent".to_string()]);
     app.branches.sorted.push((parent_alias, "parent".to_string()));
 
@@ -190,6 +213,186 @@ fn empty_branch_pane_select_and_narrow_are_noops() {
     assert_eq!(app.focus, Focus::Branches);
 }
 
+fn assert_offscreen_pane_narrow_requests_walker_row(focus: Focus, pane: GraphPane, selection: usize) {
+    let (_path, repo) = temp_repo("offscreen-pane");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(Rc::new(repo)), graph_tx: Some(tx), viewport: Viewport::Graph, focus, ..Default::default() };
+    app.graph.generation = 7;
+
+    match pane {
+        GraphPane::Branches => app.branches_selected = selection,
+        GraphPane::Tags => app.tags_selected = selection,
+        GraphPane::Stashes => app.stashes_selected = selection,
+        GraphPane::Reflogs => app.reflogs_selected = selection,
+    }
+
+    app.on_narrow_scope();
+
+    let command = rx.try_recv().unwrap();
+    match command {
+        GraphCommand::Lookup { generation, request_id, kind: GraphLookupKind::PaneRowAt { pane: actual_pane, index } } => {
+            assert_eq!(generation, 7);
+            assert_eq!(request_id, 1);
+            assert_eq!(actual_pane, pane);
+            assert_eq!(index, selection);
+        },
+        other => panic!("expected pane row lookup, got {other:?}"),
+    }
+}
+
+#[test]
+fn offscreen_pane_narrow_requests_selected_row_from_walker() {
+    assert_offscreen_pane_narrow_requests_walker_row(Focus::Branches, GraphPane::Branches, 42);
+    assert_offscreen_pane_narrow_requests_walker_row(Focus::Tags, GraphPane::Tags, 17);
+    assert_offscreen_pane_narrow_requests_walker_row(Focus::Stashes, GraphPane::Stashes, 9);
+    assert_offscreen_pane_narrow_requests_walker_row(Focus::Reflogs, GraphPane::Reflogs, 23);
+}
+
+#[test]
+fn offscreen_graph_narrow_requests_row_before_opening_inspector() {
+    let (_path, repo) = temp_repo("offscreen-inspector");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(Rc::new(repo)), graph_tx: Some(tx), viewport: Viewport::Graph, focus: Focus::Viewport, ..Default::default() };
+    app.graph.generation = 7;
+    app.graph_selected = 42;
+    app.layout_config.is_zen = false;
+
+    app.on_narrow_scope();
+
+    assert_eq!(app.focus, Focus::Viewport);
+    assert!(app.layout_config.is_inspector);
+    let command = rx.try_recv().unwrap();
+    match command {
+        GraphCommand::Lookup { generation, request_id, kind: GraphLookupKind::GraphRowAt { index } } => {
+            assert_eq!(generation, 7);
+            assert_eq!(request_id, 1);
+            assert_eq!(index, 42);
+        },
+        other => panic!("expected graph row lookup, got {other:?}"),
+    }
+}
+
+#[test]
+fn zen_offscreen_graph_narrow_opens_inspector_while_requesting_row() {
+    let (_path, repo) = temp_repo("zen-offscreen-inspector");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(Rc::new(repo)), graph_tx: Some(tx), viewport: Viewport::Graph, focus: Focus::Viewport, ..Default::default() };
+    app.graph.generation = 7;
+    app.graph_selected = 42;
+    app.layout_config.is_zen = true;
+
+    app.on_narrow_scope();
+
+    assert_eq!(app.focus, Focus::Inspector);
+    assert!(app.layout_config.is_inspector);
+    let command = rx.try_recv().unwrap();
+    match command {
+        GraphCommand::Lookup { generation, request_id, kind: GraphLookupKind::GraphRowAt { index } } => {
+            assert_eq!(generation, 7);
+            assert_eq!(request_id, 1);
+            assert_eq!(index, 42);
+        },
+        other => panic!("expected graph row lookup, got {other:?}"),
+    }
+}
+
+#[test]
+fn zen_graph_narrow_promotes_cached_window_row_before_opening_inspector() {
+    let (_path, repo) = temp_repo("zen-cached-inspector");
+    let oid = commit_file(&repo, "cached.txt", "cached");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(Rc::new(repo)), graph_tx: Some(tx), viewport: Viewport::Graph, focus: Focus::Viewport, ..Default::default() };
+    app.graph.generation = 7;
+    app.graph.total = 43;
+    app.graph_selected = 42;
+    app.layout_config.is_zen = true;
+    app.graph.graph_window = Some(GraphWindowCache {
+        version: 1,
+        start: 42,
+        end: 43,
+        head_alias: 99,
+        rows: vec![GraphRow {
+            index: 42,
+            alias: 99,
+            oid,
+            summary: "cached".to_string(),
+            has_any_branch: false,
+            branches: Vec::new(),
+            tags: Vec::new(),
+            is_stash: false,
+            stash_lane: None,
+            worktrees: Vec::new(),
+            reflog: None,
+        }],
+        history: Default::default(),
+    });
+
+    app.on_narrow_scope();
+
+    assert_eq!(app.focus, Focus::Inspector);
+    assert!(app.layout_config.is_inspector);
+    assert!(rx.try_recv().is_err());
+
+    app.graph.graph_window = None;
+    let identity = app.graph_identity_at(42).unwrap();
+    assert_eq!(identity.alias, 99);
+    assert_eq!(identity.oid, oid);
+}
+
+#[test]
+fn graph_row_lookup_result_opens_inspector_with_reflog() {
+    let (_path, repo) = temp_repo("offscreen-inspector-result");
+    let oid = commit_file(&repo, "commit.txt", "commit");
+    let repo = Rc::new(repo);
+    let (cmd_tx, _cmd_rx) = std::sync::mpsc::channel();
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(repo.clone()), graph_tx: Some(cmd_tx), graph_rx: Some(event_rx), viewport: Viewport::Graph, focus: Focus::Viewport, graph_selected: 42, ..Default::default() };
+    app.graph.generation = 7;
+    app.graph.pending_lookup = Some((3, PendingGraphLookup::OpenInspector));
+
+    event_tx
+        .send(GraphEvent::LookupResult {
+            generation: 7,
+            request_id: 3,
+            result: GraphLookupResult::GraphRow(Some(GraphRow {
+                index: 42,
+                alias: 99,
+                oid,
+                summary: "commit".to_string(),
+                has_any_branch: false,
+                branches: Vec::new(),
+                tags: Vec::new(),
+                is_stash: false,
+                stash_lane: None,
+                worktrees: Vec::new(),
+                reflog: Some(GraphReflogLabel { selector: "HEAD@{0}".to_string(), message: "commit: commit".to_string(), lane: Some(2) }),
+            })),
+        })
+        .unwrap();
+    app.sync(&repo);
+
+    assert_eq!(app.focus, Focus::Inspector);
+    assert_eq!(app.graph_alias_at(42), Some(99));
+    assert_eq!(app.graph_oid_at(42), Some(oid));
+    assert_eq!(app.graph_row_at(42).and_then(|row| row.reflog.as_ref()).map(|entry| entry.selector.as_str()), Some("HEAD@{0}"));
+    assert_eq!(diff_filenames(&app), vec!["commit.txt"]);
+}
+
+#[test]
+fn pane_row_jump_uses_graph_index_and_refreshes_diff() {
+    let (mut app, _root_oid, _parent_oid, _child_oid) = graph_app_with_history();
+    app.focus = Focus::Branches;
+    app.graph_selected = 3;
+    app.current_diff.clear();
+
+    assert!(app.open_graph_pane_row(GraphPaneRow::Branch { alias: 99, name: "parent".to_string(), is_local: true, lane: None, graph_index: Some(2) }));
+
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.viewport, Viewport::Graph);
+    assert_eq!(app.graph_selected, 2);
+    assert_eq!(diff_filenames(&app), vec!["parent.txt"]);
+}
+
 #[test]
 fn empty_delete_tag_modal_navigation_stays_at_zero() {
     let mut app = App { focus: Focus::ModalDeleteTag, modal_delete_tag_selected: 4, ..Default::default() };
@@ -200,6 +403,89 @@ fn empty_delete_tag_modal_navigation_stays_at_zero() {
     app.modal_delete_tag_selected = 4;
     app.on_scroll_down();
     assert_eq!(app.modal_delete_tag_selected, 0);
+}
+
+#[test]
+fn settings_shortcut_selection_opens_key_capture() {
+    let key_selection = KeymapSelection::new(InputMode::Normal, KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    let mut app = App {
+        viewport: Viewport::Settings,
+        focus: Focus::Viewport,
+        settings_selected: 12,
+        settings_selections: vec![SettingsSelection { line: 12, kind: SettingsSelectionKind::KeyBinding(key_selection.clone()) }],
+        ..Default::default()
+    };
+
+    app.on_select();
+
+    assert_eq!(app.focus, Focus::ModalKeyCapture);
+    assert_eq!(app.modal_key_capture_selection, Some(key_selection));
+    assert_eq!(app.modal_key_capture_candidate, None);
+    assert_eq!(app.modal_key_capture_error, None);
+}
+
+#[test]
+fn key_capture_conflict_does_not_change_keymaps() {
+    let key_selection = KeymapSelection::new(InputMode::Normal, KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    let keymaps = minimal_keymaps();
+    let mut app = App { viewport: Viewport::Settings, focus: Focus::ModalKeyCapture, keymaps: keymaps.clone(), modal_key_capture_selection: Some(key_selection), ..Default::default() };
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+
+    assert_eq!(app.focus, Focus::ModalKeyCapture);
+    assert!(app.modal_key_capture_error.is_some());
+    assert_eq!(app.keymaps, keymaps);
+}
+
+#[test]
+fn key_capture_confirm_updates_memory_and_persists_keymap() {
+    let path = temp_keymap_path("capture-save");
+    let key_selection = KeymapSelection::new(InputMode::Normal, KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    let mut app = App {
+        viewport: Viewport::Settings,
+        focus: Focus::ModalKeyCapture,
+        keymaps: minimal_keymaps(),
+        keymap_save_path: Some(path.clone()),
+        modal_key_capture_selection: Some(key_selection),
+        ..Default::default()
+    };
+
+    let new_key = KeyBinding::new(KeyCode::Char('n'), KeyModifiers::ALT);
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::ALT));
+    app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.keymaps.get(&InputMode::Normal).unwrap().get(&new_key), Some(&Command::ScrollDown));
+    assert_eq!(app.keymaps.get(&InputMode::Action).unwrap().get(&new_key), Some(&Command::ScrollDown));
+    assert_eq!(app.keymaps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE)), None);
+
+    let loaded = load_keymaps_from_path(path.as_path()).unwrap();
+    assert_eq!(loaded, app.keymaps);
+}
+
+#[test]
+fn key_capture_can_assign_enter_key() {
+    let path = temp_keymap_path("capture-enter");
+    let key_selection = KeymapSelection::new(InputMode::Normal, KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    let mut app = App {
+        viewport: Viewport::Settings,
+        focus: Focus::ModalKeyCapture,
+        keymaps: minimal_keymaps(),
+        keymap_save_path: Some(path.clone()),
+        modal_key_capture_selection: Some(key_selection),
+        ..Default::default()
+    };
+
+    let enter_key = KeyBinding::new(KeyCode::Enter, KeyModifiers::NONE);
+    app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.focus, Focus::ModalKeyCapture);
+    assert_eq!(app.modal_key_capture_candidate, Some(enter_key.clone()));
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.keymaps.get(&InputMode::Normal).unwrap().get(&enter_key), Some(&Command::ScrollDown));
+    assert_eq!(load_keymaps_from_path(path.as_path()).unwrap(), app.keymaps);
 }
 
 #[test]
