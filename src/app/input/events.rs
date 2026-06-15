@@ -1,9 +1,6 @@
 use crate::{
-    app::{
-        app::{App, Direction, Focus, LayoutDrag, MouseSelectionTarget, SettingsSelectionKind, Viewport},
-        state::defaults::ViewerMode,
-    },
-    helpers::layout::{LAYOUT_HEIGHT_MIN_STACKED_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_MIN_SIDE_PANE, LAYOUT_WIDTH_MIN_SPLIT_PANE},
+    app::app::{App, Direction, Focus, LayoutDrag, MouseSelectionTarget, SettingsSelectionKind, Viewport},
+    helpers::layout::{LAYOUT_HEIGHT_MIN_STACKED_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_MIN_SIDE_PANE},
 };
 use ratatui::{
     crossterm::event::{self, Event, KeyEventKind, MouseButton, MouseEvent, MouseEventKind},
@@ -513,9 +510,6 @@ impl App {
             return None;
         }
 
-        if Self::rect_contains(self.layout.divider_viewer_split, column, row) {
-            return Some(LayoutDrag::ViewerSplit);
-        }
         if self.layout_config.is_zen {
             return None;
         }
@@ -619,9 +613,7 @@ impl App {
 
         let changed = match direction {
             ResizeDirection::Left => {
-                if self.resize_focused_viewer_split(1) {
-                    true
-                } else if self.layout_config.is_zen {
+                if self.layout_config.is_zen {
                     false
                 } else {
                     match self.focus {
@@ -632,9 +624,7 @@ impl App {
                 }
             },
             ResizeDirection::Right => {
-                if self.resize_focused_viewer_split(-1) {
-                    true
-                } else if self.layout_config.is_zen {
+                if self.layout_config.is_zen {
                     false
                 } else {
                     match self.focus {
@@ -664,27 +654,6 @@ impl App {
             self.save_layout();
             self.mark_viewer_layout_dirty();
         }
-    }
-
-    fn resize_focused_viewer_split(&mut self, delta_left: i16) -> bool {
-        if self.focus != Focus::Viewport || self.viewport != Viewport::Viewer || self.viewer_mode != ViewerMode::Split {
-            return false;
-        }
-
-        let before = (self.layout_config.weight_viewer_split_left, self.layout_config.weight_viewer_split_right);
-        let Some((left, right)) = Self::resized_horizontal_pair_weights_by_delta(
-            delta_left,
-            self.layout.viewer_split_left,
-            self.layout.viewer_split_right,
-            self.layout_config.weight_viewer_split_left,
-            self.layout_config.weight_viewer_split_right,
-        ) else {
-            return false;
-        };
-
-        self.layout_config.weight_viewer_split_left = left;
-        self.layout_config.weight_viewer_split_right = right;
-        before != (left, right)
     }
 
     fn resize_left_column_by(&mut self, delta: i16) -> bool {
@@ -864,18 +833,6 @@ impl App {
         match drag {
             LayoutDrag::LeftPane => self.resize_left_pane(column),
             LayoutDrag::RightPane => self.resize_right_pane(column),
-            LayoutDrag::ViewerSplit => {
-                if let Some((left, right)) = Self::resized_horizontal_pair_weights(
-                    column,
-                    self.layout.viewer_split_left,
-                    self.layout.viewer_split_right,
-                    self.layout_config.weight_viewer_split_left,
-                    self.layout_config.weight_viewer_split_right,
-                ) {
-                    self.layout_config.weight_viewer_split_left = left;
-                    self.layout_config.weight_viewer_split_right = right;
-                }
-            },
             LayoutDrag::BranchesTags => {
                 if let Some((branches, tags)) = Self::resized_pair_weights(row, self.layout.pane_branches, self.layout.pane_tags, self.layout_config.weight_branches, self.layout_config.weight_tags) {
                     self.layout_config.weight_branches = branches;
@@ -1024,40 +981,6 @@ impl App {
         }
 
         let first_weight = ((first_height as u32 * total_weight as u32) / pair_height as u32).clamp(1, total_weight.saturating_sub(1) as u32) as u16;
-        Some((first_weight, total_weight.saturating_sub(first_weight)))
-    }
-
-    fn resized_horizontal_pair_weights(column: u16, first: Rect, second: Rect, first_weight: u16, second_weight: u16) -> Option<(u16, u16)> {
-        let first_width = column.saturating_sub(first.x);
-        Self::resized_horizontal_pair_weights_for_first_width(first_width, first, second, first_weight, second_weight)
-    }
-
-    fn resized_horizontal_pair_weights_by_delta(delta_first: i16, first: Rect, second: Rect, first_weight: u16, second_weight: u16) -> Option<(u16, u16)> {
-        let first_width = Self::u16_add_signed(first.width, delta_first);
-        Self::resized_horizontal_pair_weights_for_first_width(first_width, first, second, first_weight, second_weight)
-    }
-
-    fn resized_horizontal_pair_weights_for_first_width(first_width: u16, first: Rect, second: Rect, first_weight: u16, second_weight: u16) -> Option<(u16, u16)> {
-        if first.width == 0 || second.width == 0 {
-            return None;
-        }
-
-        let pair_left = first.x;
-        let pair_right = second.x.saturating_add(second.width);
-        let pair_width = pair_right.saturating_sub(pair_left);
-        if pair_width < 2 {
-            return None;
-        }
-
-        let min_width = LAYOUT_WIDTH_MIN_SPLIT_PANE.min(pair_width / 2).max(1);
-        let max_first_width = pair_width.saturating_sub(min_width);
-        let first_width = first_width.clamp(min_width, max_first_width);
-        let total_weight = first_weight.max(1).saturating_add(second_weight.max(1));
-        if total_weight < 2 {
-            return None;
-        }
-
-        let first_weight = ((first_width as u32 * total_weight as u32) / pair_width as u32).clamp(1, total_weight.saturating_sub(1) as u32) as u16;
         Some((first_weight, total_weight.saturating_sub(first_weight)))
     }
 }

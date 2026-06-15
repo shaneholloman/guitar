@@ -337,7 +337,7 @@ In full viewer mode, `Ctrl+d` and `Ctrl+u` jump between diff hunk edges. In hunk
 - Left panes: `Ctrl+Alt+l` widens the left column; `Ctrl+Alt+h` narrows it.
 - Right panes: `Ctrl+Alt+h` widens the right column; `Ctrl+Alt+l` narrows it.
 - Graph/viewer focus: `Ctrl+Alt+h` grows the center left by shrinking the left pane; `Ctrl+Alt+l` grows the center right by shrinking the right pane.
-- Split diff viewer: `Ctrl+Alt+h` grows the left split; `Ctrl+Alt+l` grows the right split.
+- Split diff viewer: horizontal resizing still resizes the outer viewer area; the split divider stays centered.
 - Stacked panes: `Ctrl+Alt+k` grows upward when possible; `Ctrl+Alt+j` grows downward when possible.
 
 Keyboard resize changes are saved to `layout.json`.
@@ -359,7 +359,6 @@ Mouse capture is enabled while the app runs.
 - Mouse wheel scrolls the pane under the cursor and focuses it.
 - Drag the left and right vertical dividers to resize side panes.
 - Drag stacked pane dividers to resize branch/tag/stash/reflog/worktree, inspector/status, and staged/unstaged splits.
-- Drag the split-diff divider to resize side-by-side viewer columns.
 - Layout changes from dragging are saved when the mouse button is released.
 
 ## Inputs And Keymaps
@@ -982,7 +981,7 @@ Default layout:
 }
 ```
 
-Width values are clamped to a minimum of 16 columns. The center pane keeps at least 20 columns when possible. Stacked pane weights and split viewer weights are normalized to at least `1`.
+Width values are clamped to a minimum of 16 columns. The center pane keeps at least 20 columns when possible. Stacked pane weights are normalized to at least `1`. Split viewer weights may exist in older configs, but the split divider is always centered.
 
 The graph reflog toggle requires a reload because it changes graph roots.
 

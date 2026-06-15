@@ -741,10 +741,7 @@ impl App {
             return (1, 1);
         }
 
-        let left_weight = self.layout_config.weight_viewer_split_left.max(1) as usize;
-        let right_weight = self.layout_config.weight_viewer_split_right.max(1) as usize;
-        let total_weight = left_weight + right_weight;
-        let left_pane_width = ((total_width * left_weight) / total_weight).max(1).min(total_width.saturating_sub(1));
+        let left_pane_width = (total_width / 2).max(1).min(total_width.saturating_sub(1));
         let right_pane_width = total_width.saturating_sub(left_pane_width).max(1);
 
         (left_pane_width.saturating_sub(8).max(1), right_pane_width.saturating_sub(8).max(1))

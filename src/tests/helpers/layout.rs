@@ -37,3 +37,14 @@ fn default_layout_shows_primary_workflow_panes() {
     assert!(!config.is_worktrees);
     assert!(!config.is_zen);
 }
+
+#[test]
+fn split_viewer_divider_is_centered() {
+    let (left, divider, right) = crate::app::state::layout::viewer_split_rects(true, ratatui::layout::Rect::new(4, 2, 41, 10));
+
+    assert_eq!(divider.width, 1);
+    assert_eq!(left.x, 4);
+    assert_eq!(divider.x, 24);
+    assert_eq!(right.x, 25);
+    assert!(left.width.abs_diff(right.width) <= 1);
+}

@@ -28,16 +28,12 @@ fn vertical_divider_rect(active: bool, x: u16, y: u16, height: u16) -> Rect {
     if active && height > 0 { Rect { x, y, width: 1, height } } else { zero_rect() }
 }
 
-fn viewer_split_rects(active: bool, area: Rect, left_weight: u16, right_weight: u16) -> (Rect, Rect, Rect) {
+pub(crate) fn viewer_split_rects(active: bool, area: Rect) -> (Rect, Rect, Rect) {
     if !active || area.width < 3 || area.height == 0 {
         return (zero_rect(), zero_rect(), zero_rect());
     }
 
-    let total_weight = left_weight.max(1).saturating_add(right_weight.max(1));
-    let chunks = RatatuiLayout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Ratio(left_weight.max(1) as u32, total_weight as u32), Constraint::Length(1), Constraint::Ratio(right_weight.max(1) as u32, total_weight as u32)])
-        .split(area);
+    let chunks = RatatuiLayout::default().direction(Direction::Horizontal).constraints([Constraint::Ratio(1, 2), Constraint::Length(1), Constraint::Ratio(1, 2)]).split(area);
 
     (chunks[0], chunks[1], chunks[2])
 }
@@ -202,8 +198,7 @@ impl App {
         // The graph leaves one row for its header and one for the status line.
         let graph_scrollbar = chunks_horizontal[1];
         let graph = inset_bottom(inset_top(chunks_horizontal[1], 1), 1);
-        let (viewer_split_left, divider_viewer_split, viewer_split_right) =
-            viewer_split_rects(is_viewer_split, graph, self.layout_config.weight_viewer_split_left, self.layout_config.weight_viewer_split_right);
+        let (viewer_split_left, divider_viewer_split, viewer_split_right) = viewer_split_rects(is_viewer_split, graph);
 
         // Inspector content starts below its header.
         let inspector_scrollbar = chunks_pane_right[0];
@@ -307,8 +302,7 @@ impl App {
             } else {
                 zero
             };
-            let (viewer_split_left, divider_viewer_split, viewer_split_right) =
-                viewer_split_rects(is_viewer_split && graph.width > 0, graph, self.layout_config.weight_viewer_split_left, self.layout_config.weight_viewer_split_right);
+            let (viewer_split_left, divider_viewer_split, viewer_split_right) = viewer_split_rects(is_viewer_split && graph.width > 0, graph);
 
             self.layout = Layout {
                 // Title and status keep their normal positions in zen mode.

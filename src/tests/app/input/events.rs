@@ -588,7 +588,7 @@ fn keyboard_resize_updates_right_stack_weights() {
 }
 
 fn split_viewer_app(is_zen: bool) -> App {
-    let mut app = graph_app();
+    let mut app = resizable_columns_app();
     app.viewport = Viewport::Viewer;
     app.focus = Focus::Viewport;
     app.viewer_mode = ViewerMode::Split;
@@ -601,20 +601,35 @@ fn split_viewer_app(is_zen: bool) -> App {
 }
 
 #[test]
-fn keyboard_resize_updates_split_viewer_weights_and_marks_dirty() {
+fn keyboard_resize_in_split_viewer_resizes_outer_columns() {
     let mut app = split_viewer_app(false);
 
     app.on_resize_pane_left();
-    assert!(app.layout_config.weight_viewer_split_left > 100);
-    assert!(app.layout_config.weight_viewer_split_right < 100);
+    assert_eq!(app.layout_config.width_left_pane, 29);
+    assert_eq!(app.layout_config.width_right_pane, 30);
+    assert_eq!(app.layout_config.weight_viewer_split_left, 100);
+    assert_eq!(app.layout_config.weight_viewer_split_right, 100);
     assert!(app.is_viewer_layout_dirty);
 
+    app.is_viewer_layout_dirty = false;
+    app.on_resize_pane_right();
+    assert_eq!(app.layout_config.width_left_pane, 29);
+    assert_eq!(app.layout_config.width_right_pane, 29);
+    assert_eq!(app.layout_config.weight_viewer_split_left, 100);
+    assert_eq!(app.layout_config.weight_viewer_split_right, 100);
+    assert!(app.is_viewer_layout_dirty);
+}
+
+#[test]
+fn keyboard_resize_in_zen_split_viewer_is_noop() {
     let mut app = split_viewer_app(true);
 
     app.on_resize_pane_right();
-    assert!(app.layout_config.weight_viewer_split_left < 100);
-    assert!(app.layout_config.weight_viewer_split_right > 100);
-    assert!(app.is_viewer_layout_dirty);
+    assert_eq!(app.layout_config.width_left_pane, 30);
+    assert_eq!(app.layout_config.width_right_pane, 30);
+    assert_eq!(app.layout_config.weight_viewer_split_left, 100);
+    assert_eq!(app.layout_config.weight_viewer_split_right, 100);
+    assert!(!app.is_viewer_layout_dirty);
 }
 
 #[test]

@@ -244,7 +244,6 @@ pub struct SettingsSelection {
 pub enum LayoutDrag {
     LeftPane,
     RightPane,
-    ViewerSplit,
     BranchesTags,
     BranchesStashes,
     BranchesWorktrees,
