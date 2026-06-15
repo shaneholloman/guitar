@@ -150,6 +150,8 @@ If the path cannot be opened as a Git repository, `guitar` falls back to the spl
 The splash screen appears when no repository is open or when you back out of the graph. It lists recent repositories from `recent.json`.
 
 - `Enter` or `l` opens the selected recent repository.
+- `d` removes the selected recent repository from `recent.json`.
+- `Shift+K` and `Shift+J` move the selected recent repository up or down.
 - `Esc` returns to the graph when a repository is already loaded.
 - `q` exits.
 
@@ -260,7 +262,7 @@ For merge commits, file lists and file diffs compare against the first parent.
 
 ### Settings
 
-The settings/help view is opened with `?`. It shows version, commit heatmap, config paths, Git identity, auth notes, theme choices, and active keymaps. Theme rows and keybinding rows are selectable.
+The settings/help view is opened with `?`. It shows version, commit heatmap, config paths, recent repositories, Git identity, auth notes, theme choices, layout visibility, and active keymaps. Recent repository rows, theme rows, layout rows, and keybinding rows are selectable.
 
 ## Navigation
 
@@ -282,6 +284,8 @@ The settings/help view is opened with `?`. It shows version, commit heatmap, con
 
 `Tab` and `Ctrl+n` move to the next focusable pane. `Shift+Tab` and `Ctrl+p` move to the previous focusable pane.
 
+`Ctrl+h`, `Ctrl+j`, `Ctrl+k`, and `Ctrl+l` move focus to the nearest pane in that direction when one is visible.
+
 Focusable panes are ordered:
 
 ```text
@@ -297,8 +301,9 @@ Hidden panes are skipped. The unstaged status pane is focusable only on the unco
 - Splash: open selected recent repository.
 - Settings theme: activate and save theme.
 - Settings keybinding: open key capture.
+- Settings layout row: toggle that layout option or reset layout.
 - Graph: open a worktree badge if the selected commit has valid worktree candidates.
-- Branch/tag/stash/reflog panes: jump to the corresponding graph row.
+- Branch/tag/stash/reflog panes: jump to the corresponding graph row and center it when possible.
 - Worktree pane: open the selected valid worktree.
 - Status panes: open the selected file in the viewer.
 - Choice modals: confirm the selected row.
@@ -340,7 +345,7 @@ In full viewer mode, `Ctrl+d` and `Ctrl+u` jump between diff hunk edges. In hunk
 - Split diff viewer: horizontal resizing still resizes the outer viewer area; the split divider stays centered.
 - Stacked panes: `Ctrl+Alt+k` grows upward when possible; `Ctrl+Alt+j` grows downward when possible.
 
-Keyboard resize changes are saved to `layout.json`.
+Keyboard resize changes are saved to `layout.json`. Keyboard resize is disabled in splash, settings, modals, and zen mode.
 
 ### Graph Jumps
 
@@ -357,6 +362,10 @@ SHA lookup accepts non-empty prefixes up to 40 characters. It searches commits a
 Mouse capture is enabled while the app runs.
 
 - Mouse wheel scrolls the pane under the cursor and focuses it.
+- A single click selects the row under the cursor and focuses that pane.
+- Double-click branch, tag, stash, reflog, worktree, status, theme, or keybinding rows to perform the same action as `Enter`.
+- Single-click settings layout rows to toggle them immediately.
+- Graph, viewer, and splash rows are selected by mouse clicks but not activated by double-click.
 - Drag the left and right vertical dividers to resize side panes.
 - Drag stacked pane dividers to resize branch/tag/stash/reflog/worktree, inspector/status, and staged/unstaged splits.
 - Layout changes from dragging are saved when the mouse button is released.
@@ -406,7 +415,7 @@ In settings, selecting a keybinding opens key capture.
 
 - Press a new key combination to preview it.
 - `Enter` confirms if there is no conflict.
-- `Ctrl+C` cancels.
+- `Esc` or `Ctrl+C` cancels.
 
 If a normal-mode binding is also present in action mode for the same command, rebinding the normal key syncs the matching action-mode binding.
 
@@ -422,6 +431,10 @@ Defaults are written to `keymap.json` on first run. User-edited keymaps can diff
 | Back | `Esc` |
 | Focus Previous Pane | `Ctrl+p`, `Shift+BackTab` |
 | Focus Next Pane | `Ctrl+n`, `Tab` |
+| Focus Pane Left | `Ctrl+h` |
+| Focus Pane Down | `Ctrl+j` |
+| Focus Pane Up | `Ctrl+k` |
+| Focus Pane Right | `Ctrl+l` |
 | Resize Pane Left | `Ctrl+Alt+h` |
 | Resize Pane Down | `Ctrl+Alt+j` |
 | Resize Pane Up | `Ctrl+Alt+k` |
@@ -459,6 +472,9 @@ Defaults are written to `keymap.json` on first run. User-edited keymaps can diff
 | Minimize | `.` |
 | Reload | `r` |
 | Exit | `q` |
+| Remove Recent Repository | `d` |
+| Move Recent Repository Up | `Shift+K` |
+| Move Recent Repository Down | `Shift+J` |
 | Stage | `s` |
 | Unstage | `u` |
 | Commit | `c` |
@@ -791,15 +807,19 @@ The settings view includes:
 - App version.
 - Commit heatmap.
 - Config file paths.
+- Recent repositories.
 - Git `user.name` and `user.email`.
 - Auth behavior notes.
 - Theme list.
+- Layout visibility toggles.
 - Normal-mode shortcuts.
 - Action-mode shortcuts that differ from normal mode.
 
 Selectable rows:
 
+- Recent repository rows: `d` removes, `Shift+K` moves up, and `Shift+J` moves down.
 - Theme rows: `Enter` activates and saves the selected theme.
+- Layout visibility rows: `Enter` toggles the row or resets layout.
 - Keybinding rows: `Enter` opens key capture.
 
 Settings reuses normal navigation. Use `j`/`k`, page keys, `g`, `Shift+G`, or mouse wheel to move. Use `h`, `Esc`, or `?` to return to the graph.
@@ -944,7 +964,7 @@ Command
 Meta
 ```
 
-Supported commands are the command names listed in the keymap tables, without spaces, for example `ToggleSplitDiffMode`, `ResizePaneRight`, `CreateWorktree`, `ContinueOperation`, and `AbortOperation`.
+Supported commands are the command names listed in the keymap tables, without spaces, for example `ToggleSplitDiffMode`, `FocusPaneRight`, `ResizePaneRight`, `RemoveRecentRepository`, `CreateWorktree`, `ContinueOperation`, and `AbortOperation`.
 
 When an old keymap is loaded, `guitar` attempts small migrations for newly added default bindings.
 
@@ -1035,7 +1055,7 @@ Malformed theme files fall back to `classic` and are rewritten.
 ]
 ```
 
-Recent repositories are appended when a repository opens successfully. There is no in-app remove or reorder UI.
+Recent repositories are appended when a repository opens successfully. They can be removed or reordered from the splash screen or the settings recent repositories section.
 
 ## Development
 
