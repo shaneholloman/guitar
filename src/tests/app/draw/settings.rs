@@ -51,6 +51,13 @@ fn draw_settings_once(app: &mut App, repo: &Repository) {
     terminal.draw(|frame| app.draw_settings(frame, repo)).unwrap();
 }
 
+fn rendered_settings(app: &mut App, repo: &Repository, width: u16, height: u16) -> String {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw_settings(frame, repo)).unwrap();
+    terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect::<String>()
+}
+
 #[test]
 fn settings_scroll_keeps_visible_selection_without_recentering() {
     let (_path, repo) = temp_repo("visible");
@@ -121,4 +128,36 @@ fn settings_selection_snaps_to_selectable_line() {
     draw_settings_once(&mut app, &repo);
 
     assert!(app.settings_selections.iter().any(|selection| selection.line == app.settings_selected));
+}
+
+#[test]
+fn settings_renders_layout_visibility_rows_with_states() {
+    let (_path, repo) = temp_repo("layout-section");
+    let mut app = settings_app();
+    app.layout.graph = Rect::new(0, 0, 120, 90);
+    app.layout.app = Rect::new(0, 0, 120, 90);
+    app.layout_config.is_branches = true;
+    app.layout_config.is_shas = false;
+
+    let rendered = rendered_settings(&mut app, &repo, 120, 90);
+
+    assert!(rendered.contains("layout visibility:"));
+    assert!(rendered.contains("1 branches:"));
+    assert!(rendered.contains("8 SHAs:"));
+    assert!(rendered.contains("0 reset layout:"));
+    assert!(rendered.contains("off"));
+    assert!(rendered.contains("action"));
+}
+
+#[test]
+fn settings_layout_rows_use_current_normal_keymap_binding() {
+    let (_path, repo) = temp_repo("layout-key");
+    let mut app = settings_app();
+    app.layout.graph = Rect::new(0, 0, 120, 90);
+    app.layout.app = Rect::new(0, 0, 120, 90);
+    app.keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('s'), KeyModifiers::NONE), Command::ToggleShas);
+
+    let rendered = rendered_settings(&mut app, &repo, 120, 90);
+
+    assert!(rendered.contains("s SHAs:"));
 }

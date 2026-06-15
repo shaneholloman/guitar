@@ -8,7 +8,11 @@ use crate::{
         actions::{checkout::checkout_branch, tagging::untag},
         queries::{commits::get_current_branch, diffs::get_filenames_diff_at_oid},
     },
-    helpers::{keymap::InputMode, layout::LayoutConfig, palette::Theme},
+    helpers::{
+        keymap::{Command, InputMode},
+        layout::LayoutConfig,
+        palette::Theme,
+    },
 };
 
 impl App {
@@ -290,6 +294,79 @@ impl App {
         self.focus = Focus::ModalKeyCapture;
     }
 
+    fn activate_settings_layout_command(&mut self, command: Command) {
+        let selected = self.settings_selected;
+        let scroll = self.settings_scroll.get();
+
+        match command {
+            Command::ResetLayout => {
+                let config = LayoutConfig::default();
+                let should_reload = self.repo.is_some() && self.layout_config.is_graph_reflogs != config.is_graph_reflogs;
+                self.layout_config = config;
+                self.layout_drag = None;
+                self.mark_viewer_layout_dirty();
+                self.file_name = None;
+                self.save_layout();
+                if should_reload {
+                    self.reload(None);
+                }
+            },
+            Command::ToggleBranches => {
+                self.layout_config.is_branches = !self.layout_config.is_branches;
+                self.mark_viewer_layout_dirty();
+                self.save_layout();
+            },
+            Command::ToggleTags => {
+                self.layout_config.is_tags = !self.layout_config.is_tags;
+                self.mark_viewer_layout_dirty();
+                self.save_layout();
+            },
+            Command::ToggleStashes => {
+                self.layout_config.is_stashes = !self.layout_config.is_stashes;
+                self.mark_viewer_layout_dirty();
+                self.save_layout();
+            },
+            Command::ToggleStatus => {
+                self.layout_config.is_status = !self.layout_config.is_status;
+                self.mark_viewer_layout_dirty();
+                self.save_layout();
+            },
+            Command::ToggleInspector => {
+                self.layout_config.is_inspector = !self.layout_config.is_inspector;
+                self.mark_viewer_layout_dirty();
+                self.save_layout();
+            },
+            Command::ToggleWorktrees => {
+                self.layout_config.is_worktrees = !self.layout_config.is_worktrees;
+                self.mark_viewer_layout_dirty();
+                self.save_layout();
+            },
+            Command::ToggleReflogs => {
+                self.layout_config.is_reflogs = !self.layout_config.is_reflogs;
+                self.mark_viewer_layout_dirty();
+                self.save_layout();
+            },
+            Command::ToggleShas => {
+                self.layout_config.is_shas = !self.layout_config.is_shas;
+                self.save_layout();
+            },
+            Command::ToggleGraphReflogs => {
+                self.layout_config.is_graph_reflogs = !self.layout_config.is_graph_reflogs;
+                self.mark_viewer_layout_dirty();
+                self.save_layout();
+                if self.repo.is_some() {
+                    self.reload(None);
+                }
+            },
+            _ => {},
+        }
+
+        self.viewport = Viewport::Settings;
+        self.focus = Focus::Viewport;
+        self.settings_selected = selected;
+        self.settings_scroll.set(scroll);
+    }
+
     pub fn on_select(&mut self) {
         match self.focus {
             Focus::Viewport => match self.viewport {
@@ -306,6 +383,9 @@ impl App {
                         },
                         Some(SettingsSelectionKind::KeyBinding(selection)) => {
                             self.begin_key_capture(selection);
+                        },
+                        Some(SettingsSelectionKind::LayoutCommand(command)) => {
+                            self.activate_settings_layout_command(command);
                         },
                         _ => {},
                     }
@@ -1545,10 +1625,10 @@ impl App {
     }
 
     pub fn on_toggle_shas(&mut self) {
-        if self.viewport == Viewport::Graph && self.focus == Focus::Viewport {
+        if self.viewport != Viewport::Splash {
             self.layout_config.is_shas = !self.layout_config.is_shas;
+            self.save_layout();
         }
-        self.save_layout();
     }
 
     pub fn on_toggle_zen_mode(&mut self) {

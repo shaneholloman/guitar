@@ -482,6 +482,62 @@ fn settings_shortcut_selection_opens_key_capture() {
 }
 
 #[test]
+fn settings_layout_command_toggles_and_stays_in_settings() {
+    let mut app = App {
+        viewport: Viewport::Settings,
+        focus: Focus::Viewport,
+        settings_selected: 12,
+        settings_selections: vec![SettingsSelection { line: 12, kind: SettingsSelectionKind::LayoutCommand(Command::ToggleBranches) }],
+        ..Default::default()
+    };
+    app.layout_config.is_branches = true;
+    app.settings_scroll.set(4);
+
+    app.on_select();
+
+    assert!(!app.layout_config.is_branches);
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.settings_selected, 12);
+    assert_eq!(app.settings_scroll.get(), 4);
+}
+
+#[test]
+fn settings_reset_layout_command_resets_and_stays_in_settings() {
+    let mut app = App {
+        viewport: Viewport::Settings,
+        focus: Focus::Viewport,
+        settings_selected: 12,
+        settings_selections: vec![SettingsSelection { line: 12, kind: SettingsSelectionKind::LayoutCommand(Command::ResetLayout) }],
+        ..Default::default()
+    };
+    app.layout_config.is_branches = false;
+    app.layout_config.is_shas = false;
+
+    app.on_select();
+
+    assert!(app.layout_config.is_branches);
+    assert!(app.layout_config.is_shas);
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+}
+
+#[test]
+fn toggle_shas_shortcut_works_from_left_and_right_panes() {
+    let mut keymaps = minimal_keymaps();
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('8'), KeyModifiers::NONE), Command::ToggleShas);
+    let mut app = App { viewport: Viewport::Graph, focus: Focus::Branches, keymaps, ..Default::default() };
+    app.layout_config.is_shas = true;
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('8'), KeyModifiers::NONE));
+    assert!(!app.layout_config.is_shas);
+
+    app.focus = Focus::StatusTop;
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('8'), KeyModifiers::NONE));
+    assert!(app.layout_config.is_shas);
+}
+
+#[test]
 fn key_capture_conflict_does_not_change_keymaps() {
     let key_selection = KeymapSelection::new(InputMode::Normal, KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE), Command::ScrollDown);
     let keymaps = minimal_keymaps();

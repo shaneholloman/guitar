@@ -231,6 +231,23 @@ fn mouse_click_selects_only_selectable_settings_rows() {
 }
 
 #[test]
+fn mouse_single_click_on_settings_layout_row_toggles_once() {
+    let mut app = App { viewport: Viewport::Settings, focus: Focus::Viewport, layout_config: LayoutConfig::default(), layout: Layout::default(), ..Default::default() };
+    app.layout.graph = Rect::new(0, 0, 40, 5);
+    app.layout_config.is_branches = true;
+    app.settings_selections = vec![SettingsSelection { line: 2, kind: SettingsSelectionKind::LayoutCommand(Command::ToggleBranches) }];
+
+    app.handle_mouse_event(left_down(1, 2));
+    assert!(!app.layout_config.is_branches);
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.settings_selected, 2);
+
+    app.handle_mouse_event(left_down(1, 2));
+    assert!(!app.layout_config.is_branches);
+}
+
+#[test]
 fn double_click_on_settings_selectable_row_acts_like_enter() {
     let key_selection = KeymapSelection::new(InputMode::Normal, KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE), Command::ScrollDown);
     let mut app = App { viewport: Viewport::Settings, focus: Focus::Viewport, layout_config: LayoutConfig::default(), layout: Layout::default(), ..Default::default() };

@@ -1,5 +1,5 @@
 use crate::{
-    app::app::{App, Direction, Focus, LayoutDrag, MouseSelectionTarget, Viewport},
+    app::app::{App, Direction, Focus, LayoutDrag, MouseSelectionTarget, SettingsSelectionKind, Viewport},
     helpers::layout::{LAYOUT_HEIGHT_MIN_STACKED_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_MIN_SIDE_PANE, LAYOUT_WIDTH_MIN_SPLIT_PANE},
 };
 use ratatui::{
@@ -77,16 +77,31 @@ impl App {
 
         let now = Instant::now();
         let is_double_click = self.last_mouse_click.is_some_and(|(previous, at)| previous == target && now.duration_since(at) <= DOUBLE_CLICK_THRESHOLD);
+        let is_single_click_activation = self.mouse_target_activates_on_single_click(target);
 
         self.select_mouse_target(target);
 
-        if is_double_click {
+        if is_single_click_activation {
+            if is_double_click {
+                self.last_mouse_click = None;
+            } else {
+                self.on_select();
+                self.last_mouse_click = Some((target, now));
+            }
+        } else if is_double_click {
             self.last_mouse_click = None;
             if Self::mouse_target_activates_on_double_click(target) {
                 self.on_select();
             }
         } else {
             self.last_mouse_click = Some((target, now));
+        }
+    }
+
+    fn mouse_target_activates_on_single_click(&self, target: MouseSelectionTarget) -> bool {
+        match target {
+            MouseSelectionTarget::Settings(index) => self.settings_selections.iter().any(|selection| selection.line == index && matches!(selection.kind, SettingsSelectionKind::LayoutCommand(_))),
+            _ => false,
         }
     }
 

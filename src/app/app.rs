@@ -231,6 +231,7 @@ pub enum SettingsSelectionKind {
     Info,
     Theme(usize),
     KeyBinding(KeymapSelection),
+    LayoutCommand(Command),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

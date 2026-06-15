@@ -1,5 +1,5 @@
 use crate::helpers::heatmap::heat_cell;
-use crate::helpers::keymap::{InputMode, KeymapSelection, action_keymap_visible_entries};
+use crate::helpers::keymap::{Command, InputMode, KeymapSelection, action_keymap_visible_entries, keybinding_to_visual_string};
 use crate::helpers::palette::*;
 use crate::helpers::symbols::WEEKDAY_LABELS;
 use crate::helpers::version::VERSION;
@@ -19,7 +19,97 @@ use ratatui::{
     widgets::{Block, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
+const SETTINGS_LAYOUT_COMMANDS: &[(char, Command, &str)] = &[
+    ('1', Command::ToggleBranches, "branches"),
+    ('2', Command::ToggleTags, "tags"),
+    ('3', Command::ToggleStashes, "stashes"),
+    ('4', Command::ToggleStatus, "status"),
+    ('5', Command::ToggleInspector, "inspector"),
+    ('6', Command::ToggleWorktrees, "worktrees"),
+    ('7', Command::ToggleReflogs, "reflog"),
+    ('8', Command::ToggleShas, "SHAs"),
+    ('9', Command::ToggleGraphReflogs, "graph reflog commits"),
+    ('0', Command::ResetLayout, "reset layout"),
+];
+
 impl App {
+    fn settings_layout_command_key(&self, command: &Command, fallback: char) -> String {
+        self.keymaps
+            .get(&InputMode::Normal)
+            .and_then(|mode_keymap| mode_keymap.iter().find(|(_, current)| *current == command).map(|(key, _)| keybinding_to_visual_string(key)))
+            .unwrap_or_else(|| fallback.to_string())
+    }
+
+    fn settings_layout_command_state(&self, command: &Command) -> &'static str {
+        match command {
+            Command::ToggleBranches => {
+                if self.layout_config.is_branches {
+                    "on"
+                } else {
+                    "off"
+                }
+            },
+            Command::ToggleTags => {
+                if self.layout_config.is_tags {
+                    "on"
+                } else {
+                    "off"
+                }
+            },
+            Command::ToggleStashes => {
+                if self.layout_config.is_stashes {
+                    "on"
+                } else {
+                    "off"
+                }
+            },
+            Command::ToggleStatus => {
+                if self.layout_config.is_status {
+                    "on"
+                } else {
+                    "off"
+                }
+            },
+            Command::ToggleInspector => {
+                if self.layout_config.is_inspector {
+                    "on"
+                } else {
+                    "off"
+                }
+            },
+            Command::ToggleWorktrees => {
+                if self.layout_config.is_worktrees {
+                    "on"
+                } else {
+                    "off"
+                }
+            },
+            Command::ToggleReflogs => {
+                if self.layout_config.is_reflogs {
+                    "on"
+                } else {
+                    "off"
+                }
+            },
+            Command::ToggleShas => {
+                if self.layout_config.is_shas {
+                    "on"
+                } else {
+                    "off"
+                }
+            },
+            Command::ToggleGraphReflogs => {
+                if self.layout_config.is_graph_reflogs {
+                    "on"
+                } else {
+                    "off"
+                }
+            },
+            Command::ResetLayout => "action",
+            _ => "",
+        }
+    }
+
     pub fn draw_settings(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
         // Settings owns the center viewport and uses centered rows throughout.
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
@@ -162,6 +252,21 @@ impl App {
             }
             lines.push(Line::from(Span::styled(fill_width(&label, &marker, heatmap_width), style)).centered());
             self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Theme(idx) });
+        }
+
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(fill_width(" layout visibility:", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::default());
+        for (idx, (fallback, command, label)) in SETTINGS_LAYOUT_COMMANDS.iter().enumerate() {
+            let key = self.settings_layout_command_key(command, *fallback);
+            let label = format!(" {} {}:", key, label);
+            let state = format!(" {} ", self.settings_layout_command_state(command));
+            let mut style = Style::default().fg(self.theme.COLOR_TEXT);
+            if idx.is_multiple_of(2) {
+                style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+            }
+            lines.push(Line::from(Span::styled(fill_width(&label, &state, heatmap_width), style)).centered());
+            self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::LayoutCommand(command.clone()) });
         }
 
         // Keymap sections are generated from the active keymap data, not duplicated text.
