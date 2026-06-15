@@ -489,6 +489,19 @@ fn key_capture_can_assign_enter_key() {
 }
 
 #[test]
+fn key_capture_esc_closes_without_capturing_key() {
+    let key_selection = KeymapSelection::new(InputMode::Normal, KeyBinding::new(KeyCode::Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    let mut app = App { viewport: Viewport::Settings, focus: Focus::ModalKeyCapture, keymaps: minimal_keymaps(), modal_key_capture_selection: Some(key_selection), ..Default::default() };
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.modal_key_capture_selection, None);
+    assert_eq!(app.modal_key_capture_candidate, None);
+    assert_eq!(app.modal_key_capture_error, None);
+}
+
+#[test]
 fn graph_branch_and_commit_jumps_refresh_current_diff() {
     let (mut app, _root_oid, _parent_oid, _child_oid) = graph_app_with_history();
 

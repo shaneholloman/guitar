@@ -25,4 +25,23 @@ fn auth_modal_masks_secret_input() {
     let rendered = terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect::<String>();
     assert!(!rendered.contains("supersecret"));
     assert!(rendered.contains("***********"));
+    assert!(rendered.contains("(esc)"));
+    assert!(rendered.contains("submit (enter) switch field (tab) cancel (esc)"));
+    assert!(rendered.contains("password / token"));
+    assert!(rendered.contains("─"));
+}
+
+#[test]
+fn network_progress_modal_renders_title_esc_and_working_status() {
+    let mut app = App { modal_network_title: "Fetch".to_string(), modal_network_message: "Fetching origin...".to_string(), ..Default::default() };
+
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw_modal_network_progress(frame)).unwrap();
+
+    let rendered = terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect::<String>();
+    assert!(rendered.contains("(esc)"));
+    assert!(rendered.contains("Fetch"));
+    assert!(rendered.contains("Fetching origin..."));
+    assert!(rendered.contains("working..."));
 }

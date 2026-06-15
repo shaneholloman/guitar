@@ -1,5 +1,11 @@
 use crate::{
-    app::{app::App, draw::buffered::DrawTarget},
+    app::{
+        app::App,
+        draw::{
+            buffered::DrawTarget,
+            modals::shared::{action_row, modal_block},
+        },
+    },
     helpers::{
         keymap::{KeymapEditError, command_to_visual_string, input_mode_to_visual_string, keybinding_to_visual_string},
         text::wrap_words,
@@ -9,7 +15,7 @@ use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Block, Paragraph, Widget},
 };
 
 impl App {
@@ -54,8 +60,12 @@ impl App {
         }
 
         lines.push(Line::default());
-        let hint = if self.modal_key_capture_candidate.is_some() && self.modal_key_capture_error.is_none() { "(enter) save" } else { "press any key" };
-        lines.push(Line::from(Span::styled(format!("{hint}   Ctrl+C cancel"), Style::default().fg(self.theme.COLOR_HIGHLIGHTED))));
+        let line = if self.modal_key_capture_candidate.is_some() && self.modal_key_capture_error.is_none() {
+            action_row(&[("save", "enter"), ("cancel", "esc")], Style::default().fg(self.theme.COLOR_HIGHLIGHTED))
+        } else {
+            Line::from(Span::styled("press key cancel (esc)", Style::default().fg(self.theme.COLOR_HIGHLIGHTED)))
+        };
+        lines.push(line);
 
         let bg_block = Block::default().style(Style::default().fg(self.theme.COLOR_BORDER));
         bg_block.render(frame.area(), frame.buffer_mut());
@@ -69,14 +79,12 @@ impl App {
         self.theme.clear_area(modal_area, frame.buffer_mut());
 
         let border_color = if self.modal_key_capture_error.is_some() { self.theme.COLOR_ORANGE } else { self.theme.COLOR_GREY_600 };
-        let modal_block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color))
-            .title(Span::styled(" (Ctrl+C) ", Style::default().fg(self.theme.COLOR_HIGHLIGHTED)))
-            .title_alignment(Alignment::Right)
-            .padding(ratatui::widgets::Padding { left: 3, right: 3, top: 1, bottom: 1 })
-            .border_type(ratatui::widgets::BorderType::Rounded);
+        let modal_block = modal_block(border_color, self.theme.COLOR_HIGHLIGHTED);
 
         Paragraph::new(Text::from(lines)).block(modal_block).alignment(Alignment::Center).render(modal_area, frame.buffer_mut());
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/app/draw/modals/key_capture.rs"]
+mod tests;

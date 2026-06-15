@@ -16,6 +16,7 @@ pub mod draw {
         pub mod key_capture;
         pub mod rebase;
         pub mod remove_worktree;
+        pub(crate) mod shared;
         pub mod solo;
         pub mod worktree_chooser;
     }

@@ -37,7 +37,7 @@ impl App {
     }
 
     fn is_key_capture_cancel(key_event: &KeyEvent) -> bool {
-        matches!(key_event.code, KeyCode::Char('c') | KeyCode::Char('C')) && key_event.modifiers.contains(KeyModifiers::CONTROL)
+        key_event.code == KeyCode::Esc || (matches!(key_event.code, KeyCode::Char('c') | KeyCode::Char('C')) && key_event.modifiers.contains(KeyModifiers::CONTROL))
     }
 
     fn preview_key_capture_candidate(&mut self, key_binding: KeyBinding) {

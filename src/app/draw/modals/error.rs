@@ -1,12 +1,18 @@
 use crate::{
-    app::{app::App, draw::buffered::DrawTarget},
+    app::{
+        app::App,
+        draw::{
+            buffered::DrawTarget,
+            modals::shared::{action_row, modal_block},
+        },
+    },
     helpers::text::wrap_words,
 };
 use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Block, Paragraph, Widget},
 };
 
 impl App {
@@ -22,7 +28,7 @@ impl App {
         lines.push(Line::default());
         lines.extend(wrapped_message.into_iter().map(|line| Line::from(Span::styled(line, Style::default().fg(self.theme.COLOR_RED)))));
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled("(enter) OK", Style::default().fg(self.theme.COLOR_RED))));
+        lines.push(action_row(&[("ok", "enter"), ("cancel", "esc")], Style::default().fg(self.theme.COLOR_RED)));
 
         let content_width = lines.iter().map(|line| line.width()).max().unwrap_or(30);
         let modal_width = (content_width + 10).max(30).min(max_modal_width) as u16;
@@ -37,13 +43,7 @@ impl App {
         bg_block.render(frame.area(), frame.buffer_mut());
         self.theme.clear_area(modal_area, frame.buffer_mut());
 
-        let modal_block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(self.theme.COLOR_RED))
-            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_RED)))
-            .title_alignment(Alignment::Right)
-            .padding(ratatui::widgets::Padding { left: 3, right: 3, top: 1, bottom: 1 })
-            .border_type(ratatui::widgets::BorderType::Rounded);
+        let modal_block = modal_block(self.theme.COLOR_RED, self.theme.COLOR_RED);
 
         Paragraph::new(Text::from(lines)).block(modal_block).alignment(Alignment::Center).render(modal_area, frame.buffer_mut());
     }

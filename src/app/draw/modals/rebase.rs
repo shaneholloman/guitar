@@ -1,7 +1,10 @@
 use crate::{
     app::{
         app::{App, Focus},
-        draw::buffered::DrawTarget,
+        draw::{
+            buffered::DrawTarget,
+            modals::shared::{action_row, modal_block},
+        },
     },
     helpers::text::wrap_words,
 };
@@ -9,16 +12,16 @@ use ratatui::{
     layout::Alignment,
     style::Style,
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Paragraph, Widget},
 };
 
 impl App {
     pub fn draw_modal_rebase(&mut self, frame: &mut impl DrawTarget) {
         let (title, hint) = match self.focus {
             Focus::ModalOperationProgress => (self.modal_operation_kind.label().to_string(), "working..."),
-            Focus::ModalOperationConflict => (format!("{} conflict", self.modal_operation_kind.label()), "resolve conflicts in your editor, then press Enter and action+Shift+C"),
-            Focus::ModalOperationSuccess => (format!("{} complete", self.modal_operation_kind.label()), "press (Enter)"),
-            _ => (self.modal_operation_kind.label().to_string(), "press Enter"),
+            Focus::ModalOperationConflict => (format!("{} conflict", self.modal_operation_kind.label()), "ok (enter) cancel (esc)"),
+            Focus::ModalOperationSuccess => (format!("{} complete", self.modal_operation_kind.label()), "ok (enter) cancel (esc)"),
+            _ => (self.modal_operation_kind.label().to_string(), "ok (enter) cancel (esc)"),
         };
 
         let max_modal_width = (frame.area().width as f32 * 0.8) as usize;
@@ -26,12 +29,22 @@ impl App {
         let wrapped_message = wrap_words(self.modal_operation_message.clone(), text_width);
         let mut lines = Vec::new();
         lines.push(Line::default());
+        lines.push(Line::from(Span::styled(title, Style::default().fg(if self.focus == Focus::ModalOperationConflict { self.theme.COLOR_ORANGE } else { self.theme.COLOR_TEXT }))));
         lines.push(Line::default());
         for line in wrapped_message {
             lines.push(Line::from(Span::styled(line, Style::default().fg(self.theme.COLOR_TEXT))));
         }
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled(hint, Style::default().fg(self.theme.COLOR_HIGHLIGHTED))));
+        if self.focus == Focus::ModalOperationConflict {
+            lines.push(Line::from(Span::styled("resolve conflicts in your editor, then action+Shift+C", Style::default().fg(self.theme.COLOR_TEXT))));
+            lines.push(Line::default());
+        }
+        let action_line = if self.focus == Focus::ModalOperationProgress {
+            Line::from(Span::styled(hint, Style::default().fg(self.theme.COLOR_HIGHLIGHTED)))
+        } else {
+            action_row(&[("ok", "enter"), ("cancel", "esc")], Style::default().fg(self.theme.COLOR_HIGHLIGHTED))
+        };
+        lines.push(action_line);
 
         let content_width = lines.iter().map(|line| line.width()).max().unwrap_or(0);
         let modal_width = (content_width + 10).max(34).min(max_modal_width) as u16;
@@ -44,12 +57,7 @@ impl App {
         self.theme.clear_area(modal_area, frame.buffer_mut());
 
         let border_color = if self.focus == Focus::ModalOperationConflict { self.theme.COLOR_ORANGE } else { self.theme.COLOR_BORDER };
-        let modal_block = Block::default()
-            .title(Span::styled(format!(" {title} "), Style::default().fg(if self.focus == Focus::ModalOperationConflict { self.theme.COLOR_ORANGE } else { self.theme.COLOR_TEXT })))
-            .title_alignment(Alignment::Center)
-            .borders(Borders::ALL)
-            .border_type(ratatui::widgets::BorderType::Rounded)
-            .border_style(Style::default().fg(border_color));
+        let modal_block = modal_block(border_color, self.theme.COLOR_HIGHLIGHTED);
 
         Paragraph::new(Text::from(lines)).block(modal_block).alignment(Alignment::Center).render(modal_area, frame.buffer_mut());
     }

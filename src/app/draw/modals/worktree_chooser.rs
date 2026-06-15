@@ -1,7 +1,7 @@
 use crate::{
     app::{
         app::{App, WorktreeModalAction},
-        draw::buffered::DrawTarget,
+        draw::{buffered::DrawTarget, modals::shared::modal_block},
     },
     helpers::{
         symbols::{SYM_COMMIT_BRANCH, SYM_WORKTREE, SYM_WORKTREE_DIRTY, SYM_WORKTREE_INVALID, SYM_WORKTREE_LOCKED, SYM_WORKTREE_OTHER},
@@ -12,7 +12,7 @@ use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Block, Paragraph, Widget},
 };
 
 impl App {
@@ -71,14 +71,7 @@ impl App {
         let modal_area = Rect::new(x, y, modal_width, modal_height);
         self.theme.clear_area(modal_area, frame.buffer_mut());
 
-        let padding = ratatui::widgets::Padding { left: 3, right: 3, top: 1, bottom: 1 };
-        let modal_block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(self.theme.COLOR_GREY_600))
-            .title(Span::styled(" (esc) ", Style::default().fg(self.theme.COLOR_HIGHLIGHTED)))
-            .title_alignment(Alignment::Right)
-            .padding(padding)
-            .border_type(ratatui::widgets::BorderType::Rounded);
+        let modal_block = modal_block(self.theme.COLOR_GREY_600, self.theme.COLOR_HIGHLIGHTED);
 
         let paragraph = Paragraph::new(Text::from(lines)).block(modal_block).alignment(Alignment::Center);
         paragraph.render(modal_area, frame.buffer_mut());
