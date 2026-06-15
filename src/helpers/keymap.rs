@@ -20,6 +20,10 @@ pub enum Command {
     NarrowScope,
     FocusNextPane,
     FocusPreviousPane,
+    FocusPaneLeft,
+    FocusPaneDown,
+    FocusPaneUp,
+    FocusPaneRight,
     Select,
     Back,
     Minimize,
@@ -257,6 +261,12 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
 
     // [Shift] + [Tab] = previous pane
     map.insert(KeyBinding::new(BackTab, KeyModifiers::SHIFT), Command::FocusPreviousPane);
+
+    // Directional pane focus (Vim-style direction keys)
+    map.insert(KeyBinding::new(Char('h'), KeyModifiers::CONTROL), Command::FocusPaneLeft);
+    map.insert(KeyBinding::new(Char('j'), KeyModifiers::CONTROL), Command::FocusPaneDown);
+    map.insert(KeyBinding::new(Char('k'), KeyModifiers::CONTROL), Command::FocusPaneUp);
+    map.insert(KeyBinding::new(Char('l'), KeyModifiers::CONTROL), Command::FocusPaneRight);
 
     // Pane resizing (Vim-style direction keys)
     map.insert(KeyBinding::new(Char('h'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneLeft);
@@ -784,6 +794,14 @@ fn migrate_default_bindings(maps: &mut Keymaps) -> bool {
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('r'), KeyModifiers::NONE), Command::Rebase);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('C'), KeyModifiers::SHIFT), Command::ContinueOperation);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('A'), KeyModifiers::SHIFT), Command::AbortOperation);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('h'), KeyModifiers::CONTROL), Command::FocusPaneLeft);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('h'), KeyModifiers::CONTROL), Command::FocusPaneLeft);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('j'), KeyModifiers::CONTROL), Command::FocusPaneDown);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('j'), KeyModifiers::CONTROL), Command::FocusPaneDown);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('k'), KeyModifiers::CONTROL), Command::FocusPaneUp);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('k'), KeyModifiers::CONTROL), Command::FocusPaneUp);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('l'), KeyModifiers::CONTROL), Command::FocusPaneRight);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('l'), KeyModifiers::CONTROL), Command::FocusPaneRight);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('h'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneLeft);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('h'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneLeft);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('j'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneDown);

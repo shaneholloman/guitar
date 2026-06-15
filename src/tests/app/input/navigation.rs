@@ -6,12 +6,21 @@ use crate::core::{
     reflogs::HeadReflogAliasEntry,
 };
 use crate::{
-    app::app::{SettingsSelection, SettingsSelectionKind},
-    helpers::keymap::{Command, InputMode, KeyBinding, KeymapSelection, Keymaps, load_keymaps_from_path},
+    app::{
+        app::{SettingsSelection, SettingsSelectionKind},
+        state::layout::Layout,
+    },
+    helpers::{
+        keymap::{Command, InputMode, KeyBinding, KeymapSelection, Keymaps, load_keymaps_from_path},
+        layout::LayoutConfig,
+    },
 };
 use git2::{Repository, Signature};
 use indexmap::IndexMap;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::{
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
+    layout::Rect,
+};
 use std::{
     fs,
     path::Path,
@@ -111,6 +120,125 @@ fn visible_branches(app: &App) -> Vec<String> {
     let mut branches: Vec<String> = app.branches.visible_branch_names.iter().cloned().collect();
     branches.sort();
     branches
+}
+
+fn directional_focus_app() -> App {
+    App {
+        viewport: Viewport::Graph,
+        focus: Focus::Viewport,
+        layout: Layout::default(),
+        layout_config: LayoutConfig { is_branches: false, is_tags: false, is_stashes: false, is_reflogs: false, is_worktrees: false, is_status: false, is_inspector: false, ..Default::default() },
+        ..Default::default()
+    }
+}
+
+#[test]
+fn directional_focus_moves_left_and_right_between_side_panes_and_viewport() {
+    let mut app = directional_focus_app();
+    app.layout_config.is_branches = true;
+    app.layout.pane_branches = Rect::new(0, 0, 20, 20);
+    app.layout.graph = Rect::new(20, 0, 40, 20);
+
+    app.on_focus_pane_left();
+    assert_eq!(app.focus, Focus::Branches);
+
+    app.on_focus_pane_right();
+    assert_eq!(app.focus, Focus::Viewport);
+}
+
+#[test]
+fn directional_focus_moves_up_and_down_inside_left_stack() {
+    let mut app = directional_focus_app();
+    app.layout_config.is_branches = true;
+    app.layout_config.is_tags = true;
+    app.layout_config.is_stashes = true;
+    app.focus = Focus::Tags;
+    app.layout.pane_branches = Rect::new(0, 0, 20, 5);
+    app.layout.pane_tags = Rect::new(0, 5, 20, 5);
+    app.layout.pane_stashes = Rect::new(0, 10, 20, 5);
+    app.layout.graph = Rect::new(20, 0, 40, 15);
+
+    app.on_focus_pane_up();
+    assert_eq!(app.focus, Focus::Branches);
+
+    app.focus = Focus::Tags;
+    app.on_focus_pane_down();
+    assert_eq!(app.focus, Focus::Stashes);
+}
+
+#[test]
+fn directional_focus_moves_up_and_down_inside_right_stack() {
+    let mut app = directional_focus_app();
+    app.layout_config.is_status = true;
+    app.layout_config.is_inspector = true;
+    app.uncommitted.has_conflicts = true;
+    app.focus = Focus::StatusTop;
+    app.layout.graph = Rect::new(20, 0, 40, 20);
+    app.layout.pane_inspector = Rect::new(60, 0, 20, 6);
+    app.layout.pane_status_top = Rect::new(60, 6, 20, 7);
+    app.layout.pane_status_bottom = Rect::new(60, 13, 20, 7);
+
+    app.on_focus_pane_up();
+    assert_eq!(app.focus, Focus::Inspector);
+
+    app.focus = Focus::StatusTop;
+    app.on_focus_pane_down();
+    assert_eq!(app.focus, Focus::StatusBottom);
+}
+
+#[test]
+fn directional_focus_chooses_nearest_perpendicular_center() {
+    let mut app = directional_focus_app();
+    app.layout_config.is_status = true;
+    app.layout_config.is_inspector = true;
+    app.graph_selected = 1;
+    app.layout.graph = Rect::new(20, 0, 40, 20);
+    app.layout.pane_inspector = Rect::new(60, 0, 20, 6);
+    app.layout.pane_status_top = Rect::new(60, 6, 20, 7);
+
+    app.on_focus_pane_right();
+
+    assert_eq!(app.focus, Focus::StatusTop);
+}
+
+#[test]
+fn directional_focus_noops_for_strict_diagonal_candidate() {
+    let mut app = directional_focus_app();
+    app.layout_config.is_branches = true;
+    app.focus = Focus::Branches;
+    app.layout.pane_branches = Rect::new(0, 0, 10, 5);
+    app.layout.graph = Rect::new(20, 10, 40, 10);
+
+    app.on_focus_pane_right();
+
+    assert_eq!(app.focus, Focus::Branches);
+}
+
+#[test]
+fn directional_focus_noops_in_settings_and_without_candidate() {
+    let mut settings = directional_focus_app();
+    settings.viewport = Viewport::Settings;
+    settings.layout_config.is_branches = true;
+    settings.layout.pane_branches = Rect::new(0, 0, 20, 20);
+    settings.layout.graph = Rect::new(20, 0, 40, 20);
+
+    settings.on_focus_pane_left();
+    assert_eq!(settings.focus, Focus::Viewport);
+
+    let mut splash = directional_focus_app();
+    splash.viewport = Viewport::Splash;
+    splash.layout_config.is_branches = true;
+    splash.layout.pane_branches = Rect::new(0, 0, 20, 20);
+    splash.layout.graph = Rect::new(20, 0, 40, 20);
+
+    splash.on_focus_pane_left();
+    assert_eq!(splash.focus, Focus::Viewport);
+
+    let mut solo = directional_focus_app();
+    solo.layout.graph = Rect::new(20, 0, 40, 20);
+
+    solo.on_focus_pane_left();
+    assert_eq!(solo.focus, Focus::Viewport);
 }
 
 #[test]

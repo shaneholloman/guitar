@@ -109,6 +109,21 @@ fn defaults_include_keyboard_resize_bindings() {
 }
 
 #[test]
+fn defaults_include_directional_focus_bindings() {
+    let maps = default_keymaps();
+    let normal = maps.get(&InputMode::Normal).unwrap();
+    let action = maps.get(&InputMode::Action).unwrap();
+    let mods = KeyModifiers::CONTROL;
+
+    for mode_map in [normal, action] {
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('h'), mods)), Some(&Command::FocusPaneLeft));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('j'), mods)), Some(&Command::FocusPaneDown));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('k'), mods)), Some(&Command::FocusPaneUp));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('l'), mods)), Some(&Command::FocusPaneRight));
+    }
+}
+
+#[test]
 fn migration_adds_keyboard_resize_defaults_without_rewriting_existing_keys() {
     let mods = KeyModifiers::CONTROL | KeyModifiers::ALT;
     let mut maps = IndexMap::new();
@@ -134,6 +149,34 @@ fn migration_adds_keyboard_resize_defaults_without_rewriting_existing_keys() {
     assert_eq!(action.get(&KeyBinding::new(Char('j'), mods)), Some(&Command::Drop));
     assert_eq!(action.get(&KeyBinding::new(Char('k'), mods)), Some(&Command::ResizePaneUp));
     assert_eq!(action.get(&KeyBinding::new(Char('l'), mods)), Some(&Command::ResizePaneRight));
+}
+
+#[test]
+fn migration_adds_directional_focus_defaults_without_rewriting_existing_keys() {
+    let mods = KeyModifiers::CONTROL;
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(Char('h'), mods), Command::Reload);
+    normal.insert(KeyBinding::new(F(3), KeyModifiers::NONE), Command::FocusPaneRight);
+    maps.insert(InputMode::Normal, normal);
+    let mut action = IndexMap::new();
+    action.insert(KeyBinding::new(Char('j'), mods), Command::Drop);
+    maps.insert(InputMode::Action, action);
+
+    assert!(migrate_default_bindings(&mut maps));
+
+    let normal = maps.get(&InputMode::Normal).unwrap();
+    let action = maps.get(&InputMode::Action).unwrap();
+
+    assert_eq!(normal.get(&KeyBinding::new(Char('h'), mods)), Some(&Command::Reload));
+    assert_eq!(normal.get(&KeyBinding::new(Char('j'), mods)), Some(&Command::FocusPaneDown));
+    assert_eq!(normal.get(&KeyBinding::new(Char('k'), mods)), Some(&Command::FocusPaneUp));
+    assert_eq!(normal.get(&KeyBinding::new(Char('l'), mods)), None);
+    assert_eq!(normal.get(&KeyBinding::new(F(3), KeyModifiers::NONE)), Some(&Command::FocusPaneRight));
+    assert_eq!(action.get(&KeyBinding::new(Char('h'), mods)), Some(&Command::FocusPaneLeft));
+    assert_eq!(action.get(&KeyBinding::new(Char('j'), mods)), Some(&Command::Drop));
+    assert_eq!(action.get(&KeyBinding::new(Char('k'), mods)), Some(&Command::FocusPaneUp));
+    assert_eq!(action.get(&KeyBinding::new(Char('l'), mods)), Some(&Command::FocusPaneRight));
 }
 
 #[test]

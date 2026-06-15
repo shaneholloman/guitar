@@ -14,6 +14,15 @@ use crate::{
         palette::Theme,
     },
 };
+use ratatui::layout::Rect;
+
+#[derive(Clone, Copy)]
+enum PaneFocusDirection {
+    Left,
+    Down,
+    Up,
+    Right,
+}
 
 impl App {
     fn last_index(len: usize) -> usize {
@@ -729,6 +738,129 @@ impl App {
         }
         let idx = active.iter().position(|&f| f == self.focus).unwrap_or(0);
         self.focus = active[(idx + active.len() - 1) % active.len()];
+    }
+
+    pub fn on_focus_pane_left(&mut self) {
+        self.focus_pane_in_direction(PaneFocusDirection::Left);
+    }
+
+    pub fn on_focus_pane_down(&mut self) {
+        self.focus_pane_in_direction(PaneFocusDirection::Down);
+    }
+
+    pub fn on_focus_pane_up(&mut self) {
+        self.focus_pane_in_direction(PaneFocusDirection::Up);
+    }
+
+    pub fn on_focus_pane_right(&mut self) {
+        self.focus_pane_in_direction(PaneFocusDirection::Right);
+    }
+
+    fn focus_pane_in_direction(&mut self, direction: PaneFocusDirection) {
+        let active = self.get_focusable_panes();
+        let Some(current_order) = active.iter().position(|&focus| focus == self.focus) else {
+            return;
+        };
+
+        let current_rect = self.focus_pane_rect(self.focus);
+        if Self::is_empty_rect(current_rect) {
+            return;
+        }
+
+        let target = active
+            .iter()
+            .enumerate()
+            .filter_map(|(order, &focus)| {
+                if order == current_order {
+                    return None;
+                }
+
+                let rect = self.focus_pane_rect(focus);
+                let (gap, perpendicular_distance) = Self::pane_focus_score(current_rect, rect, direction)?;
+                Some((focus, gap, perpendicular_distance, order))
+            })
+            .min_by_key(|&(_, gap, perpendicular_distance, order)| (gap, perpendicular_distance, order))
+            .map(|(focus, _, _, _)| focus);
+
+        if let Some(focus) = target {
+            self.focus = focus;
+        }
+    }
+
+    fn focus_pane_rect(&self, focus: Focus) -> Rect {
+        match focus {
+            Focus::Viewport => self.layout.graph,
+            Focus::Inspector => self.layout.pane_inspector,
+            Focus::StatusTop => self.layout.pane_status_top,
+            Focus::StatusBottom => self.layout.pane_status_bottom,
+            Focus::Branches => self.layout.pane_branches,
+            Focus::Tags => self.layout.pane_tags,
+            Focus::Stashes => self.layout.pane_stashes,
+            Focus::Reflogs => self.layout.pane_reflogs,
+            Focus::Worktrees => self.layout.pane_worktrees,
+            _ => Rect::default(),
+        }
+    }
+
+    fn is_empty_rect(rect: Rect) -> bool {
+        rect.width == 0 || rect.height == 0
+    }
+
+    fn rect_right(rect: Rect) -> u16 {
+        rect.x.saturating_add(rect.width)
+    }
+
+    fn rect_bottom(rect: Rect) -> u16 {
+        rect.y.saturating_add(rect.height)
+    }
+
+    fn rect_center_x2(rect: Rect) -> i32 {
+        rect.x as i32 * 2 + rect.width as i32
+    }
+
+    fn rect_center_y2(rect: Rect) -> i32 {
+        rect.y as i32 * 2 + rect.height as i32
+    }
+
+    fn rects_overlap_horizontally(first: Rect, second: Rect) -> bool {
+        first.x < Self::rect_right(second) && second.x < Self::rect_right(first)
+    }
+
+    fn rects_overlap_vertically(first: Rect, second: Rect) -> bool {
+        first.y < Self::rect_bottom(second) && second.y < Self::rect_bottom(first)
+    }
+
+    fn pane_focus_score(current: Rect, candidate: Rect, direction: PaneFocusDirection) -> Option<(u16, u32)> {
+        if Self::is_empty_rect(candidate) {
+            return None;
+        }
+
+        match direction {
+            PaneFocusDirection::Left => {
+                if Self::rect_right(candidate) > current.x || !Self::rects_overlap_vertically(current, candidate) {
+                    return None;
+                }
+                Some((current.x.saturating_sub(Self::rect_right(candidate)), Self::rect_center_y2(current).abs_diff(Self::rect_center_y2(candidate))))
+            },
+            PaneFocusDirection::Right => {
+                if Self::rect_right(current) > candidate.x || !Self::rects_overlap_vertically(current, candidate) {
+                    return None;
+                }
+                Some((candidate.x.saturating_sub(Self::rect_right(current)), Self::rect_center_y2(current).abs_diff(Self::rect_center_y2(candidate))))
+            },
+            PaneFocusDirection::Up => {
+                if Self::rect_bottom(candidate) > current.y || !Self::rects_overlap_horizontally(current, candidate) {
+                    return None;
+                }
+                Some((current.y.saturating_sub(Self::rect_bottom(candidate)), Self::rect_center_x2(current).abs_diff(Self::rect_center_x2(candidate))))
+            },
+            PaneFocusDirection::Down => {
+                if Self::rect_bottom(current) > candidate.y || !Self::rects_overlap_horizontally(current, candidate) {
+                    return None;
+                }
+                Some((candidate.y.saturating_sub(Self::rect_bottom(current)), Self::rect_center_x2(current).abs_diff(Self::rect_center_x2(candidate))))
+            },
+        }
     }
 
     pub fn on_scroll_page_up(&mut self) {
