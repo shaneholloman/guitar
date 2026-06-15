@@ -46,6 +46,49 @@ fn defaults_include_numeric_ui_toggles() {
 }
 
 #[test]
+fn defaults_include_keyboard_resize_bindings() {
+    let maps = default_keymaps();
+    let normal = maps.get(&InputMode::Normal).unwrap();
+    let action = maps.get(&InputMode::Action).unwrap();
+    let mods = KeyModifiers::CONTROL | KeyModifiers::ALT;
+
+    for mode_map in [normal, action] {
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('h'), mods)), Some(&Command::ResizePaneLeft));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('j'), mods)), Some(&Command::ResizePaneDown));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('k'), mods)), Some(&Command::ResizePaneUp));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('l'), mods)), Some(&Command::ResizePaneRight));
+    }
+}
+
+#[test]
+fn migration_adds_keyboard_resize_defaults_without_rewriting_existing_keys() {
+    let mods = KeyModifiers::CONTROL | KeyModifiers::ALT;
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(Char('h'), mods), Command::Reload);
+    normal.insert(KeyBinding::new(F(3), KeyModifiers::NONE), Command::ResizePaneRight);
+    maps.insert(InputMode::Normal, normal);
+    let mut action = IndexMap::new();
+    action.insert(KeyBinding::new(Char('j'), mods), Command::Drop);
+    maps.insert(InputMode::Action, action);
+
+    assert!(migrate_default_bindings(&mut maps));
+
+    let normal = maps.get(&InputMode::Normal).unwrap();
+    let action = maps.get(&InputMode::Action).unwrap();
+
+    assert_eq!(normal.get(&KeyBinding::new(Char('h'), mods)), Some(&Command::Reload));
+    assert_eq!(normal.get(&KeyBinding::new(Char('j'), mods)), Some(&Command::ResizePaneDown));
+    assert_eq!(normal.get(&KeyBinding::new(Char('k'), mods)), Some(&Command::ResizePaneUp));
+    assert_eq!(normal.get(&KeyBinding::new(Char('l'), mods)), None);
+    assert_eq!(normal.get(&KeyBinding::new(F(3), KeyModifiers::NONE)), Some(&Command::ResizePaneRight));
+    assert_eq!(action.get(&KeyBinding::new(Char('h'), mods)), Some(&Command::ResizePaneLeft));
+    assert_eq!(action.get(&KeyBinding::new(Char('j'), mods)), Some(&Command::Drop));
+    assert_eq!(action.get(&KeyBinding::new(Char('k'), mods)), Some(&Command::ResizePaneUp));
+    assert_eq!(action.get(&KeyBinding::new(Char('l'), mods)), Some(&Command::ResizePaneRight));
+}
+
+#[test]
 fn migration_remaps_old_numeric_ui_defaults() {
     let mut maps = IndexMap::new();
 

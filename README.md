@@ -330,6 +330,18 @@ All scroll commands act on the focused pane or viewport:
 
 In full viewer mode, `Ctrl+d` and `Ctrl+u` jump between diff hunk edges. In hunk and split viewer modes, they scroll by half pages.
 
+### Resizing
+
+`Ctrl+Alt+h`, `Ctrl+Alt+j`, `Ctrl+Alt+k`, and `Ctrl+Alt+l` resize the focused pane one cell or row at a time.
+
+- Left panes: `Ctrl+Alt+l` widens the left column; `Ctrl+Alt+h` narrows it.
+- Right panes: `Ctrl+Alt+h` widens the right column; `Ctrl+Alt+l` narrows it.
+- Graph/viewer focus: `Ctrl+Alt+h` grows the center left by shrinking the left pane; `Ctrl+Alt+l` grows the center right by shrinking the right pane.
+- Split diff viewer: `Ctrl+Alt+h` grows the left split; `Ctrl+Alt+l` grows the right split.
+- Stacked panes: `Ctrl+Alt+k` grows upward when possible; `Ctrl+Alt+j` grows downward when possible.
+
+Keyboard resize changes are saved to `layout.json`.
+
 ### Graph Jumps
 
 - `{`: jump to the previous visible branch-bearing commit.
@@ -411,6 +423,10 @@ Defaults are written to `keymap.json` on first run. User-edited keymaps can diff
 | Back | `Esc` |
 | Focus Previous Pane | `Ctrl+p`, `Shift+BackTab` |
 | Focus Next Pane | `Ctrl+n`, `Tab` |
+| Resize Pane Left | `Ctrl+Alt+h` |
+| Resize Pane Down | `Ctrl+Alt+j` |
+| Resize Pane Up | `Ctrl+Alt+k` |
+| Resize Pane Right | `Ctrl+Alt+l` |
 | Scroll Down | `j`, `Down` |
 | Scroll Up | `k`, `Up` |
 | Scroll Down Half | `Ctrl+Alt+d` |
@@ -929,7 +945,7 @@ Command
 Meta
 ```
 
-Supported commands are the command names listed in the keymap tables, without spaces, for example `ToggleSplitDiffMode`, `CreateWorktree`, `ContinueOperation`, and `AbortOperation`.
+Supported commands are the command names listed in the keymap tables, without spaces, for example `ToggleSplitDiffMode`, `ResizePaneRight`, `CreateWorktree`, `ContinueOperation`, and `AbortOperation`.
 
 When an old keymap is loaded, `guitar` attempts small migrations for newly added default bindings.
 

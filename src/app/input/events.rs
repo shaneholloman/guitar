@@ -1,5 +1,8 @@
 use crate::{
-    app::app::{App, Direction, Focus, LayoutDrag, MouseSelectionTarget, SettingsSelectionKind, Viewport},
+    app::{
+        app::{App, Direction, Focus, LayoutDrag, MouseSelectionTarget, SettingsSelectionKind, Viewport},
+        state::defaults::ViewerMode,
+    },
     helpers::layout::{LAYOUT_HEIGHT_MIN_STACKED_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_MIN_SIDE_PANE, LAYOUT_WIDTH_MIN_SPLIT_PANE},
 };
 use ratatui::{
@@ -19,6 +22,27 @@ enum GraphPaneClickKind {
     Tags,
     Stashes,
     Reflogs,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ResizeDirection {
+    Left,
+    Down,
+    Up,
+    Right,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StackPane {
+    Branches,
+    Tags,
+    Stashes,
+    Reflogs,
+    Worktrees,
+    Inspector,
+    Status,
+    StatusTop,
+    StatusBottom,
 }
 
 impl App {
@@ -572,6 +596,270 @@ impl App {
         rect.width > 0 && rect.height > 0 && column >= rect.x && column < rect.x.saturating_add(rect.width) && row >= rect.y && row < rect.y.saturating_add(rect.height)
     }
 
+    pub fn on_resize_pane_left(&mut self) {
+        self.resize_pane_keyboard(ResizeDirection::Left);
+    }
+
+    pub fn on_resize_pane_down(&mut self) {
+        self.resize_pane_keyboard(ResizeDirection::Down);
+    }
+
+    pub fn on_resize_pane_up(&mut self) {
+        self.resize_pane_keyboard(ResizeDirection::Up);
+    }
+
+    pub fn on_resize_pane_right(&mut self) {
+        self.resize_pane_keyboard(ResizeDirection::Right);
+    }
+
+    fn resize_pane_keyboard(&mut self, direction: ResizeDirection) {
+        if matches!(self.viewport, Viewport::Splash | Viewport::Settings) || self.is_modal_focus() {
+            return;
+        }
+
+        let changed = match direction {
+            ResizeDirection::Left => {
+                if self.resize_focused_viewer_split(1) {
+                    true
+                } else if self.layout_config.is_zen {
+                    false
+                } else {
+                    match self.focus {
+                        Focus::Branches | Focus::Tags | Focus::Stashes | Focus::Reflogs | Focus::Worktrees | Focus::Viewport => self.resize_left_column_by(-1),
+                        Focus::Inspector | Focus::StatusTop | Focus::StatusBottom => self.resize_right_column_by(1),
+                        _ => false,
+                    }
+                }
+            },
+            ResizeDirection::Right => {
+                if self.resize_focused_viewer_split(-1) {
+                    true
+                } else if self.layout_config.is_zen {
+                    false
+                } else {
+                    match self.focus {
+                        Focus::Branches | Focus::Tags | Focus::Stashes | Focus::Reflogs | Focus::Worktrees => self.resize_left_column_by(1),
+                        Focus::Viewport | Focus::Inspector | Focus::StatusTop | Focus::StatusBottom => self.resize_right_column_by(-1),
+                        _ => false,
+                    }
+                }
+            },
+            ResizeDirection::Up => {
+                if self.layout_config.is_zen {
+                    false
+                } else {
+                    self.resize_stack_pane(Direction::Up)
+                }
+            },
+            ResizeDirection::Down => {
+                if self.layout_config.is_zen {
+                    false
+                } else {
+                    self.resize_stack_pane(Direction::Down)
+                }
+            },
+        };
+
+        if changed {
+            self.save_layout();
+            self.mark_viewer_layout_dirty();
+        }
+    }
+
+    fn resize_focused_viewer_split(&mut self, delta_left: i16) -> bool {
+        if self.focus != Focus::Viewport || self.viewport != Viewport::Viewer || self.viewer_mode != ViewerMode::Split {
+            return false;
+        }
+
+        let before = (self.layout_config.weight_viewer_split_left, self.layout_config.weight_viewer_split_right);
+        let Some((left, right)) = Self::resized_horizontal_pair_weights_by_delta(
+            delta_left,
+            self.layout.viewer_split_left,
+            self.layout.viewer_split_right,
+            self.layout_config.weight_viewer_split_left,
+            self.layout_config.weight_viewer_split_right,
+        ) else {
+            return false;
+        };
+
+        self.layout_config.weight_viewer_split_left = left;
+        self.layout_config.weight_viewer_split_right = right;
+        before != (left, right)
+    }
+
+    fn resize_left_column_by(&mut self, delta: i16) -> bool {
+        if self.layout.pane_left.width == 0 {
+            return false;
+        }
+
+        let total_width = self.layout.app.width;
+        let other_width = self.layout.pane_right.width;
+        let max_width = total_width.saturating_sub(other_width).saturating_sub(LAYOUT_WIDTH_MIN_CENTER);
+        if max_width < LAYOUT_WIDTH_MIN_SIDE_PANE {
+            return false;
+        }
+
+        let current = self.layout_config.width_left_pane.clamp(LAYOUT_WIDTH_MIN_SIDE_PANE, max_width);
+        let width = Self::u16_add_signed(current, delta).clamp(LAYOUT_WIDTH_MIN_SIDE_PANE, max_width);
+        let changed = self.layout_config.width_left_pane != width;
+        self.layout_config.width_left_pane = width;
+        changed
+    }
+
+    fn resize_right_column_by(&mut self, delta: i16) -> bool {
+        if self.layout.pane_right.width == 0 {
+            return false;
+        }
+
+        let total_width = self.layout.app.width;
+        let other_width = self.layout.pane_left.width;
+        let max_width = total_width.saturating_sub(other_width).saturating_sub(LAYOUT_WIDTH_MIN_CENTER);
+        if max_width < LAYOUT_WIDTH_MIN_SIDE_PANE {
+            return false;
+        }
+
+        let current = self.layout_config.width_right_pane.clamp(LAYOUT_WIDTH_MIN_SIDE_PANE, max_width);
+        let width = Self::u16_add_signed(current, delta).clamp(LAYOUT_WIDTH_MIN_SIDE_PANE, max_width);
+        let changed = self.layout_config.width_right_pane != width;
+        self.layout_config.width_right_pane = width;
+        changed
+    }
+
+    fn resize_stack_pane(&mut self, direction: Direction) -> bool {
+        let Some(focused) = self.focus_stack_pane() else {
+            return false;
+        };
+        if !matches!(focused, StackPane::Branches | StackPane::Tags | StackPane::Stashes | StackPane::Reflogs | StackPane::Worktrees) {
+            return self.resize_right_stack_pane(focused, direction);
+        }
+
+        let stack = self.active_left_stack();
+        if stack.len() < 2 {
+            return false;
+        }
+
+        let Some(index) = stack.iter().position(|&pane| pane == focused) else {
+            return false;
+        };
+
+        match direction {
+            Direction::Up if index > 0 => self.adjust_stack_pair(stack[index - 1], stack[index], -1),
+            Direction::Up if index + 1 < stack.len() => self.adjust_stack_pair(stack[index], stack[index + 1], -1),
+            Direction::Down if index + 1 < stack.len() => self.adjust_stack_pair(stack[index], stack[index + 1], 1),
+            Direction::Down if index > 0 => self.adjust_stack_pair(stack[index - 1], stack[index], 1),
+            _ => false,
+        }
+    }
+
+    fn resize_right_stack_pane(&mut self, focused: StackPane, direction: Direction) -> bool {
+        let has_inspector = self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts);
+        let has_status = self.layout_config.is_status;
+        let has_status_bottom = has_status && self.graph_selected == 0;
+
+        match (focused, direction) {
+            (StackPane::Inspector, Direction::Up) if has_inspector && has_status => self.adjust_stack_pair(StackPane::Inspector, StackPane::Status, -1),
+            (StackPane::Inspector, Direction::Down) if has_inspector && has_status => self.adjust_stack_pair(StackPane::Inspector, StackPane::Status, 1),
+            (StackPane::StatusTop, Direction::Up) if has_status && has_inspector => self.adjust_stack_pair(StackPane::Inspector, StackPane::Status, -1),
+            (StackPane::StatusTop, Direction::Up) if has_status && has_status_bottom => self.adjust_stack_pair(StackPane::StatusTop, StackPane::StatusBottom, -1),
+            (StackPane::StatusTop, Direction::Down) if has_status && has_status_bottom => self.adjust_stack_pair(StackPane::StatusTop, StackPane::StatusBottom, 1),
+            (StackPane::StatusTop, Direction::Down) if has_status && has_inspector => self.adjust_stack_pair(StackPane::Inspector, StackPane::Status, 1),
+            (StackPane::StatusBottom, Direction::Up) if has_status_bottom => self.adjust_stack_pair(StackPane::StatusTop, StackPane::StatusBottom, -1),
+            (StackPane::StatusBottom, Direction::Down) if has_status_bottom => self.adjust_stack_pair(StackPane::StatusTop, StackPane::StatusBottom, 1),
+            _ => false,
+        }
+    }
+
+    fn adjust_stack_pair(&mut self, first: StackPane, second: StackPane, delta_first: i16) -> bool {
+        let before = (self.stack_pane_weight(first), self.stack_pane_weight(second));
+        let Some((first_weight, second_weight)) = Self::resized_pair_weights_by_delta(delta_first, self.stack_pane_rect(first), self.stack_pane_rect(second), before.0, before.1) else {
+            return false;
+        };
+
+        self.set_stack_pane_weight(first, first_weight);
+        self.set_stack_pane_weight(second, second_weight);
+        before != (first_weight, second_weight)
+    }
+
+    fn active_left_stack(&self) -> Vec<StackPane> {
+        let mut stack = Vec::new();
+        if self.layout_config.is_branches {
+            stack.push(StackPane::Branches);
+        }
+        if self.layout_config.is_tags {
+            stack.push(StackPane::Tags);
+        }
+        if self.layout_config.is_stashes {
+            stack.push(StackPane::Stashes);
+        }
+        if self.layout_config.is_reflogs {
+            stack.push(StackPane::Reflogs);
+        }
+        if self.layout_config.is_worktrees {
+            stack.push(StackPane::Worktrees);
+        }
+        stack
+    }
+
+    fn focus_stack_pane(&self) -> Option<StackPane> {
+        match self.focus {
+            Focus::Branches => Some(StackPane::Branches),
+            Focus::Tags => Some(StackPane::Tags),
+            Focus::Stashes => Some(StackPane::Stashes),
+            Focus::Reflogs => Some(StackPane::Reflogs),
+            Focus::Worktrees => Some(StackPane::Worktrees),
+            Focus::Inspector => Some(StackPane::Inspector),
+            Focus::StatusTop => Some(StackPane::StatusTop),
+            Focus::StatusBottom => Some(StackPane::StatusBottom),
+            _ => None,
+        }
+    }
+
+    fn stack_pane_rect(&self, pane: StackPane) -> Rect {
+        match pane {
+            StackPane::Branches => self.layout.pane_branches,
+            StackPane::Tags => self.layout.pane_tags,
+            StackPane::Stashes => self.layout.pane_stashes,
+            StackPane::Reflogs => self.layout.pane_reflogs,
+            StackPane::Worktrees => self.layout.pane_worktrees,
+            StackPane::Inspector => self.layout.pane_inspector,
+            StackPane::Status => self.layout.pane_status,
+            StackPane::StatusTop => self.layout.pane_status_top,
+            StackPane::StatusBottom => self.layout.pane_status_bottom,
+        }
+    }
+
+    fn stack_pane_weight(&self, pane: StackPane) -> u16 {
+        match pane {
+            StackPane::Branches => self.layout_config.weight_branches,
+            StackPane::Tags => self.layout_config.weight_tags,
+            StackPane::Stashes => self.layout_config.weight_stashes,
+            StackPane::Reflogs => self.layout_config.weight_reflogs,
+            StackPane::Worktrees => self.layout_config.weight_worktrees,
+            StackPane::Inspector => self.layout_config.weight_inspector,
+            StackPane::Status => self.layout_config.weight_status,
+            StackPane::StatusTop => self.layout_config.weight_status_top,
+            StackPane::StatusBottom => self.layout_config.weight_status_bottom,
+        }
+    }
+
+    fn set_stack_pane_weight(&mut self, pane: StackPane, weight: u16) {
+        match pane {
+            StackPane::Branches => self.layout_config.weight_branches = weight,
+            StackPane::Tags => self.layout_config.weight_tags = weight,
+            StackPane::Stashes => self.layout_config.weight_stashes = weight,
+            StackPane::Reflogs => self.layout_config.weight_reflogs = weight,
+            StackPane::Worktrees => self.layout_config.weight_worktrees = weight,
+            StackPane::Inspector => self.layout_config.weight_inspector = weight,
+            StackPane::Status => self.layout_config.weight_status = weight,
+            StackPane::StatusTop => self.layout_config.weight_status_top = weight,
+            StackPane::StatusBottom => self.layout_config.weight_status_bottom = weight,
+        }
+    }
+
+    fn u16_add_signed(value: u16, delta: i16) -> u16 {
+        if delta >= 0 { value.saturating_add(delta as u16) } else { value.saturating_sub((-delta) as u16) }
+    }
+
     fn apply_layout_drag(&mut self, drag: LayoutDrag, column: u16, row: u16) {
         match drag {
             LayoutDrag::LeftPane => self.resize_left_pane(column),
@@ -706,6 +994,16 @@ impl App {
     }
 
     fn resized_pair_weights(row: u16, first: Rect, second: Rect, first_weight: u16, second_weight: u16) -> Option<(u16, u16)> {
+        let first_height = row.saturating_sub(first.y).saturating_add(1);
+        Self::resized_pair_weights_for_first_height(first_height, first, second, first_weight, second_weight)
+    }
+
+    fn resized_pair_weights_by_delta(delta_first: i16, first: Rect, second: Rect, first_weight: u16, second_weight: u16) -> Option<(u16, u16)> {
+        let first_height = Self::u16_add_signed(first.height, delta_first);
+        Self::resized_pair_weights_for_first_height(first_height, first, second, first_weight, second_weight)
+    }
+
+    fn resized_pair_weights_for_first_height(first_height: u16, first: Rect, second: Rect, first_weight: u16, second_weight: u16) -> Option<(u16, u16)> {
         if first.height == 0 || second.height == 0 {
             return None;
         }
@@ -719,7 +1017,7 @@ impl App {
 
         let min_height = LAYOUT_HEIGHT_MIN_STACKED_PANE.min(pair_height / 2).max(1);
         let max_first_height = pair_height.saturating_sub(min_height);
-        let first_height = row.saturating_sub(pair_top).saturating_add(1).clamp(min_height, max_first_height);
+        let first_height = first_height.clamp(min_height, max_first_height);
         let total_weight = first_weight.max(1).saturating_add(second_weight.max(1));
         if total_weight < 2 {
             return None;
@@ -730,6 +1028,16 @@ impl App {
     }
 
     fn resized_horizontal_pair_weights(column: u16, first: Rect, second: Rect, first_weight: u16, second_weight: u16) -> Option<(u16, u16)> {
+        let first_width = column.saturating_sub(first.x);
+        Self::resized_horizontal_pair_weights_for_first_width(first_width, first, second, first_weight, second_weight)
+    }
+
+    fn resized_horizontal_pair_weights_by_delta(delta_first: i16, first: Rect, second: Rect, first_weight: u16, second_weight: u16) -> Option<(u16, u16)> {
+        let first_width = Self::u16_add_signed(first.width, delta_first);
+        Self::resized_horizontal_pair_weights_for_first_width(first_width, first, second, first_weight, second_weight)
+    }
+
+    fn resized_horizontal_pair_weights_for_first_width(first_width: u16, first: Rect, second: Rect, first_weight: u16, second_weight: u16) -> Option<(u16, u16)> {
         if first.width == 0 || second.width == 0 {
             return None;
         }
@@ -743,7 +1051,7 @@ impl App {
 
         let min_width = LAYOUT_WIDTH_MIN_SPLIT_PANE.min(pair_width / 2).max(1);
         let max_first_width = pair_width.saturating_sub(min_width);
-        let first_width = column.saturating_sub(pair_left).clamp(min_width, max_first_width);
+        let first_width = first_width.clamp(min_width, max_first_width);
         let total_weight = first_weight.max(1).saturating_add(second_weight.max(1));
         if total_weight < 2 {
             return None;

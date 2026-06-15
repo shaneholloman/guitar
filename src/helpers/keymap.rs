@@ -24,6 +24,10 @@ pub enum Command {
     Back,
     Minimize,
     ResetLayout,
+    ResizePaneLeft,
+    ResizePaneDown,
+    ResizePaneUp,
+    ResizePaneRight,
     ToggleZenMode,
     ToggleBranches,
     ToggleTags,
@@ -250,6 +254,12 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
 
     // [Shift] + [Tab] = previous pane
     map.insert(KeyBinding::new(BackTab, KeyModifiers::SHIFT), Command::FocusPreviousPane);
+
+    // Pane resizing (Vim-style direction keys)
+    map.insert(KeyBinding::new(Char('h'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneLeft);
+    map.insert(KeyBinding::new(Char('j'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneDown);
+    map.insert(KeyBinding::new(Char('k'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneUp);
+    map.insert(KeyBinding::new(Char('l'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneRight);
 
     // Vertical navigation (Vim-style)
 
@@ -758,6 +768,14 @@ fn migrate_default_bindings(maps: &mut Keymaps) -> bool {
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('r'), KeyModifiers::NONE), Command::Rebase);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('C'), KeyModifiers::SHIFT), Command::ContinueOperation);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('A'), KeyModifiers::SHIFT), Command::AbortOperation);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('h'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneLeft);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('h'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneLeft);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('j'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneDown);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('j'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneDown);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('k'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneUp);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('k'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneUp);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('l'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneRight);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('l'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneRight);
     changed
 }
 

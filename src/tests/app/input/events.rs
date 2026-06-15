@@ -448,3 +448,191 @@ fn double_click_on_graph_and_splash_only_selects() {
     assert_eq!(splash.viewport, Viewport::Splash);
     assert_eq!(splash.path, None);
 }
+
+fn resizable_columns_app() -> App {
+    let mut app = graph_app();
+    app.layout.app = Rect::new(0, 0, 100, 30);
+    app.layout.pane_left = Rect::new(0, 0, 30, 30);
+    app.layout.pane_right = Rect::new(70, 0, 30, 30);
+    app.layout_config.width_left_pane = 30;
+    app.layout_config.width_right_pane = 30;
+    app.layout_config.is_branches = true;
+    app.layout_config.is_status = true;
+    app
+}
+
+#[test]
+fn keyboard_resize_updates_side_columns_for_focused_panes_and_viewport() {
+    let mut app = resizable_columns_app();
+
+    app.focus = Focus::Branches;
+    app.on_resize_pane_right();
+    assert_eq!(app.layout_config.width_left_pane, 31);
+    app.on_resize_pane_left();
+    assert_eq!(app.layout_config.width_left_pane, 30);
+
+    app.focus = Focus::StatusTop;
+    app.on_resize_pane_left();
+    assert_eq!(app.layout_config.width_right_pane, 31);
+    app.on_resize_pane_right();
+    assert_eq!(app.layout_config.width_right_pane, 30);
+
+    app.focus = Focus::Viewport;
+    app.on_resize_pane_left();
+    assert_eq!(app.layout_config.width_left_pane, 29);
+    app.on_resize_pane_right();
+    assert_eq!(app.layout_config.width_right_pane, 29);
+}
+
+#[test]
+fn keyboard_resize_clamps_side_columns() {
+    let mut app = resizable_columns_app();
+    app.focus = Focus::Branches;
+    app.layout.app = Rect::new(0, 0, 70, 30);
+    app.layout.pane_right = Rect::new(36, 0, 34, 30);
+    app.layout_config.width_left_pane = 16;
+
+    app.on_resize_pane_left();
+    assert_eq!(app.layout_config.width_left_pane, 16);
+
+    app.layout.app = Rect::new(0, 0, 100, 30);
+    app.layout.pane_right = Rect::new(84, 0, 16, 30);
+    app.layout_config.width_left_pane = 64;
+
+    app.on_resize_pane_right();
+    assert_eq!(app.layout_config.width_left_pane, 64);
+}
+
+fn left_stack_app() -> App {
+    let mut app = graph_app();
+    app.layout_config.is_branches = true;
+    app.layout_config.is_tags = true;
+    app.layout_config.is_stashes = true;
+    app.layout_config.weight_branches = 100;
+    app.layout_config.weight_tags = 100;
+    app.layout_config.weight_stashes = 100;
+    app.layout.pane_branches = Rect::new(0, 0, 30, 10);
+    app.layout.pane_tags = Rect::new(0, 10, 30, 10);
+    app.layout.pane_stashes = Rect::new(0, 20, 30, 10);
+    app
+}
+
+#[test]
+fn keyboard_resize_grows_focused_left_stack_toward_direction() {
+    let mut app = left_stack_app();
+    app.focus = Focus::Tags;
+
+    app.on_resize_pane_up();
+    assert!(app.layout_config.weight_branches < 100);
+    assert!(app.layout_config.weight_tags > 100);
+    assert_eq!(app.layout_config.weight_stashes, 100);
+
+    let mut app = left_stack_app();
+    app.focus = Focus::Tags;
+
+    app.on_resize_pane_down();
+    assert_eq!(app.layout_config.weight_branches, 100);
+    assert!(app.layout_config.weight_tags > 100);
+    assert!(app.layout_config.weight_stashes < 100);
+}
+
+#[test]
+fn keyboard_resize_edge_stack_direction_shrinks_from_opposite_edge() {
+    let mut app = left_stack_app();
+    app.focus = Focus::Branches;
+
+    app.on_resize_pane_up();
+    assert!(app.layout_config.weight_branches < 100);
+    assert!(app.layout_config.weight_tags > 100);
+
+    let mut app = left_stack_app();
+    app.focus = Focus::Stashes;
+
+    app.on_resize_pane_down();
+    assert!(app.layout_config.weight_tags > 100);
+    assert!(app.layout_config.weight_stashes < 100);
+}
+
+#[test]
+fn keyboard_resize_updates_right_stack_weights() {
+    let mut app = graph_app();
+    app.graph_selected = 1;
+    app.focus = Focus::StatusTop;
+    app.layout_config.is_inspector = true;
+    app.layout_config.is_status = true;
+    app.layout_config.weight_inspector = 100;
+    app.layout_config.weight_status = 100;
+    app.layout_config.weight_status_top = 100;
+    app.layout.pane_inspector = Rect::new(70, 0, 30, 10);
+    app.layout.pane_status = Rect::new(70, 10, 30, 10);
+    app.layout.pane_status_top = Rect::new(70, 10, 30, 10);
+
+    app.on_resize_pane_up();
+    assert!(app.layout_config.weight_inspector < 100);
+    assert!(app.layout_config.weight_status > 100);
+    assert_eq!(app.layout_config.weight_status_top, 100);
+
+    let mut app = graph_app();
+    app.graph_selected = 0;
+    app.focus = Focus::StatusTop;
+    app.layout_config.is_inspector = false;
+    app.layout_config.is_status = true;
+    app.layout_config.weight_status_top = 100;
+    app.layout_config.weight_status_bottom = 100;
+    app.layout.pane_status_top = Rect::new(70, 0, 30, 10);
+    app.layout.pane_status_bottom = Rect::new(70, 10, 30, 10);
+
+    app.on_resize_pane_down();
+    assert!(app.layout_config.weight_status_top > 100);
+    assert!(app.layout_config.weight_status_bottom < 100);
+}
+
+fn split_viewer_app(is_zen: bool) -> App {
+    let mut app = graph_app();
+    app.viewport = Viewport::Viewer;
+    app.focus = Focus::Viewport;
+    app.viewer_mode = ViewerMode::Split;
+    app.layout_config.is_zen = is_zen;
+    app.layout_config.weight_viewer_split_left = 100;
+    app.layout_config.weight_viewer_split_right = 100;
+    app.layout.viewer_split_left = Rect::new(10, 0, 20, 10);
+    app.layout.viewer_split_right = Rect::new(31, 0, 20, 10);
+    app
+}
+
+#[test]
+fn keyboard_resize_updates_split_viewer_weights_and_marks_dirty() {
+    let mut app = split_viewer_app(false);
+
+    app.on_resize_pane_left();
+    assert!(app.layout_config.weight_viewer_split_left > 100);
+    assert!(app.layout_config.weight_viewer_split_right < 100);
+    assert!(app.is_viewer_layout_dirty);
+
+    let mut app = split_viewer_app(true);
+
+    app.on_resize_pane_right();
+    assert!(app.layout_config.weight_viewer_split_left < 100);
+    assert!(app.layout_config.weight_viewer_split_right > 100);
+    assert!(app.is_viewer_layout_dirty);
+}
+
+#[test]
+fn keyboard_resize_noops_in_settings_modals_and_non_split_zen() {
+    let mut app = resizable_columns_app();
+    app.viewport = Viewport::Settings;
+    app.focus = Focus::Viewport;
+    app.on_resize_pane_left();
+    assert_eq!(app.layout_config.width_left_pane, 30);
+
+    let mut app = resizable_columns_app();
+    app.focus = Focus::ModalCheckout;
+    app.on_resize_pane_right();
+    assert_eq!(app.layout_config.width_right_pane, 30);
+
+    let mut app = resizable_columns_app();
+    app.layout_config.is_zen = true;
+    app.focus = Focus::Branches;
+    app.on_resize_pane_right();
+    assert_eq!(app.layout_config.width_left_pane, 30);
+}
