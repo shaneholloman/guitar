@@ -296,6 +296,157 @@ fn splash_remove_recent_noops_while_loading() {
 }
 
 #[test]
+fn splash_shift_k_moves_selected_recent_repository_up_and_persists() {
+    let path = temp_recent_path("move-up");
+    let mut keymaps = minimal_keymaps();
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('K'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryUp);
+    let mut app = App {
+        viewport: Viewport::Splash,
+        focus: Focus::Viewport,
+        keymaps,
+        recent: vec!["/repo/a".into(), "/repo/b".into(), "/repo/c".into()],
+        splash_selected: 1,
+        recent_save_path: Some(path.clone()),
+        ..Default::default()
+    };
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT));
+
+    assert_eq!(app.recent, vec!["/repo/b".to_string(), "/repo/a".to_string(), "/repo/c".to_string()]);
+    assert_eq!(app.splash_selected, 0);
+    let saved: Vec<String> = facet_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(saved, app.recent);
+}
+
+#[test]
+fn splash_shift_j_moves_selected_recent_repository_down_and_persists() {
+    let path = temp_recent_path("move-down");
+    let mut keymaps = minimal_keymaps();
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('J'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryDown);
+    let mut app = App {
+        viewport: Viewport::Splash,
+        focus: Focus::Viewport,
+        keymaps,
+        recent: vec!["/repo/a".into(), "/repo/b".into(), "/repo/c".into()],
+        splash_selected: 1,
+        recent_save_path: Some(path.clone()),
+        ..Default::default()
+    };
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('J'), KeyModifiers::SHIFT));
+
+    assert_eq!(app.recent, vec!["/repo/a".to_string(), "/repo/c".to_string(), "/repo/b".to_string()]);
+    assert_eq!(app.splash_selected, 2);
+    let saved: Vec<String> = facet_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(saved, app.recent);
+}
+
+#[test]
+fn splash_move_recent_boundary_noops_without_saving() {
+    let path = temp_recent_path("move-boundary");
+    let mut app =
+        App { viewport: Viewport::Splash, focus: Focus::Viewport, recent: vec!["/repo/a".into(), "/repo/b".into()], splash_selected: 0, recent_save_path: Some(path.clone()), ..Default::default() };
+
+    app.on_move_recent_repository_up();
+    assert_eq!(app.recent, vec!["/repo/a".to_string(), "/repo/b".to_string()]);
+    assert_eq!(app.splash_selected, 0);
+    assert!(!path.exists());
+
+    app.splash_selected = 1;
+    app.on_move_recent_repository_down();
+    assert_eq!(app.recent, vec!["/repo/a".to_string(), "/repo/b".to_string()]);
+    assert_eq!(app.splash_selected, 1);
+    assert!(!path.exists());
+}
+
+#[test]
+fn settings_recent_repository_remove_persists_selected_row() {
+    let path = temp_recent_path("settings-remove");
+    let mut app = App {
+        viewport: Viewport::Settings,
+        focus: Focus::Viewport,
+        recent: vec!["/repo/a".into(), "/repo/b".into(), "/repo/c".into()],
+        settings_selected: 12,
+        settings_selections: vec![SettingsSelection { line: 12, kind: SettingsSelectionKind::RecentRepository(1) }],
+        recent_save_path: Some(path.clone()),
+        ..Default::default()
+    };
+
+    app.on_remove_recent_repository();
+
+    assert_eq!(app.recent, vec!["/repo/a".to_string(), "/repo/c".to_string()]);
+    assert_eq!(app.settings_selected, 12);
+    let saved: Vec<String> = facet_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(saved, app.recent);
+}
+
+#[test]
+fn settings_recent_repository_move_up_and_down_persist_and_follow_row() {
+    let up_path = temp_recent_path("settings-move-up");
+    let mut up = App {
+        viewport: Viewport::Settings,
+        focus: Focus::Viewport,
+        recent: vec!["/repo/a".into(), "/repo/b".into(), "/repo/c".into()],
+        settings_selected: 12,
+        settings_selections: vec![SettingsSelection { line: 12, kind: SettingsSelectionKind::RecentRepository(1) }],
+        recent_save_path: Some(up_path.clone()),
+        ..Default::default()
+    };
+
+    up.on_move_recent_repository_up();
+
+    assert_eq!(up.recent, vec!["/repo/b".to_string(), "/repo/a".to_string(), "/repo/c".to_string()]);
+    assert_eq!(up.settings_selected, 11);
+    let saved: Vec<String> = facet_json::from_str(&fs::read_to_string(up_path).unwrap()).unwrap();
+    assert_eq!(saved, up.recent);
+
+    let down_path = temp_recent_path("settings-move-down");
+    let mut down = App {
+        viewport: Viewport::Settings,
+        focus: Focus::Viewport,
+        recent: vec!["/repo/a".into(), "/repo/b".into(), "/repo/c".into()],
+        settings_selected: 12,
+        settings_selections: vec![SettingsSelection { line: 12, kind: SettingsSelectionKind::RecentRepository(1) }],
+        recent_save_path: Some(down_path.clone()),
+        ..Default::default()
+    };
+
+    down.on_move_recent_repository_down();
+
+    assert_eq!(down.recent, vec!["/repo/a".to_string(), "/repo/c".to_string(), "/repo/b".to_string()]);
+    assert_eq!(down.settings_selected, 13);
+    let saved: Vec<String> = facet_json::from_str(&fs::read_to_string(down_path).unwrap()).unwrap();
+    assert_eq!(saved, down.recent);
+}
+
+#[test]
+fn settings_recent_repository_commands_noop_on_non_recent_rows() {
+    let path = temp_recent_path("settings-non-recent");
+    let mut keymaps = minimal_keymaps();
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('d'), KeyModifiers::NONE), Command::RemoveRecentRepository);
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('K'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryUp);
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('J'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryDown);
+    let mut app = App {
+        viewport: Viewport::Settings,
+        focus: Focus::Viewport,
+        keymaps,
+        recent: vec!["/repo/a".into(), "/repo/b".into()],
+        settings_selected: 12,
+        settings_selections: vec![SettingsSelection { line: 12, kind: SettingsSelectionKind::Info }],
+        recent_save_path: Some(path.clone()),
+        ..Default::default()
+    };
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('J'), KeyModifiers::SHIFT));
+
+    assert_eq!(app.recent, vec!["/repo/a".to_string(), "/repo/b".to_string()]);
+    assert_eq!(app.settings_selected, 12);
+    assert!(!path.exists());
+}
+
+#[test]
 fn empty_branch_pane_select_and_narrow_are_noops() {
     let (_path, repo) = temp_repo("empty-branches");
     let mut app = App { repo: Some(Rc::new(repo)), viewport: Viewport::Graph, focus: Focus::Branches, ..Default::default() };

@@ -134,12 +134,12 @@ fn settings_selection_snaps_to_selectable_line() {
 fn settings_renders_layout_visibility_rows_with_states() {
     let (_path, repo) = temp_repo("layout-section");
     let mut app = settings_app();
-    app.layout.graph = Rect::new(0, 0, 120, 90);
-    app.layout.app = Rect::new(0, 0, 120, 90);
+    app.layout.graph = Rect::new(0, 0, 120, 120);
+    app.layout.app = Rect::new(0, 0, 120, 120);
     app.layout_config.is_branches = true;
     app.layout_config.is_shas = false;
 
-    let rendered = rendered_settings(&mut app, &repo, 120, 90);
+    let rendered = rendered_settings(&mut app, &repo, 120, 120);
 
     assert!(rendered.contains("layout visibility:"));
     assert!(rendered.contains("1 branches:"));
@@ -162,7 +162,7 @@ fn settings_section_names_use_highlight_color() {
     terminal.draw(|frame| app.draw_settings(frame, &repo)).unwrap();
     let buffer = terminal.backend().buffer();
 
-    for label in ["paths:", "credentials:", "themes:", "layout visibility:", "shortcuts / normal mode:", "shortcuts / action mode:"] {
+    for label in ["paths:", "recent repositories:", "credentials:", "themes:", "layout visibility:", "shortcuts / normal mode:", "shortcuts / action mode:"] {
         let row = (0..buffer.area.height)
             .find(|&y| {
                 let line = (0..buffer.area.width).map(|x| buffer[(x, y)].symbol()).collect::<String>();
@@ -179,11 +179,43 @@ fn settings_section_names_use_highlight_color() {
 fn settings_layout_rows_use_current_normal_keymap_binding() {
     let (_path, repo) = temp_repo("layout-key");
     let mut app = settings_app();
-    app.layout.graph = Rect::new(0, 0, 120, 90);
-    app.layout.app = Rect::new(0, 0, 120, 90);
+    app.layout.graph = Rect::new(0, 0, 120, 120);
+    app.layout.app = Rect::new(0, 0, 120, 120);
     app.keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('s'), KeyModifiers::NONE), Command::ToggleShas);
 
-    let rendered = rendered_settings(&mut app, &repo, 120, 90);
+    let rendered = rendered_settings(&mut app, &repo, 120, 120);
 
     assert!(rendered.contains("s SHAs:"));
+}
+
+#[test]
+fn settings_renders_recent_repositories_section_with_actions_and_selectable_rows() {
+    let (_path, repo) = temp_repo("recent-section");
+    let mut app = settings_app();
+    app.layout.graph = Rect::new(0, 0, 140, 120);
+    app.layout.app = Rect::new(0, 0, 140, 120);
+    app.recent = vec!["/repo/a".into(), "/repo/b".into()];
+
+    let rendered = rendered_settings(&mut app, &repo, 140, 120);
+
+    assert!(rendered.contains("recent file:"));
+    assert!(rendered.contains("recent repositories:"));
+    assert!(rendered.contains("actions: remove (d) | move up (Shift + K) | move down (Shift + J)"));
+    assert!(rendered.contains("/repo/a"));
+    assert!(rendered.contains("/repo/b"));
+    assert!(app.settings_selections.iter().any(|selection| selection.kind == SettingsSelectionKind::RecentRepository(0)));
+    assert!(app.settings_selections.iter().any(|selection| selection.kind == SettingsSelectionKind::RecentRepository(1)));
+}
+
+#[test]
+fn settings_empty_recent_repositories_row_is_not_selectable() {
+    let (_path, repo) = temp_repo("empty-recent-section");
+    let mut app = settings_app();
+    app.layout.graph = Rect::new(0, 0, 140, 120);
+    app.layout.app = Rect::new(0, 0, 140, 120);
+
+    let rendered = rendered_settings(&mut app, &repo, 140, 120);
+
+    assert!(rendered.contains("no recent repositories"));
+    assert!(!app.settings_selections.iter().any(|selection| matches!(selection.kind, SettingsSelectionKind::RecentRepository(_))));
 }

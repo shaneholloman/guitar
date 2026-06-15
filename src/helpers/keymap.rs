@@ -42,6 +42,8 @@ pub enum Command {
     ActionMode,
     Exit,
     RemoveRecentRepository,
+    MoveRecentRepositoryUp,
+    MoveRecentRepositoryDown,
 
     // Lists
     ScrollPageUp,
@@ -412,6 +414,10 @@ fn default_normal_keymap() -> IndexMap<KeyBinding, Command> {
     // 'd' removes the selected splash recent repository entry.
     map.insert(KeyBinding::new(Char('d'), KeyModifiers::NONE), Command::RemoveRecentRepository);
 
+    // Shift+K/J reorder the selected recent repository without stealing normal list navigation.
+    map.insert(KeyBinding::new(Char('K'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryUp);
+    map.insert(KeyBinding::new(Char('J'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryDown);
+
     map
 }
 
@@ -769,6 +775,10 @@ fn migrate_default_bindings(maps: &mut Keymaps) -> bool {
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('w'), KeyModifiers::NONE), Command::CreateWorktree);
     changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('d'), KeyModifiers::NONE), Command::RemoveRecentRepository);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('d'), KeyModifiers::NONE), Command::RemoveRecentRepository);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('K'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryUp);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('K'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryUp);
+    changed |= add_default_binding(maps, InputMode::Normal, KeyBinding::new(Char('J'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryDown);
+    changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('J'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryDown);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('W'), KeyModifiers::SHIFT), Command::RemoveWorktree);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('L'), KeyModifiers::SHIFT), Command::ToggleWorktreeLock);
     changed |= add_default_binding(maps, InputMode::Action, KeyBinding::new(Char('r'), KeyModifiers::NONE), Command::Rebase);

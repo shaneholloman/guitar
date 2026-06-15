@@ -42,22 +42,100 @@ impl App {
         self.splash_selected = Self::clamp_selection(self.splash_selected, self.recent.len());
     }
 
+    fn selected_settings_recent_repository(&self) -> Option<(usize, usize)> {
+        self.settings_selections.iter().find(|selection| selection.line == self.settings_selected).and_then(|selection| match &selection.kind {
+            SettingsSelectionKind::RecentRepository(index) => Some((selection.line, *index)),
+            _ => None,
+        })
+    }
+
+    fn selected_recent_repository_index(&mut self) -> Option<usize> {
+        if self.focus != Focus::Viewport {
+            return None;
+        }
+
+        match self.viewport {
+            Viewport::Splash => {
+                if self.spinner.is_running() {
+                    return None;
+                }
+
+                if self.recent.is_empty() {
+                    self.splash_selected = 0;
+                    return None;
+                }
+
+                self.clamp_splash_selection();
+                Some(self.splash_selected)
+            },
+            Viewport::Settings => self.selected_settings_recent_repository().map(|(_, index)| index),
+            _ => None,
+        }
+    }
+
     pub fn on_remove_recent_repository(&mut self) {
-        if self.spinner.is_running() {
+        let settings_selection = self.selected_settings_recent_repository();
+
+        let Some(index) = self.selected_recent_repository_index() else {
+            return;
+        };
+
+        if index >= self.recent.len() {
             return;
         }
 
-        if self.recent.is_empty() {
-            self.splash_selected = 0;
+        self.recent.remove(index);
+        self.save_recent();
+
+        match self.viewport {
+            Viewport::Splash => self.clamp_splash_selection(),
+            Viewport::Settings => {
+                if let Some((line, _)) = settings_selection {
+                    self.settings_selected = if self.recent.is_empty() || index < self.recent.len() { line } else { line.saturating_sub(1) };
+                }
+            },
+            _ => {},
+        }
+    }
+
+    fn move_recent_repository(&mut self, is_up: bool) {
+        let settings_selection = self.selected_settings_recent_repository();
+
+        let Some(index) = self.selected_recent_repository_index() else {
+            return;
+        };
+
+        if index >= self.recent.len() {
             return;
         }
 
-        self.clamp_splash_selection();
-        if self.splash_selected < self.recent.len() {
-            self.recent.remove(self.splash_selected);
-            self.save_recent();
-            self.clamp_splash_selection();
+        let target = if is_up { index.checked_sub(1) } else { (index + 1 < self.recent.len()).then_some(index + 1) };
+        let Some(target) = target else {
+            return;
+        };
+
+        self.recent.swap(index, target);
+        self.save_recent();
+
+        match self.viewport {
+            Viewport::Splash => {
+                self.splash_selected = target;
+            },
+            Viewport::Settings => {
+                if let Some((line, _)) = settings_selection {
+                    self.settings_selected = if is_up { line.saturating_sub(1) } else { line.saturating_add(1) };
+                }
+            },
+            _ => {},
         }
+    }
+
+    pub fn on_move_recent_repository_up(&mut self) {
+        self.move_recent_repository(true);
+    }
+
+    pub fn on_move_recent_repository_down(&mut self) {
+        self.move_recent_repository(false);
     }
 
     fn refresh_current_diff_for_graph_selection(&mut self) {

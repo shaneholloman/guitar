@@ -2,6 +2,7 @@ use crate::app::{
     app::{App, Focus},
     draw::buffered::DrawTarget,
 };
+use crate::helpers::keymap::{Command, InputMode, keybinding_to_visual_string};
 use ratatui::{
     style::Style,
     text::{Line, Span},
@@ -9,6 +10,21 @@ use ratatui::{
 };
 
 impl App {
+    pub(crate) fn recent_repository_command_key(&self, command: &Command, fallback: &str) -> String {
+        self.keymaps
+            .get(&InputMode::Normal)
+            .and_then(|mode_keymap| mode_keymap.iter().find(|(_, current)| *current == command).map(|(key, _)| keybinding_to_visual_string(key)))
+            .unwrap_or_else(|| fallback.to_string())
+    }
+
+    pub(crate) fn recent_repository_actions_text(&self) -> String {
+        let remove = self.recent_repository_command_key(&Command::RemoveRecentRepository, "d");
+        let move_up = self.recent_repository_command_key(&Command::MoveRecentRepositoryUp, "Shift + K");
+        let move_down = self.recent_repository_command_key(&Command::MoveRecentRepositoryDown, "Shift + J");
+
+        format!("actions: remove ({remove}) | move up ({move_up}) | move down ({move_down})")
+    }
+
     #[rustfmt::skip]
     pub fn draw_splash(&mut self, frame: &mut impl DrawTarget) {
         // Splash owns the full app rectangle and centers its content.
@@ -45,7 +61,7 @@ impl App {
             } else if self.recent.is_empty() {
                 3
             } else {
-                2 + self.recent.len()
+                5 + self.recent.len()
             };
 
         // Logo detail scales down for narrow terminals.
@@ -110,6 +126,8 @@ impl App {
             }
         } else {
             lines.push(Line::from(vec![Span::styled("recent repositories:".to_string(), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
+            lines.push(Line::default());
+            lines.push(Line::from(vec![Span::styled(self.recent_repository_actions_text(), Style::default().fg(self.theme.COLOR_TEXT))]).centered());
             lines.push(Line::default());
             // Recent repositories are selectable only when loading has finished.
             self.recent.iter().enumerate().for_each(|(i, path)| {

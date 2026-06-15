@@ -191,8 +191,27 @@ impl App {
             .centered(),
         );
         self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(Line::from(Span::styled(fill_width(" recent repositories:", format!(" {}/recent.json ", path).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::from(Span::styled(fill_width(" recent file:", format!(" {}/recent.json ", path).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
         self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
+
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" recent repositories:", heatmap_width));
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(self.recent_repository_actions_text(), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::default());
+
+        if self.recent.is_empty() {
+            lines.push(Line::from(Span::styled(fill_width(" no recent repositories", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        } else {
+            self.recent.iter().enumerate().for_each(|(idx, path)| {
+                let mut style = Style::default().fg(if Some(path) == self.path.as_ref() { self.theme.COLOR_GRASS } else { self.theme.COLOR_TEXT });
+                if idx.is_multiple_of(2) {
+                    style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+                }
+                lines.push(Line::from(Span::styled(fill_width(format!(" {}", path).as_str(), "", heatmap_width), style)).centered());
+                self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::RecentRepository(idx) });
+            });
+        }
 
         // Credential rows are selectable because they are important setup information.
         lines.push(Line::default());

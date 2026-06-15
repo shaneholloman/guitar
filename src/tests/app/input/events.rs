@@ -210,7 +210,7 @@ fn mouse_click_selects_splash_recent_repo() {
     app.layout.graph = Rect::new(0, 0, 120, 20);
     app.recent = vec!["/repo/a".into(), "/repo/b".into(), "/repo/c".into()];
 
-    app.handle_mouse_event(left_down(1, 16));
+    app.handle_mouse_event(left_down(1, 17));
 
     assert_eq!(app.splash_selected, 1);
 }
@@ -259,6 +259,22 @@ fn double_click_on_settings_selectable_row_acts_like_enter() {
 
     assert_eq!(app.focus, Focus::ModalKeyCapture);
     assert_eq!(app.modal_key_capture_selection, Some(key_selection));
+}
+
+#[test]
+fn double_click_on_settings_recent_repository_row_is_selection_only() {
+    let mut app = App { viewport: Viewport::Settings, focus: Focus::Viewport, layout_config: LayoutConfig::default(), layout: Layout::default(), ..Default::default() };
+    app.layout.graph = Rect::new(0, 0, 40, 5);
+    app.recent = vec!["/repo/a".into()];
+    app.settings_selections = vec![SettingsSelection { line: 2, kind: SettingsSelectionKind::RecentRepository(0) }];
+
+    app.handle_mouse_event(left_down(1, 2));
+    app.handle_mouse_event(left_down(1, 2));
+
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.settings_selected, 2);
+    assert!(app.repo.is_none());
 }
 
 #[test]

@@ -343,7 +343,7 @@ impl App {
         }
 
         let visible_height = if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(4) as usize } else { self.layout.graph.height.saturating_sub(2) as usize };
-        let content_rows = 2usize.saturating_add(self.recent.len());
+        let content_rows = 5usize.saturating_add(self.recent.len());
         let logo_rows: usize = if self.layout.app.width < 80 {
             1
         } else if self.layout.app.width < 120 {
@@ -353,7 +353,7 @@ impl App {
         };
         let splash_rows = logo_rows.saturating_add(content_rows);
         let dummies = visible_height.saturating_sub(splash_rows).saturating_div(2);
-        let first_recent_row = dummies.saturating_add(logo_rows).saturating_add(3);
+        let first_recent_row = dummies.saturating_add(logo_rows).saturating_add(5);
         let row_offset = row.saturating_sub(self.layout.app.y) as usize;
 
         if row_offset < first_recent_row {

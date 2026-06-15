@@ -229,6 +229,7 @@ pub enum Direction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsSelectionKind {
     Info,
+    RecentRepository(usize),
     Theme(usize),
     KeyBinding(KeymapSelection),
     LayoutCommand(Command),

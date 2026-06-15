@@ -1,7 +1,7 @@
 use super::*;
 use crate::core::graph_service::{GraphCommand, GraphEvent, GraphLookupKind, GraphLookupResult, GraphPane, GraphRow};
 use git2::{Repository, Signature};
-use ratatui::{Terminal, backend::TestBackend, style::Color};
+use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Color};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -64,6 +64,23 @@ fn default_splash_draw_has_no_reset_backgrounds() {
 
     let buffer = terminal.backend().buffer();
     assert!(buffer.content().iter().all(|cell| cell.bg != Color::Reset));
+}
+
+#[test]
+fn splash_draws_recent_repository_actions() {
+    let backend = TestBackend::new(140, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App { viewport: Viewport::Splash, focus: Focus::Viewport, recent: vec!["/repo/a".into(), "/repo/b".into()], ..Default::default() };
+    app.layout.app = Rect::new(0, 0, 140, 24);
+    app.layout.graph = Rect::new(0, 0, 140, 24);
+
+    terminal.draw(|frame| app.draw_splash(frame)).unwrap();
+
+    let rendered = terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect::<String>();
+    assert!(rendered.contains("recent repositories:"));
+    assert!(rendered.contains("actions: remove (d) | move up (Shift + K) | move down (Shift + J)"));
+    assert!(rendered.contains("/repo/a"));
+    assert!(rendered.contains("/repo/b"));
 }
 
 #[test]
