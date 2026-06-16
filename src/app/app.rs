@@ -7,10 +7,13 @@ use crate::{
     git::{
         auth::{AuthChallenge, AuthSession, NetworkResult},
         os::path::try_into_git_repo_root,
-        queries::{diffs::get_filenames_diff_at_oid, worktrees::list_worktrees},
+        queries::{diffs::get_filenames_diff_at_oid, files::FileSearchResult, worktrees::list_worktrees},
     },
     helpers::{
-        copy::{STR_CHERRYPICK_COMMIT, STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_CREATE_WORKTREE_NAME, STR_CREATE_WORKTREE_PATH, STR_FIND_SHA, STR_LOCK_WORKTREE, STR_REVERT_COMMIT},
+        copy::{
+            STR_CHERRYPICK_COMMIT, STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_CREATE_WORKTREE_NAME, STR_CREATE_WORKTREE_PATH, STR_FIND_FILE, STR_FIND_SHA, STR_LOCK_WORKTREE,
+            STR_REVERT_COMMIT,
+        },
         heatmap::{DAYS, WEEKS, empty_heatmap},
         keymap::{Command, KeyBinding, KeymapEditError, KeymapSelection},
         layout::LayoutConfig,
@@ -99,6 +102,7 @@ pub enum Focus {
     ModalRemoveWorktree,
     ModalLockWorktree,
     ModalGrep,
+    ModalFileSearch,
     ModalTag,
     ModalDeleteTag,
     ModalKeyCapture,
@@ -418,6 +422,10 @@ pub struct App {
     pub modal_worktree_target: Option<usize>,
     pub modal_worktree_action: WorktreeModalAction,
     pub modal_worktree_return_focus: Focus,
+    pub modal_file_search_results: Vec<FileSearchResult>,
+    pub modal_file_search_selected: i32,
+    pub modal_file_search_scroll: Cell<usize>,
+    pub modal_file_search_return_focus: Focus,
 
     // Modal delete a branch
     pub modal_delete_branch_selected: i32,
@@ -635,6 +643,9 @@ impl App {
                 },
                 Focus::ModalGrep => {
                     self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_FIND_SHA));
+                },
+                Focus::ModalFileSearch => {
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_file_search(surface, STR_FIND_FILE));
                 },
                 Focus::ModalTag => {
                     self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_TAG));

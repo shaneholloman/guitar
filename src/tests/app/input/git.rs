@@ -4,7 +4,10 @@ use crate::core::reflogs::HeadReflogAliasEntry;
 use crate::git::actions::merging::{MergeOutcome, start_merge};
 use crate::git::actions::reverting::{RevertOutcome, start_revert};
 use crate::git::auth::{AuthChallenge, AuthProtocol};
+use crate::helpers::keymap::{Command, InputMode, KeyBinding};
 use git2::{Signature, build::CheckoutBuilder};
+use indexmap::IndexMap;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::{
     fs,
     path::Path,
@@ -65,6 +68,40 @@ fn checkout_new_branch(repo: &Repository, name: &str) {
 fn checkout_branch(repo: &Repository, name: &str) {
     repo.set_head(&format!("refs/heads/{name}")).unwrap();
     repo.checkout_head(Some(CheckoutBuilder::default().force())).unwrap();
+}
+
+fn file_search_keymaps() -> crate::helpers::keymap::Keymaps {
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(KeyCode::Char('F'), KeyModifiers::SHIFT), Command::FindFile);
+    maps.insert(InputMode::Normal, normal);
+    maps.insert(InputMode::Action, IndexMap::new());
+    maps
+}
+
+#[test]
+fn shift_f_opens_file_search_modal_from_repo_views() {
+    let (_path, repo) = temp_repo("file-search-shortcut");
+    let mut app = App { repo: Some(Rc::new(repo)), viewport: Viewport::Graph, focus: Focus::Branches, keymaps: file_search_keymaps(), ..Default::default() };
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('F'), KeyModifiers::SHIFT));
+
+    assert_eq!(app.focus, Focus::ModalFileSearch);
+    assert_eq!(app.modal_file_search_return_focus, Focus::Branches);
+}
+
+#[test]
+fn file_search_modal_does_not_open_from_splash_or_settings() {
+    let (_path, repo) = temp_repo("file-search-blocked");
+    let repo = Rc::new(repo);
+
+    let mut splash = App { repo: Some(repo.clone()), viewport: Viewport::Splash, focus: Focus::Viewport, ..Default::default() };
+    splash.on_find_file();
+    assert_eq!(splash.focus, Focus::Viewport);
+
+    let mut settings = App { repo: Some(repo), viewport: Viewport::Settings, focus: Focus::Viewport, ..Default::default() };
+    settings.on_find_file();
+    assert_eq!(settings.focus, Focus::Viewport);
 }
 
 #[test]

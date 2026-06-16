@@ -34,6 +34,16 @@ fn defaults_include_numeric_ui_toggles() {
 }
 
 #[test]
+fn defaults_include_file_search_binding() {
+    let maps = default_keymaps();
+
+    for mode in [InputMode::Normal, InputMode::Action] {
+        let mode_map = maps.get(&mode).unwrap();
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FindFile));
+    }
+}
+
+#[test]
 fn existing_keymaps_gain_search_toggle_when_available() {
     let mut maps = IndexMap::new();
     let mut normal = IndexMap::new();
@@ -46,6 +56,8 @@ fn existing_keymaps_gain_search_toggle_when_available() {
     assert!(ensure_default_keymap_bindings(&mut maps));
     assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
     assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
+    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FindFile));
+    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FindFile));
 }
 
 #[test]
@@ -54,9 +66,13 @@ fn existing_keymaps_do_not_override_search_conflicts() {
     let mut normal = IndexMap::new();
     normal.insert(KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::Reload);
     normal.insert(KeyBinding::new(Char('s'), KeyModifiers::CONTROL), Command::ToggleSearch);
+    normal.insert(KeyBinding::new(Char('F'), KeyModifiers::SHIFT), Command::FetchAll);
+    normal.insert(KeyBinding::new(Char('f'), KeyModifiers::CONTROL), Command::FindFile);
     let mut action = IndexMap::new();
     action.insert(KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::Reload);
     action.insert(KeyBinding::new(Char('s'), KeyModifiers::CONTROL), Command::ToggleSearch);
+    action.insert(KeyBinding::new(Char('F'), KeyModifiers::SHIFT), Command::FetchAll);
+    action.insert(KeyBinding::new(Char('f'), KeyModifiers::CONTROL), Command::FindFile);
     maps.insert(InputMode::Normal, normal);
     maps.insert(InputMode::Action, action);
 
@@ -64,6 +80,8 @@ fn existing_keymaps_do_not_override_search_conflicts() {
     let normal = maps.get(&InputMode::Normal).unwrap();
     assert_eq!(normal.get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), Some(&Command::Reload));
     assert_eq!(normal.get(&KeyBinding::new(Char('s'), KeyModifiers::CONTROL)), Some(&Command::ToggleSearch));
+    assert_eq!(normal.get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FetchAll));
+    assert_eq!(normal.get(&KeyBinding::new(Char('f'), KeyModifiers::CONTROL)), Some(&Command::FindFile));
 }
 
 #[test]

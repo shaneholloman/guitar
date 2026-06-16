@@ -1783,6 +1783,14 @@ impl App {
                 self.modal_input.clear();
                 self.focus = Focus::Worktrees;
             },
+            Focus::ModalFileSearch => {
+                self.modal_input.clear();
+                self.modal_file_search_results.clear();
+                self.modal_file_search_selected = 0;
+                self.modal_file_search_scroll.set(0);
+                self.focus = self.modal_file_search_return_focus;
+                self.modal_file_search_return_focus = Focus::Viewport;
+            },
             Focus::ModalKeyCapture => {
                 self.close_key_capture();
             },
@@ -1855,8 +1863,11 @@ impl App {
                 self.pending_revert_oid = None;
                 self.focus = Focus::Viewport;
             },
-            Focus::ModalCommit | Focus::ModalCreateBranch | Focus::ModalCreateWorktreeName | Focus::ModalCreateWorktreePath | Focus::ModalLockWorktree => {
+            Focus::ModalCommit | Focus::ModalCreateBranch | Focus::ModalCreateWorktreeName | Focus::ModalCreateWorktreePath | Focus::ModalLockWorktree | Focus::ModalFileSearch => {
                 self.modal_input.clear();
+                self.modal_file_search_results.clear();
+                self.modal_file_search_selected = 0;
+                self.modal_file_search_scroll.set(0);
                 self.clear_pending_branch_target();
                 self.focus = Focus::Viewport;
             },

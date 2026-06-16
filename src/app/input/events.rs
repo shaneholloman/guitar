@@ -612,6 +612,7 @@ impl App {
                 | Focus::ModalRemoveWorktree
                 | Focus::ModalLockWorktree
                 | Focus::ModalGrep
+                | Focus::ModalFileSearch
                 | Focus::ModalTag
                 | Focus::ModalDeleteTag
                 | Focus::ModalKeyCapture

@@ -9,12 +9,14 @@ use crate::{
         tagging::tag,
         worktrees::{create_worktree, is_valid_worktree_name, lock_worktree},
     },
-    git::queries::diffs::get_filenames_diff_at_oid,
+    git::queries::{diffs::get_filenames_diff_at_oid, files::search_tracked_files},
     helpers::keymap::{KeyBinding, rebind_keymap_selection, save_keymaps, save_keymaps_to_path},
 };
 use git2::Oid;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::path::PathBuf;
+
+const FILE_SEARCH_RESULT_LIMIT: usize = 50;
 
 impl App {
     pub fn show_error(&mut self, message: impl Into<String>) {
@@ -126,6 +128,81 @@ impl App {
         true
     }
 
+    fn refresh_file_search_results(&mut self) {
+        let Some(repo) = &self.repo else {
+            self.modal_file_search_results.clear();
+            self.modal_file_search_selected = 0;
+            self.modal_file_search_scroll.set(0);
+            return;
+        };
+
+        self.modal_file_search_results = search_tracked_files(repo, self.modal_input.value(), FILE_SEARCH_RESULT_LIMIT).unwrap_or_default();
+        self.modal_file_search_selected = 0;
+        self.modal_file_search_scroll.set(0);
+    }
+
+    fn close_file_search_modal(&mut self) {
+        self.modal_input.clear();
+        self.modal_file_search_results.clear();
+        self.modal_file_search_selected = 0;
+        self.modal_file_search_scroll.set(0);
+        self.focus = self.modal_file_search_return_focus;
+        self.modal_file_search_return_focus = Focus::Viewport;
+    }
+
+    fn move_file_search_selection(&mut self, direction: crate::app::app::Direction) {
+        let len = self.modal_file_search_results.len();
+        if len == 0 {
+            self.modal_file_search_selected = 0;
+            return;
+        }
+
+        let len = len as i32;
+        let current = self.modal_file_search_selected.rem_euclid(len);
+        self.modal_file_search_selected = match direction {
+            crate::app::app::Direction::Up => (current - 1).rem_euclid(len),
+            crate::app::app::Direction::Down => (current + 1).rem_euclid(len),
+        };
+    }
+
+    fn select_file_search_result(&mut self) {
+        let Some(result) = self.modal_file_search_results.get(self.modal_file_search_selected as usize) else {
+            return;
+        };
+
+        self.modal_input.set_value(result.path.clone());
+        self.refresh_file_search_results();
+    }
+
+    fn handle_file_search_event(&mut self, key_event: KeyEvent) -> bool {
+        match key_event.code {
+            KeyCode::Esc => {
+                self.close_file_search_modal();
+            },
+            KeyCode::Enter => {
+                self.select_file_search_result();
+            },
+            KeyCode::Down => {
+                self.move_file_search_selection(crate::app::app::Direction::Down);
+            },
+            KeyCode::Up => {
+                self.move_file_search_selection(crate::app::app::Direction::Up);
+            },
+            KeyCode::Char('j') | KeyCode::Char('J') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.move_file_search_selection(crate::app::app::Direction::Down);
+            },
+            KeyCode::Char('k') | KeyCode::Char('K') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.move_file_search_selection(crate::app::app::Direction::Up);
+            },
+            _ => {
+                self.modal_input.on_key(key_event);
+                self.refresh_file_search_results();
+            },
+        }
+
+        true
+    }
+
     pub(super) fn handle_modal_key_event(&mut self, key_event: KeyEvent) -> bool {
         if self.focus == Focus::ModalKeyCapture {
             return self.handle_key_capture_event(key_event);
@@ -157,6 +234,10 @@ impl App {
 
         if self.focus == Focus::ModalNetworkProgress {
             return true;
+        }
+
+        if self.focus == Focus::ModalFileSearch {
+            return self.handle_file_search_event(key_event);
         }
 
         if self.focus == Focus::ModalRemoveWorktree {
@@ -483,3 +564,7 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/app/input/modals.rs"]
+mod tests;

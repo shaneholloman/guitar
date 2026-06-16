@@ -420,6 +420,26 @@ impl App {
         }
     }
 
+    pub fn on_find_file(&mut self) {
+        if self.repo.is_none() || matches!(self.viewport, Viewport::Splash | Viewport::Settings) {
+            return;
+        }
+
+        if !matches!(
+            self.focus,
+            Focus::Viewport | Focus::Inspector | Focus::StatusTop | Focus::StatusBottom | Focus::Search | Focus::Branches | Focus::Tags | Focus::Stashes | Focus::Reflogs | Focus::Worktrees
+        ) {
+            return;
+        }
+
+        self.modal_file_search_return_focus = self.focus;
+        self.modal_input.clear();
+        self.modal_file_search_results.clear();
+        self.modal_file_search_selected = 0;
+        self.modal_file_search_scroll.set(0);
+        self.focus = Focus::ModalFileSearch;
+    }
+
     pub fn on_fetch_all(&mut self) {
         if self.viewport != Viewport::Settings {
             let repo_path = self.path.as_deref().unwrap_or(".");

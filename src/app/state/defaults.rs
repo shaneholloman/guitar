@@ -173,6 +173,10 @@ impl Default for App {
             modal_worktree_target: None,
             modal_worktree_action: WorktreeModalAction::Open,
             modal_worktree_return_focus: Focus::Viewport,
+            modal_file_search_results: Vec::new(),
+            modal_file_search_selected: 0,
+            modal_file_search_scroll: 0.into(),
+            modal_file_search_return_focus: Focus::Viewport,
 
             // Modal delete branch
             modal_delete_branch_selected: 0,

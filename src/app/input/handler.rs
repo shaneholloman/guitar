@@ -82,6 +82,7 @@ impl App {
             Command::ScrollUpCommit => self.on_scroll_up_commit(),
             Command::ScrollDownCommit => self.on_scroll_down_commit(),
             Command::Find => self.on_find(),
+            Command::FindFile => self.on_find_file(),
             Command::SoloBranch => self.on_solo_branch(),
             Command::ToggleBranch => self.on_toggle_branch(),
             Command::ToggleHunkMode => self.on_toggle_hunk_mode(),

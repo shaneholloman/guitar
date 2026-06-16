@@ -12,6 +12,7 @@ pub mod draw {
         pub mod delete_branch;
         pub mod delete_tag;
         pub mod error;
+        pub mod file_search;
         pub mod input;
         pub mod key_capture;
         pub mod rebase;

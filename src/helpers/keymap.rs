@@ -68,6 +68,7 @@ pub enum Command {
     ScrollUpCommit,
     ScrollDownCommit,
     Find,
+    FindFile,
 
     // Viewer
     ToggleHunkMode,
@@ -335,6 +336,9 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     // '/' Open the search modal
     map.insert(KeyBinding::new(Char('/'), KeyModifiers::NONE), Command::Find);
 
+    // [Shift] + 'F' opens repository file search.
+    map.insert(KeyBinding::new(Char('F'), KeyModifiers::SHIFT), Command::FindFile);
+
     // Graph-specific navigation (Vim-style)
 
     // '{' for branch navigation, larger conceptual jumps to a newer branch
@@ -509,12 +513,14 @@ fn default_keymaps() -> Keymaps {
 
 fn ensure_default_keymap_bindings(maps: &mut Keymaps) -> bool {
     let mut changed = false;
+    let defaults = [(KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::ToggleSearch), (KeyBinding::new(Char('F'), KeyModifiers::SHIFT), Command::FindFile)];
     for mode in [InputMode::Normal, InputMode::Action] {
         let mode_map = maps.entry(mode).or_default();
-        let key = KeyBinding::new(Char('`'), KeyModifiers::NONE);
-        if !mode_map.values().any(|command| command == &Command::ToggleSearch) && !mode_map.contains_key(&key) {
-            mode_map.insert(key, Command::ToggleSearch);
-            changed = true;
+        for (key, command) in defaults.iter() {
+            if !mode_map.values().any(|existing| existing == command) && !mode_map.contains_key(key) {
+                mode_map.insert(key.clone(), command.clone());
+                changed = true;
+            }
         }
     }
     changed
