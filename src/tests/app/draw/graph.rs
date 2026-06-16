@@ -6,8 +6,9 @@ use crate::{
     },
     core::{
         chunk::NONE,
-        graph_service::{GraphCommand, GraphHistory, GraphRow},
+        graph_service::{GraphCommand, GraphFileHistoryRow, GraphHistory, GraphRow},
     },
+    git::queries::helpers::FileStatus,
 };
 use git2::{Oid, Repository, Signature};
 use im::Vector;
@@ -46,6 +47,10 @@ fn temp_unborn_repo(name: &str) -> (PathBuf, Repository) {
 
 fn graph_row(index: usize, alias: u32, oid: Oid, summary: &str) -> GraphRow {
     GraphRow { index, alias, oid, summary: summary.to_string(), has_any_branch: false, branches: Vec::new(), tags: Vec::new(), is_stash: false, stash_lane: None, worktrees: Vec::new(), reflog: None }
+}
+
+fn history_row(graph_index: usize, oid: Oid) -> GraphFileHistoryRow {
+    GraphFileHistoryRow { graph_index, oid, short_oid: oid.to_string()[..8].to_string(), summary: "history".to_string(), status: FileStatus::Modified }
 }
 
 fn app_with_cached_window(start: usize, summaries: &[&str], oid: Oid) -> App {
@@ -102,6 +107,53 @@ fn app_with_uncommitted_window(window_end: usize, history_len: usize, oid: Oid) 
 fn rendered_lines(terminal: &Terminal<TestBackend>) -> Vec<String> {
     let buffer = terminal.backend().buffer();
     (0..buffer.area.height).map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol()).collect::<String>()).collect()
+}
+
+#[test]
+fn graph_highlights_file_history_rows_when_search_pane_is_open() {
+    let (_path, repo, oid) = temp_repo("file-search-highlight");
+    let mut app = app_with_cached_window(0, &["uncommitted", "touch searched file", "other commit"], oid);
+    app.focus = Focus::Search;
+    app.layout_config.is_search = true;
+    app.graph_selected = 2;
+    app.search_path = Some("src/lib.rs".to_string());
+    app.search_rows = vec![history_row(1, oid)];
+
+    let backend = TestBackend::new(80, 3);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| {
+            app.draw_graph(frame, &repo);
+        })
+        .unwrap();
+
+    let selected_bg = app.theme.background_or_default(app.theme.COLOR_GREY_800);
+    let buffer = terminal.backend().buffer();
+    assert_eq!(buffer[(1, 1)].bg, selected_bg);
+    assert_ne!(buffer[(1, 2)].bg, selected_bg);
+}
+
+#[test]
+fn graph_does_not_highlight_file_history_rows_when_search_pane_is_closed() {
+    let (_path, repo, oid) = temp_repo("file-search-highlight-closed");
+    let mut app = app_with_cached_window(0, &["uncommitted", "touch searched file", "other commit"], oid);
+    app.focus = Focus::Search;
+    app.layout_config.is_search = false;
+    app.graph_selected = 2;
+    app.search_path = Some("src/lib.rs".to_string());
+    app.search_rows = vec![history_row(1, oid)];
+
+    let backend = TestBackend::new(80, 3);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| {
+            app.draw_graph(frame, &repo);
+        })
+        .unwrap();
+
+    let selected_bg = app.theme.background_or_default(app.theme.COLOR_GREY_800);
+    let buffer = terminal.backend().buffer();
+    assert_ne!(buffer[(1, 1)].bg, selected_bg);
 }
 
 #[test]

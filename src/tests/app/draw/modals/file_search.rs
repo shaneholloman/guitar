@@ -1,6 +1,6 @@
 use super::*;
 use crate::git::queries::files::FileSearchResult;
-use ratatui::{backend::TestBackend, buffer::Buffer, layout::Rect, Terminal};
+use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, layout::Rect};
 
 fn rendered_symbols(terminal: &Terminal<TestBackend>) -> String {
     terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect::<String>()

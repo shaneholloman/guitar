@@ -60,13 +60,13 @@ impl App {
         modal_block.render(modal_area, frame.buffer_mut());
 
         let inner_width = modal_area.width.saturating_sub(8);
-        let inner_x = modal_area.x + 1;
+        let inner_x = modal_area.x + 4;
         let title_area = Rect { x: inner_x, y: modal_area.y + 2, width: inner_width, height: 1 };
         let input_area = Rect { x: modal_area.x + 1, y: modal_area.y + 4, width: modal_area.width.saturating_sub(2), height: 5 };
         let action_area = Rect { x: inner_x, y: modal_area.y + modal_area.height.saturating_sub(3), width: inner_width, height: 1 };
         let list_y = modal_area.y + 10;
         let list_bottom = action_area.y.saturating_sub(1);
-        let list_area = Rect { x: inner_x, y: list_y, width: inner_width, height: list_bottom.saturating_sub(list_y) };
+        let list_area = Rect { x: modal_area.x + 1, y: list_y, width: inner_width, height: list_bottom.saturating_sub(list_y) };
 
         frame.render_widget(Paragraph::new(Line::from(Span::styled(title.to_string(), Style::default().fg(self.theme.COLOR_TEXT)))).alignment(Alignment::Center), title_area);
 
@@ -90,7 +90,7 @@ impl App {
         let max_path_width = list_area.width.saturating_sub(2) as usize;
 
         let list_items: Vec<ListItem<'static>> = if total == 0 {
-            let message = if self.modal_input.value().trim().is_empty() { "type to search" } else { "no matches" };
+            let message = if self.modal_input.value().trim().is_empty() { " type to search" } else { " no matches" };
             vec![ListItem::new(Line::from(Span::styled(message, Style::default().fg(self.theme.COLOR_GREY_800))))]
         } else {
             self.modal_file_search_results[start..end]

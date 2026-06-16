@@ -10,6 +10,7 @@ use ratatui::{
     style::Style,
     widgets::{Block, Borders, Cell as WidgetCell, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table},
 };
+use std::collections::HashSet;
 
 impl App {
     pub fn draw_graph(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) -> SurfaceRender {
@@ -86,6 +87,8 @@ impl App {
         // Build table rows and measure the graph column from rendered span widths.
         let mut rows = Vec::with_capacity(visible_height);
         let width = graph_range.iter().map(|line| line.spans.iter().filter(|span| !span.content.is_empty()).map(|span| span.content.chars().count()).sum::<usize>()).max().unwrap_or(0) as u16;
+        let search_highlight_indices: HashSet<usize> =
+            if self.layout_config.is_search && self.search_path.is_some() { self.search_rows.iter().map(|row| row.graph_index).filter(|&index| index != 0).collect() } else { HashSet::new() };
         for idx in 0..visible_height {
             let mut cells = Vec::with_capacity(if self.layout_config.is_shas { 3 } else { 2 });
 
@@ -98,9 +101,12 @@ impl App {
             let mut row = Row::new(cells);
 
             // Selection highlighting is focus-sensitive so inactive panes stay quiet.
-            if idx < visible_len && idx + start == self.graph_selected && self.focus == Focus::Viewport {
+            let global_idx = idx + start;
+            let is_selected = idx < visible_len && global_idx == self.graph_selected && self.focus == Focus::Viewport;
+            let is_search_highlighted = idx < visible_len && search_highlight_indices.contains(&global_idx);
+            if is_selected || is_search_highlighted {
                 row = row.style(Style::default().bg(self.theme.background_or_default(self.theme.COLOR_GREY_800)));
-            } else if (idx + start).is_multiple_of(2) {
+            } else if global_idx.is_multiple_of(2) {
                 row = row.style(Style::default().bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)));
             }
 

@@ -12,6 +12,22 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
+#[derive(Clone)]
+struct StatusRow<'a> {
+    line: Line<'a>,
+    path: Option<&'a str>,
+}
+
+impl<'a> StatusRow<'a> {
+    fn plain(line: Line<'a>) -> Self {
+        Self { line, path: None }
+    }
+
+    fn file(path: &'a str, symbol: &'static str, symbol_style: Style, text_style: Style, max_width: usize) -> Self {
+        Self { line: Line::from(vec![Span::styled(symbol, symbol_style), Span::styled(truncate_with_ellipsis(path, max_width), text_style)]), path: Some(path) }
+    }
+}
+
 impl App {
     pub fn draw_status(&mut self, frame: &mut impl DrawTarget) {
         // Status panes keep icons close to the border and filenames flush after them.
@@ -22,8 +38,8 @@ impl App {
         let mut is_unstaged_changes = false;
         let is_showing_uncommitted = self.graph_selected == 0;
 
-        let mut lines_status_top: Vec<Line<'_>> = Vec::new();
-        let mut lines_status_bottom: Vec<Line<'_>> = Vec::new();
+        let mut lines_status_top: Vec<StatusRow<'_>> = Vec::new();
+        let mut lines_status_bottom: Vec<StatusRow<'_>> = Vec::new();
 
         let mut status_top_empty = false;
         let mut status_bottom_empty = false;
@@ -44,28 +60,16 @@ impl App {
             lines_status_bottom = centered_loading_lines(visible_height_status_bottom, max_status_bottom_width + 3, Style::default().fg(self.theme.COLOR_GREY_800));
         } else if is_showing_uncommitted {
             for file in self.uncommitted.conflicts.iter() {
-                lines_status_top.push(Line::from(vec![
-                    Span::styled("! ", Style::default().fg(self.theme.COLOR_ORANGE)),
-                    Span::styled(truncate_with_ellipsis(file, max_status_top_width), Style::default().fg(self.theme.COLOR_ORANGE)),
-                ]));
+                lines_status_top.push(StatusRow::file(file, "! ", Style::default().fg(self.theme.COLOR_ORANGE), Style::default().fg(self.theme.COLOR_ORANGE), max_status_top_width));
             }
             for file in self.uncommitted.staged.modified.iter() {
-                lines_status_top.push(Line::from(vec![
-                    Span::styled("~ ", Style::default().fg(self.theme.COLOR_BLUE)),
-                    Span::styled(truncate_with_ellipsis(file, max_status_top_width), Style::default().fg(self.theme.COLOR_TEXT)),
-                ]));
+                lines_status_top.push(StatusRow::file(file, "~ ", Style::default().fg(self.theme.COLOR_BLUE), Style::default().fg(self.theme.COLOR_TEXT), max_status_top_width));
             }
             for file in self.uncommitted.staged.added.iter() {
-                lines_status_top.push(Line::from(vec![
-                    Span::styled("+ ", Style::default().fg(self.theme.COLOR_GREEN)),
-                    Span::styled(truncate_with_ellipsis(file, max_status_top_width), Style::default().fg(self.theme.COLOR_TEXT)),
-                ]));
+                lines_status_top.push(StatusRow::file(file, "+ ", Style::default().fg(self.theme.COLOR_GREEN), Style::default().fg(self.theme.COLOR_TEXT), max_status_top_width));
             }
             for file in self.uncommitted.staged.deleted.iter() {
-                lines_status_top.push(Line::from(vec![
-                    Span::styled("- ", Style::default().fg(self.theme.COLOR_RED)),
-                    Span::styled(truncate_with_ellipsis(file, max_status_top_width), Style::default().fg(self.theme.COLOR_TEXT)),
-                ]));
+                lines_status_top.push(StatusRow::file(file, "- ", Style::default().fg(self.theme.COLOR_RED), Style::default().fg(self.theme.COLOR_TEXT), max_status_top_width));
             }
 
             // Empty states are vertically padded to stay centered in short panes.
@@ -73,39 +77,27 @@ impl App {
                 status_top_empty = true;
                 let blank_lines_before = empty_state_top_padding(visible_height_status_top);
                 for _ in 0..blank_lines_before {
-                    lines_status_top.push(Line::from(""));
+                    lines_status_top.push(StatusRow::plain(Line::from("")));
                 }
-                lines_status_top.push(Line::from(Span::styled(
+                lines_status_top.push(StatusRow::plain(Line::from(Span::styled(
                     center_line(&truncate_with_ellipsis("⊘ no staged changes", max_status_top_width), max_status_top_width + 3),
                     Style::default().fg(self.theme.COLOR_GREY_800),
-                )));
+                ))));
             } else {
                 is_staged_changes = true;
             }
 
             for file in self.uncommitted.conflicts.iter() {
-                lines_status_bottom.push(Line::from(vec![
-                    Span::styled("! ", Style::default().fg(self.theme.COLOR_ORANGE)),
-                    Span::styled(truncate_with_ellipsis(file, max_status_bottom_width), Style::default().fg(self.theme.COLOR_ORANGE)),
-                ]));
+                lines_status_bottom.push(StatusRow::file(file, "! ", Style::default().fg(self.theme.COLOR_ORANGE), Style::default().fg(self.theme.COLOR_ORANGE), max_status_bottom_width));
             }
             for file in self.uncommitted.unstaged.modified.iter() {
-                lines_status_bottom.push(Line::from(vec![
-                    Span::styled("~ ", Style::default().fg(self.theme.COLOR_BLUE)),
-                    Span::styled(truncate_with_ellipsis(file, max_status_bottom_width), Style::default().fg(self.theme.COLOR_TEXT)),
-                ]));
+                lines_status_bottom.push(StatusRow::file(file, "~ ", Style::default().fg(self.theme.COLOR_BLUE), Style::default().fg(self.theme.COLOR_TEXT), max_status_bottom_width));
             }
             for file in self.uncommitted.unstaged.added.iter() {
-                lines_status_bottom.push(Line::from(vec![
-                    Span::styled("+ ", Style::default().fg(self.theme.COLOR_GREEN)),
-                    Span::styled(truncate_with_ellipsis(file, max_status_bottom_width), Style::default().fg(self.theme.COLOR_TEXT)),
-                ]));
+                lines_status_bottom.push(StatusRow::file(file, "+ ", Style::default().fg(self.theme.COLOR_GREEN), Style::default().fg(self.theme.COLOR_TEXT), max_status_bottom_width));
             }
             for file in self.uncommitted.unstaged.deleted.iter() {
-                lines_status_bottom.push(Line::from(vec![
-                    Span::styled("- ", Style::default().fg(self.theme.COLOR_RED)),
-                    Span::styled(truncate_with_ellipsis(file, max_status_bottom_width), Style::default().fg(self.theme.COLOR_TEXT)),
-                ]));
+                lines_status_bottom.push(StatusRow::file(file, "- ", Style::default().fg(self.theme.COLOR_RED), Style::default().fg(self.theme.COLOR_TEXT), max_status_bottom_width));
             }
 
             // Empty states are vertically padded to stay centered in short panes.
@@ -113,12 +105,12 @@ impl App {
                 status_bottom_empty = true;
                 let blank_lines_before = empty_state_top_padding(visible_height_status_bottom);
                 for _ in 0..blank_lines_before {
-                    lines_status_bottom.push(Line::from(""));
+                    lines_status_bottom.push(StatusRow::plain(Line::from("")));
                 }
-                lines_status_bottom.push(Line::from(Span::styled(
+                lines_status_bottom.push(StatusRow::plain(Line::from(Span::styled(
                     center_line(&truncate_with_ellipsis("⊘ no unstaged changes", max_status_bottom_width), max_status_bottom_width + 3),
                     Style::default().fg(self.theme.COLOR_GREY_800),
-                )));
+                ))));
             } else {
                 is_unstaged_changes = true;
             }
@@ -135,8 +127,7 @@ impl App {
                     FileStatus::Renamed => ("→ ", self.theme.COLOR_YELLOW),
                     FileStatus::Other => ("  ", self.theme.COLOR_TEXT),
                 };
-                let display_filename = truncate_with_ellipsis(&file_change.filename, max_status_top_width);
-                lines_status_top.push(Line::from(vec![Span::styled(symbol, Style::default().fg(color)), Span::styled(display_filename, Style::default().fg(self.theme.COLOR_TEXT))]));
+                lines_status_top.push(StatusRow::file(&file_change.filename, symbol, Style::default().fg(color), Style::default().fg(self.theme.COLOR_TEXT), max_status_top_width));
             }
 
             // Empty commits and unresolved diff failures share the same quiet state.
@@ -144,16 +135,18 @@ impl App {
                 status_top_empty = true;
                 let blank_lines_before = empty_state_top_padding(visible_height_status_top);
                 for _ in 0..blank_lines_before {
-                    lines_status_top.push(Line::from(""));
+                    lines_status_top.push(StatusRow::plain(Line::from("")));
                 }
-                lines_status_top.push(Line::from(Span::styled(
+                lines_status_top.push(StatusRow::plain(Line::from(Span::styled(
                     center_line(&truncate_with_ellipsis("⊘ no staged changes", max_status_top_width), max_status_top_width + 3),
                     Style::default().fg(self.theme.COLOR_GREY_800),
-                )));
+                ))));
             } else {
                 is_staged_changes = true;
             }
         }
+
+        let search_highlight_path = if self.layout_config.is_search { self.search_path.as_deref() } else { None };
 
         // Top status pane shows staged files on the pseudo-row or commit file changes otherwise.
         {
@@ -173,8 +166,16 @@ impl App {
             let end = (start + visible_height).min(total_lines);
 
             // Selection is disabled for synthetic empty-state rows.
-            let list_items =
-                status_list_items(&lines_status_top[start..end], visible_height, start, self.status_top_selected, self.focus == Focus::StatusTop, is_staged_changes && !status_top_empty, &self.theme);
+            let list_items = status_list_items(
+                &lines_status_top[start..end],
+                visible_height,
+                start,
+                self.status_top_selected,
+                self.focus == Focus::StatusTop,
+                is_staged_changes && !status_top_empty,
+                search_highlight_path,
+                &self.theme,
+            );
 
             if self.layout_config.is_zen {
                 // Zen mode frames the pane as a full standalone list.
@@ -241,6 +242,7 @@ impl App {
                     self.status_bottom_selected,
                     self.focus == Focus::StatusBottom,
                     is_unstaged_changes && !status_bottom_empty,
+                    search_highlight_path,
                     &self.theme,
                 );
 
@@ -283,32 +285,35 @@ impl App {
     }
 }
 
-fn centered_loading_lines(visible_height: usize, width: usize, style: Style) -> Vec<Line<'static>> {
+fn centered_loading_lines(visible_height: usize, width: usize, style: Style) -> Vec<StatusRow<'static>> {
     let mut lines = Vec::new();
     for _ in 0..empty_state_top_padding(visible_height) {
-        lines.push(Line::from(""));
+        lines.push(StatusRow::plain(Line::from("")));
     }
-    lines.push(Line::from(Span::styled(center_line(&truncate_with_ellipsis("loading", width), width), style)));
+    lines.push(StatusRow::plain(Line::from(Span::styled(center_line(&truncate_with_ellipsis("loading", width), width), style))));
     lines
 }
 
 fn status_list_items<'a>(
-    lines: &[Line<'a>], visible_height: usize, start: usize, selected: usize, is_focused: bool, selection_enabled: bool, theme: &crate::helpers::palette::Theme,
+    rows: &[StatusRow<'a>], visible_height: usize, start: usize, selected: usize, is_focused: bool, selection_enabled: bool, search_highlight_path: Option<&str>,
+    theme: &crate::helpers::palette::Theme,
 ) -> Vec<ListItem<'a>> {
     (0..visible_height)
         .map(|idx| {
-            let line = lines.get(idx).cloned().unwrap_or_default();
+            let row = rows.get(idx).cloned().unwrap_or_else(|| StatusRow::plain(Line::default()));
             let global_idx = start + idx;
             let is_selected = selection_enabled && is_focused && global_idx == selected;
+            let is_search_highlighted = row.path.zip(search_highlight_path).is_some_and(|(path, searched)| path == searched);
+            let is_highlighted = is_selected || is_search_highlighted;
 
-            let mut item = if is_selected {
-                let spans: Vec<Span> = line.iter().map(|span| Span::styled(span.content.clone(), span.style.fg(theme.COLOR_HIGHLIGHTED))).collect();
+            let mut item = if is_highlighted {
+                let spans: Vec<Span> = row.line.iter().map(|span| Span::styled(span.content.clone(), span.style.fg(theme.COLOR_HIGHLIGHTED))).collect();
                 ListItem::new(Line::from(spans)).style(Style::default().bg(theme.background_or_default(theme.COLOR_GREY_800)).fg(theme.COLOR_HIGHLIGHTED))
             } else {
-                ListItem::new(line)
+                ListItem::new(row.line)
             };
 
-            if !is_selected && global_idx.is_multiple_of(2) {
+            if !is_highlighted && global_idx.is_multiple_of(2) {
                 item = item.style(Style::default().bg(theme.background_or_default(theme.COLOR_GREY_900)));
             }
 

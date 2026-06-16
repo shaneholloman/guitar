@@ -42,6 +42,7 @@ while looking really good
 - [Mental Model](#mental-model)
 - [Interface Sections](#interface-sections)
 - [Navigation](#navigation)
+- [File Search](#file-search)
 - [Inputs And Keymaps](#inputs-and-keymaps)
 - [Git Operations](#git-operations)
 - [Authentication](#authentication)
@@ -370,6 +371,18 @@ Mouse capture is enabled while the app runs.
 - Drag stacked pane dividers to resize branch/tag/stash/reflog/worktree, inspector/status, and staged/unstaged splits.
 - Layout changes from dragging are saved when the mouse button is released.
 
+## File Search
+
+`Shift+F` opens repository file search from the graph, inspector, status panes, search pane, or side panes.
+
+Type part of a tracked filepath to filter suggestions. Matching characters are highlighted in the suggestion list. Use `Up`, `Down`, `Ctrl+k`, or `Ctrl+j` to move through suggestions, `Enter` to choose the selected path, and `Esc` to cancel.
+
+Choosing a file opens the search pane and loads commits that changed that path. The search pane shows each matching commit with a status marker, short SHA, and commit summary. Selecting a search result and pressing `Enter` jumps the graph to that commit.
+
+While the search pane is open, matching commits are highlighted in the graph. If the searched path also appears in the staged, unstaged, or conflict status panes, that filepath row is highlighted there too.
+
+Use `` ` `` to show or hide the search pane.
+
 ## Inputs And Keymaps
 
 ### Input Modes
@@ -450,6 +463,7 @@ Defaults are written to `keymap.json` on first run. User-edited keymaps can diff
 | Go To Beginning | `g`, `Home` |
 | Go To End | `Shift+G`, `End` |
 | Find | `/` |
+| Find File | `Shift+F` |
 | Scroll Up Branch | `{` |
 | Scroll Down Branch | `}` |
 | Scroll Up Commit | `[` |
@@ -467,6 +481,7 @@ Defaults are written to `keymap.json` on first run. User-edited keymaps can diff
 | Toggle Reflogs | `7` |
 | Toggle SHAs | `8` |
 | Toggle Graph Reflogs | `9` |
+| Toggle Search | `` ` `` |
 | Toggle Help / Settings | `?` |
 | Action Mode | `Ctrl+a` |
 | Minimize | `.` |

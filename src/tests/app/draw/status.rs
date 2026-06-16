@@ -5,7 +5,7 @@ use crate::{
     git::queries::helpers::{FileChange, FileChanges},
 };
 use git2::Oid;
-use ratatui::{Terminal, backend::TestBackend, layout::Rect};
+use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, layout::Rect};
 
 fn status_app() -> App {
     let mut app = App {
@@ -27,6 +27,15 @@ fn rendered(terminal: &Terminal<TestBackend>) -> String {
     terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect::<String>()
 }
 
+fn row_contains(buffer: &Buffer, row: u16, text: &str) -> bool {
+    let line = (0..buffer.area.width).map(|x| buffer[(x, row)].symbol()).collect::<String>();
+    line.contains(text)
+}
+
+fn path_col(buffer: &Buffer, row: u16, symbol: &str) -> u16 {
+    (0..buffer.area.width).find(|&x| buffer[(x, row)].symbol() == symbol).unwrap()
+}
+
 fn graph_row(index: usize, alias: u32, oid: Oid) -> GraphRow {
     GraphRow {
         index,
@@ -41,6 +50,102 @@ fn graph_row(index: usize, alias: u32, oid: Oid) -> GraphRow {
         worktrees: Vec::new(),
         reflog: None,
     }
+}
+
+#[test]
+fn status_highlights_matching_staged_and_unstaged_paths_when_search_pane_is_open() {
+    let mut app = status_app();
+    app.graph_selected = 0;
+    app.is_uncommitted_loaded = true;
+    app.focus = Focus::Viewport;
+    app.layout_config.is_search = true;
+    app.search_path = Some("src/selected.rs".to_string());
+    app.uncommitted.staged = FileChanges { modified: vec!["src/selected.rs".to_string(), "src/other.rs".to_string()], ..Default::default() };
+    app.uncommitted.unstaged = FileChanges { added: vec!["src/selected.rs".to_string()], ..Default::default() };
+
+    let backend = TestBackend::new(48, 10);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw_status(frame)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let selected_bg = app.theme.background_or_default(app.theme.COLOR_GREY_800);
+    let top_col = path_col(buffer, 0, "s");
+    let bottom_col = path_col(buffer, 6, "s");
+
+    assert!(row_contains(buffer, 0, "src/selected.rs"));
+    assert_eq!(buffer[(top_col, 0)].bg, selected_bg);
+    assert_eq!(buffer[(top_col, 0)].fg, app.theme.COLOR_HIGHLIGHTED);
+    assert!(row_contains(buffer, 6, "src/selected.rs"));
+    assert_eq!(buffer[(bottom_col, 6)].bg, selected_bg);
+    assert_eq!(buffer[(bottom_col, 6)].fg, app.theme.COLOR_HIGHLIGHTED);
+}
+
+#[test]
+fn status_highlights_matching_conflict_paths_when_search_pane_is_open() {
+    let mut app = status_app();
+    app.graph_selected = 0;
+    app.is_uncommitted_loaded = true;
+    app.focus = Focus::Viewport;
+    app.layout_config.is_search = true;
+    app.search_path = Some("src/conflict.rs".to_string());
+    app.uncommitted.conflicts = vec!["src/conflict.rs".to_string()];
+
+    let backend = TestBackend::new(48, 10);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw_status(frame)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let selected_bg = app.theme.background_or_default(app.theme.COLOR_GREY_800);
+    let top_col = path_col(buffer, 0, "s");
+    let bottom_col = path_col(buffer, 6, "s");
+
+    assert!(row_contains(buffer, 0, "src/conflict.rs"));
+    assert_eq!(buffer[(top_col, 0)].bg, selected_bg);
+    assert_eq!(buffer[(top_col, 0)].fg, app.theme.COLOR_HIGHLIGHTED);
+    assert!(row_contains(buffer, 6, "src/conflict.rs"));
+    assert_eq!(buffer[(bottom_col, 6)].bg, selected_bg);
+    assert_eq!(buffer[(bottom_col, 6)].fg, app.theme.COLOR_HIGHLIGHTED);
+}
+
+#[test]
+fn status_does_not_highlight_partial_matches_or_closed_search_pane() {
+    let selected_bg;
+    {
+        let mut app = status_app();
+        app.graph_selected = 0;
+        app.is_uncommitted_loaded = true;
+        app.focus = Focus::Viewport;
+        app.layout_config.is_search = true;
+        app.search_path = Some("src/selected.rs".to_string());
+        app.uncommitted.staged = FileChanges { modified: vec!["src/selected.rs.bak".to_string()], ..Default::default() };
+        selected_bg = app.theme.background_or_default(app.theme.COLOR_GREY_800);
+
+        let backend = TestBackend::new(48, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.draw_status(frame)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let col = path_col(buffer, 0, "s");
+        assert!(row_contains(buffer, 0, "src/selected.rs.bak"));
+        assert_ne!(buffer[(col, 0)].bg, selected_bg);
+    }
+
+    let mut app = status_app();
+    app.graph_selected = 0;
+    app.is_uncommitted_loaded = true;
+    app.focus = Focus::Viewport;
+    app.layout_config.is_search = false;
+    app.search_path = Some("src/selected.rs".to_string());
+    app.uncommitted.staged = FileChanges { modified: vec!["src/selected.rs".to_string()], ..Default::default() };
+
+    let backend = TestBackend::new(48, 10);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw_status(frame)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let col = path_col(buffer, 0, "s");
+    assert!(row_contains(buffer, 0, "src/selected.rs"));
+    assert_ne!(buffer[(col, 0)].bg, selected_bg);
 }
 
 #[test]
