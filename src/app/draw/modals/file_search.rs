@@ -16,15 +16,12 @@ use ratatui::{
 };
 use std::collections::HashSet;
 
-fn path_spans(result: &FileSearchResult, max_width: usize, text_color: Color, match_color: Color, selected_bg: Option<Color>) -> Vec<Span<'static>> {
+fn path_spans(result: &FileSearchResult, max_width: usize, text_color: Color, match_color: Color) -> Vec<Span<'static>> {
     let matched: HashSet<usize> = result.matched_indices.iter().copied().collect();
     let chars: Vec<char> = result.path.chars().collect();
     let is_truncated = chars.len() > max_width;
     let visible_chars = if is_truncated && max_width > 3 { max_width - 3 } else { max_width };
-    let base_style = |color| {
-        let style = Style::default().fg(color);
-        if let Some(bg) = selected_bg { style.bg(bg) } else { style }
-    };
+    let base_style = |color| Style::default().fg(color);
 
     let mut spans: Vec<Span<'static>> = chars
         .iter()
@@ -65,9 +62,9 @@ impl App {
         let inner_width = modal_area.width.saturating_sub(8);
         let inner_x = modal_area.x + 4;
         let title_area = Rect { x: inner_x, y: modal_area.y + 2, width: inner_width, height: 1 };
-        let input_area = Rect { x: inner_x, y: modal_area.y + 4, width: inner_width, height: 5 };
+        let input_area = Rect { x: modal_area.x + 1, y: modal_area.y + 4, width: modal_area.width.saturating_sub(2), height: 5 };
         let action_area = Rect { x: inner_x, y: modal_area.y + modal_area.height.saturating_sub(3), width: inner_width, height: 1 };
-        let list_y = modal_area.y + 9;
+        let list_y = modal_area.y + 10;
         let list_bottom = action_area.y.saturating_sub(1);
         let list_area = Rect { x: inner_x, y: list_y, width: inner_width, height: list_bottom.saturating_sub(list_y) };
 
@@ -102,9 +99,9 @@ impl App {
                 .map(|(idx, result)| {
                     let absolute = start + idx;
                     let is_selected = absolute == selected;
-                    let selected_bg = is_selected.then(|| self.theme.background_or_default(self.theme.COLOR_GREY_800));
-                    let mut spans = vec![Span::styled("  ", if let Some(bg) = selected_bg { Style::default().bg(bg) } else { Style::default() })];
-                    spans.extend(path_spans(result, max_path_width, self.theme.COLOR_TEXT, self.theme.COLOR_GRASS, selected_bg));
+                    let text_color = if is_selected { self.theme.COLOR_HIGHLIGHTED } else { self.theme.COLOR_TEXT };
+                    let mut spans = vec![Span::raw("  ")];
+                    spans.extend(path_spans(result, max_path_width, text_color, self.theme.COLOR_GRASS));
                     ListItem::new(Line::from(spans))
                 })
                 .collect()
