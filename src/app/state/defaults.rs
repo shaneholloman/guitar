@@ -119,6 +119,11 @@ impl Default for App {
             worktrees_scroll: 0.into(),
 
             // Search
+            search_path: None,
+            search_rows: Vec::new(),
+            search_is_loading: false,
+            search_error: None,
+            search_request_id: None,
             search_selected: 0,
             search_scroll: 0.into(),
 

@@ -2,7 +2,7 @@ use super::*;
 use crate::app::app::GraphWindowCache;
 use crate::core::{
     chunk::NONE,
-    graph_service::{GraphCommand, GraphEvent, GraphLookupKind, GraphLookupResult, GraphPane, GraphReflogLabel, GraphRow},
+    graph_service::{GraphCommand, GraphEvent, GraphFileHistoryRow, GraphLookupKind, GraphLookupResult, GraphPane, GraphReflogLabel, GraphRow},
     reflogs::HeadReflogAliasEntry,
 };
 use crate::{
@@ -10,6 +10,7 @@ use crate::{
         app::{SettingsSelection, SettingsSelectionKind},
         state::layout::Layout,
     },
+    git::queries::helpers::FileStatus,
     helpers::{
         keymap::{Command, InputMode, KeyBinding, KeymapSelection, Keymaps, load_keymaps_from_path},
         layout::LayoutConfig,
@@ -105,6 +106,10 @@ fn graph_app_with_history() -> (App, git2::Oid, git2::Oid, git2::Oid) {
 
 fn diff_filenames(app: &App) -> Vec<String> {
     app.current_diff.iter().map(|change| change.filename.clone()).collect()
+}
+
+fn search_history_row(graph_index: usize, oid: git2::Oid) -> GraphFileHistoryRow {
+    GraphFileHistoryRow { graph_index, oid, short_oid: oid.to_string()[..8].to_string(), summary: "history".to_string(), status: FileStatus::Modified }
 }
 
 fn branch_app() -> App {
@@ -325,6 +330,47 @@ fn graph_toggle_multiple_branch_commit_opens_toggle_modal() {
     assert_eq!(app.focus, Focus::ModalSolo);
     assert_eq!(app.modal_branch_action, BranchModalAction::Toggle);
     assert_eq!(app.modal_solo_selected, 0);
+}
+
+#[test]
+fn search_pane_navigation_uses_result_count() {
+    let (_path, repo) = temp_repo("search-nav");
+    let oid = commit_file(&repo, "target.txt", "target");
+    let mut app = App { repo: Some(Rc::new(repo)), focus: Focus::Search, ..Default::default() };
+    app.layout.search.height = 5;
+    app.search_rows = (0..10).map(|idx| search_history_row(idx, oid)).collect();
+
+    app.on_scroll_down();
+    assert_eq!(app.search_selected, 1);
+
+    app.on_scroll_page_down();
+    assert_eq!(app.search_selected, 5);
+
+    app.on_scroll_to_end();
+    assert_eq!(app.search_selected, 9);
+
+    app.on_scroll_down();
+    assert_eq!(app.search_selected, 9);
+
+    app.on_scroll_page_up();
+    assert_eq!(app.search_selected, 5);
+}
+
+#[test]
+fn search_narrow_jumps_to_related_graph_commit() {
+    let (mut app, _root, parent, _child) = graph_app_with_history();
+    app.focus = Focus::Search;
+    app.layout.graph.height = 10;
+    app.search_selected = 0;
+    app.search_rows = vec![search_history_row(2, parent)];
+
+    app.on_narrow_scope();
+
+    assert_eq!(app.viewport, Viewport::Graph);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.graph_selected, 2);
+    assert_eq!(app.graph_scroll.get(), 0);
+    assert_eq!(diff_filenames(&app), vec!["parent.txt".to_string()]);
 }
 
 #[test]

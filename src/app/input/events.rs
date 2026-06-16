@@ -417,7 +417,7 @@ impl App {
     }
 
     fn search_clickable_count(&self) -> usize {
-        0
+        self.search_rows.len()
     }
 
     fn graph_pane_clickable(&self, index: usize, kind: GraphPaneClickKind) -> bool {

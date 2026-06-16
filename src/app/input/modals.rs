@@ -166,12 +166,21 @@ impl App {
     }
 
     fn select_file_search_result(&mut self) {
-        let Some(result) = self.modal_file_search_results.get(self.modal_file_search_selected as usize) else {
+        let Some(path) = self.modal_file_search_results.get(self.modal_file_search_selected as usize).map(|result| result.path.clone()) else {
             return;
         };
 
-        self.modal_input.set_value(result.path.clone());
-        self.refresh_file_search_results();
+        self.modal_input.clear();
+        self.modal_file_search_results.clear();
+        self.modal_file_search_selected = 0;
+        self.modal_file_search_scroll.set(0);
+        self.modal_file_search_return_focus = Focus::Viewport;
+
+        self.layout_config.is_search = true;
+        self.mark_viewer_layout_dirty();
+        self.save_layout();
+        self.focus = Focus::Search;
+        self.request_file_history_search(path);
     }
 
     fn handle_file_search_event(&mut self, key_event: KeyEvent) -> bool {

@@ -5,7 +5,7 @@ use crate::{
         walker::Walker,
         worktrees::{WorktreeEntry, Worktrees},
     },
-    git::queries::reflogs::HeadReflogEntry,
+    git::queries::{file_history::changed_file_status_at_commit, helpers::FileStatus, reflogs::HeadReflogEntry},
     helpers::heatmap::{DAYS, WEEKS, build_heatmap},
 };
 use git2::Oid;
@@ -48,6 +48,7 @@ pub enum GraphLookupKind {
 pub enum GraphCommand {
     QueryGraphWindow { generation: Generation, request_id: RequestId, start: usize, end: usize },
     QueryPaneWindow { generation: Generation, pane: GraphPane, start: usize, end: usize },
+    QueryFileHistory { generation: Generation, request_id: RequestId, path: String },
     Lookup { generation: Generation, request_id: RequestId, kind: GraphLookupKind },
     Shutdown,
 }
@@ -95,6 +96,15 @@ pub enum GraphPaneRow {
     Reflog { alias: u32, selector: String, message: String, lane: Option<usize>, graph_index: Option<usize> },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphFileHistoryRow {
+    pub graph_index: usize,
+    pub oid: Oid,
+    pub short_oid: String,
+    pub summary: String,
+    pub status: FileStatus,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GraphIndexIdentity {
     pub index: usize,
@@ -114,6 +124,7 @@ pub enum GraphEvent {
     Progress { generation: Generation, version: GraphVersion, total: usize, is_first: bool, is_complete: bool },
     GraphWindow { generation: Generation, request_id: RequestId, version: GraphVersion, start: usize, end: usize, total: usize, head_alias: u32, rows: Vec<GraphRow>, history: GraphHistory },
     PaneWindow { generation: Generation, version: GraphVersion, pane: GraphPane, start: usize, end: usize, total: usize, rows: Vec<GraphPaneRow> },
+    FileHistory { generation: Generation, request_id: RequestId, path: String, rows: Vec<GraphFileHistoryRow>, error: Option<String> },
     LookupResult { generation: Generation, request_id: RequestId, result: GraphLookupResult },
     Heatmap { generation: Generation, heatmap: [[usize; WEEKS]; DAYS] },
     Error { generation: Generation, message: String },
@@ -147,13 +158,14 @@ fn run_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand>, tx:
     let mut is_first = true;
     let mut is_complete = false;
     let mut pending_graph: Option<(RequestId, usize, usize)> = None;
+    let mut pending_file_history: Option<(RequestId, String)> = None;
 
     loop {
         if cancel.load(Ordering::SeqCst) {
             break;
         }
 
-        if !drain_commands(generation, version, &rx, &tx, &walk_ctx, &mut worktrees, &mut pending_graph, &config.visible_branch_names) {
+        if !drain_commands(generation, version, &rx, &tx, &walk_ctx, &mut worktrees, &mut pending_graph, &mut pending_file_history, &config.visible_branch_names) {
             break;
         }
 
@@ -161,11 +173,15 @@ fn run_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand>, tx:
             send_graph_window(generation, request_id, version, start, end, &tx, &walk_ctx, &worktrees, &config.visible_branch_names);
         }
 
+        if is_complete && let Some((request_id, path)) = pending_file_history.take() {
+            send_file_history(generation, request_id, path, &tx, &walk_ctx);
+        }
+
         if is_complete {
             match rx.recv_timeout(Duration::from_millis(50)) {
                 Ok(GraphCommand::Shutdown) => break,
                 Ok(command) => {
-                    if !handle_command(generation, version, command, &tx, &walk_ctx, &mut worktrees, &mut pending_graph, &config.visible_branch_names) {
+                    if !handle_command(generation, version, command, &tx, &walk_ctx, &mut worktrees, &mut pending_graph, &mut pending_file_history, &config.visible_branch_names) {
                         break;
                     }
                 },
@@ -187,16 +203,20 @@ fn run_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand>, tx:
             let repo = walk_ctx.repo.borrow();
             let heatmap = build_heatmap(&repo, &walk_ctx.oids.oids);
             let _ = tx.send(GraphEvent::Heatmap { generation, heatmap });
+
+            if let Some((request_id, path)) = pending_file_history.take() {
+                send_file_history(generation, request_id, path, &tx, &walk_ctx);
+            }
         }
     }
 }
 
 fn drain_commands(
     generation: Generation, version: GraphVersion, rx: &Receiver<GraphCommand>, tx: &Sender<GraphEvent>, walk_ctx: &Walker, worktrees: &mut Worktrees,
-    pending_graph: &mut Option<(RequestId, usize, usize)>, visible_branch_names: &HashSet<String>,
+    pending_graph: &mut Option<(RequestId, usize, usize)>, pending_file_history: &mut Option<(RequestId, String)>, visible_branch_names: &HashSet<String>,
 ) -> bool {
     while let Ok(command) = rx.try_recv() {
-        if !handle_command(generation, version, command, tx, walk_ctx, worktrees, pending_graph, visible_branch_names) {
+        if !handle_command(generation, version, command, tx, walk_ctx, worktrees, pending_graph, pending_file_history, visible_branch_names) {
             return false;
         }
     }
@@ -205,7 +225,7 @@ fn drain_commands(
 
 fn handle_command(
     generation: Generation, version: GraphVersion, command: GraphCommand, tx: &Sender<GraphEvent>, walk_ctx: &Walker, worktrees: &mut Worktrees, pending_graph: &mut Option<(RequestId, usize, usize)>,
-    visible_branch_names: &HashSet<String>,
+    pending_file_history: &mut Option<(RequestId, String)>, visible_branch_names: &HashSet<String>,
 ) -> bool {
     match command {
         GraphCommand::Shutdown => false,
@@ -218,6 +238,12 @@ fn handle_command(
         GraphCommand::QueryPaneWindow { generation: cmd_generation, pane, start, end } => {
             if cmd_generation == generation {
                 send_pane_window(generation, version, pane, start, end, tx, walk_ctx);
+            }
+            true
+        },
+        GraphCommand::QueryFileHistory { generation: cmd_generation, request_id, path } => {
+            if cmd_generation == generation {
+                *pending_file_history = Some((request_id, path));
             }
             true
         },
@@ -253,6 +279,40 @@ fn send_pane_window(generation: Generation, version: GraphVersion, pane: GraphPa
     let rows = all_rows.into_iter().skip(start).take(end.saturating_sub(start)).collect();
 
     let _ = tx.send(GraphEvent::PaneWindow { generation, version, pane, start, end, total, rows });
+}
+
+fn send_file_history(generation: Generation, request_id: RequestId, path: String, tx: &Sender<GraphEvent>, walk_ctx: &Walker) {
+    let result = file_history_rows(walk_ctx, &path);
+    match result {
+        Ok(rows) => {
+            let _ = tx.send(GraphEvent::FileHistory { generation, request_id, path, rows, error: None });
+        },
+        Err(error) => {
+            let _ = tx.send(GraphEvent::FileHistory { generation, request_id, path, rows: Vec::new(), error: Some(error.to_string()) });
+        },
+    }
+}
+
+fn file_history_rows(walk_ctx: &Walker, path: &str) -> Result<Vec<GraphFileHistoryRow>, git2::Error> {
+    let repo = walk_ctx.repo.borrow();
+    let mut rows = Vec::new();
+
+    for (graph_index, &alias) in walk_ctx.oids.get_sorted_aliases().iter().enumerate() {
+        let oid = *walk_ctx.oids.get_oid_by_alias(alias);
+        if walk_ctx.oids.is_zero(&oid) {
+            continue;
+        }
+
+        let Some(status) = changed_file_status_at_commit(&repo, oid, path)? else {
+            continue;
+        };
+
+        let summary = repo.find_commit(oid).ok().and_then(|commit| commit.summary().map(str::to_string)).unwrap_or_else(|| "⊘ no message".to_string());
+        let short_oid = oid.to_string().chars().take(8).collect();
+        rows.push(GraphFileHistoryRow { graph_index, oid, short_oid, summary, status });
+    }
+
+    Ok(rows)
 }
 
 fn graph_rows(walk_ctx: &Walker, worktrees: &Worktrees, visible_branch_names: &HashSet<String>, start: usize, end: usize) -> Vec<GraphRow> {

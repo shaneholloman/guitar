@@ -28,8 +28,8 @@ use crate::{
     core::{
         branches::Branches,
         graph_service::{
-            Generation, GraphCommand, GraphEvent, GraphHistory, GraphIndexIdentity, GraphLookupKind, GraphLookupResult, GraphPane, GraphPaneRow, GraphRow, GraphServiceConfig, GraphVersion, RequestId,
-            spawn_graph_service,
+            Generation, GraphCommand, GraphEvent, GraphFileHistoryRow, GraphHistory, GraphIndexIdentity, GraphLookupKind, GraphLookupResult, GraphPane, GraphPaneRow, GraphRow, GraphServiceConfig,
+            GraphVersion, RequestId, spawn_graph_service,
         },
         oids::Oids,
         tags::Tags,
@@ -368,6 +368,11 @@ pub struct App {
     pub worktrees_scroll: Cell<usize>,
 
     // Search
+    pub search_path: Option<String>,
+    pub search_rows: Vec<GraphFileHistoryRow>,
+    pub search_is_loading: bool,
+    pub search_error: Option<String>,
+    pub search_request_id: Option<RequestId>,
     pub search_selected: usize,
     pub search_scroll: Cell<usize>,
 
@@ -694,6 +699,7 @@ impl App {
         self.stashes = Stashes::default();
         self.reflogs = HeadReflogs::default();
         self.worktrees = Worktrees::default();
+        self.clear_file_history_search();
 
         self.branches.visible_branch_names = visible_branch_names;
 
@@ -855,6 +861,18 @@ impl App {
                     GraphPane::Stashes => self.graph.stashes_window = Some(cache),
                     GraphPane::Reflogs => self.graph.reflogs_window = Some(cache),
                 }
+            },
+            GraphEvent::FileHistory { generation, request_id, path, rows, error } => {
+                if generation != self.graph.generation || self.search_request_id != Some(request_id) || self.search_path.as_deref() != Some(path.as_str()) {
+                    return;
+                }
+
+                self.search_is_loading = false;
+                self.search_request_id = None;
+                self.search_error = error;
+                self.search_rows = rows;
+                self.search_selected = self.search_selected.min(self.search_rows.len().saturating_sub(1));
+                self.search_scroll.set(0);
             },
             GraphEvent::LookupResult { generation, request_id, result, .. } => {
                 if generation != self.graph.generation {
@@ -1038,6 +1056,40 @@ impl App {
             return;
         }
         self.request_graph_lookup(GraphLookupKind::GraphRowAt { index }, action);
+    }
+
+    pub(crate) fn clear_file_history_search(&mut self) {
+        self.search_path = None;
+        self.search_rows.clear();
+        self.search_is_loading = false;
+        self.search_error = None;
+        self.search_request_id = None;
+        self.search_selected = 0;
+        self.search_scroll.set(0);
+    }
+
+    pub(crate) fn request_file_history_search(&mut self, path: String) {
+        self.search_path = Some(path.clone());
+        self.search_rows.clear();
+        self.search_is_loading = true;
+        self.search_error = None;
+        self.search_selected = 0;
+        self.search_scroll.set(0);
+
+        let Some(tx) = self.graph_tx.clone() else {
+            self.search_is_loading = false;
+            self.search_error = Some("File history failed: graph worker is unavailable".to_string());
+            self.search_request_id = None;
+            return;
+        };
+
+        let request_id = self.graph.next_request_id();
+        self.search_request_id = Some(request_id);
+        if tx.send(GraphCommand::QueryFileHistory { generation: self.graph.generation, request_id, path }).is_err() {
+            self.search_is_loading = false;
+            self.search_error = Some("File history failed: graph worker is unavailable".to_string());
+            self.search_request_id = None;
+        }
     }
 
     pub(crate) fn cache_graph_row(&mut self, row: GraphRow) {

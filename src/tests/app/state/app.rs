@@ -1,5 +1,6 @@
 use super::*;
-use crate::core::graph_service::{GraphCommand, GraphEvent, GraphLookupKind, GraphLookupResult, GraphPane, GraphRow};
+use crate::core::graph_service::{GraphCommand, GraphEvent, GraphFileHistoryRow, GraphLookupKind, GraphLookupResult, GraphPane, GraphRow};
+use crate::git::queries::helpers::FileStatus;
 use git2::{Repository, Signature};
 use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Color};
 use std::{
@@ -40,6 +41,10 @@ fn commit_file(repo: &Repository, file: &str, message: &str) -> git2::Oid {
 
 fn graph_row(index: usize, alias: u32, oid: git2::Oid) -> GraphRow {
     GraphRow { index, alias, oid, summary: "commit".to_string(), has_any_branch: false, branches: Vec::new(), tags: Vec::new(), is_stash: false, stash_lane: None, worktrees: Vec::new(), reflog: None }
+}
+
+fn history_row(index: usize, oid: git2::Oid) -> GraphFileHistoryRow {
+    GraphFileHistoryRow { graph_index: index, oid, short_oid: oid.to_string()[..8].to_string(), summary: "history".to_string(), status: FileStatus::Modified }
 }
 
 fn stop_graph_service(app: &mut App) {
@@ -212,6 +217,40 @@ fn explicit_graph_navigation_clears_pending_restore() {
 
     assert_eq!(app.graph_selected, 2);
     assert_eq!(app.graph.pending_selection_restore, None);
+}
+
+#[test]
+fn file_history_event_updates_only_matching_request() {
+    let (_path, repo) = temp_repo("file-history-event");
+    let oid = commit_file(&repo, "target.txt", "target");
+    let repo = Rc::new(repo);
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let mut app = App {
+        repo: Some(repo.clone()),
+        graph_rx: Some(event_rx),
+        viewport: Viewport::Graph,
+        focus: Focus::Search,
+        search_path: Some("target.txt".to_string()),
+        search_request_id: Some(3),
+        search_is_loading: true,
+        ..Default::default()
+    };
+    app.graph.generation = 7;
+
+    event_tx.send(GraphEvent::FileHistory { generation: 7, request_id: 2, path: "target.txt".to_string(), rows: vec![history_row(1, oid)], error: None }).unwrap();
+    app.sync(&repo);
+
+    assert!(app.search_is_loading);
+    assert!(app.search_rows.is_empty());
+    assert_eq!(app.search_request_id, Some(3));
+
+    event_tx.send(GraphEvent::FileHistory { generation: 7, request_id: 3, path: "target.txt".to_string(), rows: vec![history_row(1, oid)], error: None }).unwrap();
+    app.sync(&repo);
+
+    assert!(!app.search_is_loading);
+    assert_eq!(app.search_request_id, None);
+    assert_eq!(app.search_rows.len(), 1);
+    assert_eq!(app.search_rows[0].graph_index, 1);
 }
 
 #[test]

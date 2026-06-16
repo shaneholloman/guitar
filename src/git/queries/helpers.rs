@@ -34,7 +34,7 @@ pub struct FileChange {
 }
 
 // Change kinds normalized from libgit2 deltas for display.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileStatus {
     Added,
     Modified,

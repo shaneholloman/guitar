@@ -33,6 +33,10 @@ impl App {
         selection.min(Self::last_index(len))
     }
 
+    fn search_result_count(&self) -> usize {
+        self.search_rows.len()
+    }
+
     fn wrap_modal_selection(selection: &mut i32, len: usize, direction: Direction) {
         if len == 0 {
             *selection = 0;
@@ -227,6 +231,23 @@ impl App {
         self.center_graph_scroll_on_selection();
         self.viewport = Viewport::Graph;
         self.focus = Focus::Viewport;
+        true
+    }
+
+    fn open_search_result(&mut self) -> bool {
+        let Some(row) = self.search_rows.get(self.search_selected).cloned() else {
+            return false;
+        };
+
+        self.select_graph_index(row.graph_index);
+        self.center_graph_scroll_on_selection();
+        self.viewport = Viewport::Graph;
+        self.focus = Focus::Viewport;
+
+        if self.graph_tx.is_some() && self.graph_row_at(row.graph_index).is_none() {
+            self.request_graph_row_lookup(row.graph_index, PendingGraphLookup::CacheGraphRow);
+        }
+
         true
     }
 
@@ -527,6 +548,9 @@ impl App {
             Focus::Worktrees => {
                 self.open_selected_worktree();
             },
+            Focus::Search => {
+                self.open_search_result();
+            },
             Focus::ModalWorktreeChooser => {
                 self.confirm_worktree_chooser();
             },
@@ -717,6 +741,9 @@ impl App {
             Focus::Worktrees => {
                 self.open_selected_worktree();
             },
+            Focus::Search => {
+                self.open_search_result();
+            },
             Focus::StatusTop | Focus::StatusBottom => {
                 if let Some(repo) = &self.repo.clone() {
                     self.open_viewer(repo);
@@ -893,7 +920,8 @@ impl App {
                 self.worktrees_selected = self.worktrees_selected.saturating_sub(page);
             },
             Focus::Search => {
-                self.search_selected = 0;
+                let page = self.layout.search.height as usize - 1;
+                self.search_selected = self.search_selected.saturating_sub(page);
             },
             Focus::Viewport => {
                 let page = self.layout.graph.height as usize - 1;
@@ -953,7 +981,8 @@ impl App {
                 self.worktrees_selected += page;
             },
             Focus::Search => {
-                self.search_selected = 0;
+                let page = self.layout.search.height as usize - 1;
+                self.search_selected = Self::clamp_selection(self.search_selected.saturating_add(page), self.search_result_count());
             },
             Focus::Viewport => {
                 let page = self.layout.graph.height as usize - 1;
@@ -1016,7 +1045,7 @@ impl App {
                 self.worktrees_selected = self.worktrees_selected.saturating_sub(1);
             },
             Focus::Search => {
-                self.search_selected = 0;
+                self.search_selected = self.search_selected.saturating_sub(1);
             },
             Focus::Viewport => {
                 match self.viewport {
@@ -1107,7 +1136,7 @@ impl App {
                 self.worktrees_selected += 1;
             },
             Focus::Search => {
-                self.search_selected = 0;
+                self.search_selected = Self::clamp_selection(self.search_selected.saturating_add(1), self.search_result_count());
             },
             Focus::Viewport => match self.viewport {
                 Viewport::Graph => {
@@ -1185,7 +1214,7 @@ impl App {
             Focus::Stashes => self.stashes_selected /= 2,
             Focus::Reflogs => self.reflogs_selected /= 2,
             Focus::Worktrees => self.worktrees_selected /= 2,
-            Focus::Search => self.search_selected = 0,
+            Focus::Search => self.search_selected /= 2,
             _ => {},
         };
     }
@@ -1220,7 +1249,8 @@ impl App {
                 self.worktrees_selected = self.worktrees_selected + (total - self.worktrees_selected) / 2
             },
             Focus::Search => {
-                self.search_selected = 0;
+                let total = self.search_result_count();
+                self.search_selected = self.search_selected + (total.saturating_sub(self.search_selected)) / 2;
             },
             _ => {},
         };
@@ -1249,7 +1279,8 @@ impl App {
                 self.worktrees_selected = self.worktrees_selected.saturating_sub(half);
             },
             Focus::Search => {
-                self.search_selected = 0;
+                let half = (self.layout.search.height as usize - 1) / 2;
+                self.search_selected = self.search_selected.saturating_sub(half);
             },
             Focus::Viewport => {
                 let half = (self.layout.graph.height as usize - 1) / 2;
@@ -1319,7 +1350,8 @@ impl App {
                 self.worktrees_selected += half;
             },
             Focus::Search => {
-                self.search_selected = 0;
+                let half = (self.layout.search.height.saturating_sub(1) as usize) / 2;
+                self.search_selected = Self::clamp_selection(self.search_selected.saturating_add(half), self.search_result_count());
             },
             Focus::Viewport => {
                 let half = (self.layout.graph.height.saturating_sub(1) as usize) / 2;
@@ -1594,7 +1626,7 @@ impl App {
                 self.worktrees_selected = usize::MAX;
             },
             Focus::Search => {
-                self.search_selected = 0;
+                self.search_selected = Self::last_index(self.search_result_count());
             },
             Focus::Viewport => match self.viewport {
                 Viewport::Graph => {

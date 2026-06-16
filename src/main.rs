@@ -42,6 +42,7 @@ pub mod git {
     pub mod queries {
         pub mod commits;
         pub mod diffs;
+        pub mod file_history;
         pub mod files;
         pub mod helpers;
         pub mod reflogs;

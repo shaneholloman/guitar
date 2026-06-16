@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::app::Viewport;
+use crate::core::graph_service::GraphCommand;
 use git2::{Repository, Signature};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::{
@@ -108,17 +109,32 @@ fn file_search_ctrl_and_arrow_keys_move_selection() {
 }
 
 #[test]
-fn file_search_enter_fills_input_without_opening_viewer() {
+fn file_search_enter_starts_file_history_search() {
     let mut app = modal_app("enter");
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.graph.generation = 5;
+    app.graph_tx = Some(tx);
     for ch in "search".chars() {
         app.handle_modal_key_event(key(KeyCode::Char(ch), KeyModifiers::NONE));
     }
 
     app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.modal_input.value(), "src/app/draw/search.rs");
-    assert_eq!(app.focus, Focus::ModalFileSearch);
+    assert!(app.modal_input.value().is_empty());
+    assert_eq!(app.focus, Focus::Search);
     assert_eq!(app.viewport, Viewport::Graph);
+    assert!(app.layout_config.is_search);
+    assert_eq!(app.search_path.as_deref(), Some("src/app/draw/search.rs"));
+    assert!(app.search_is_loading);
+
+    match rx.try_recv().unwrap() {
+        GraphCommand::QueryFileHistory { generation, request_id, path } => {
+            assert_eq!(generation, 5);
+            assert_eq!(request_id, 1);
+            assert_eq!(path, "src/app/draw/search.rs");
+        },
+        other => panic!("expected file history request, got {other:?}"),
+    }
 }
 
 #[test]

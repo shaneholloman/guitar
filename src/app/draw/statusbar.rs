@@ -50,7 +50,7 @@ impl App {
             Focus::Stashes => self.graph.stashes_window.as_ref().map(|window| window.total).unwrap_or(self.oids.stashes.len()),
             Focus::Reflogs => self.graph.reflogs_window.as_ref().map(|window| window.total).unwrap_or(self.reflogs.entries.len()),
             Focus::Worktrees => self.worktrees.entries.len(),
-            Focus::Search => 0,
+            Focus::Search => self.search_rows.len(),
             _ => 0,
         };
 

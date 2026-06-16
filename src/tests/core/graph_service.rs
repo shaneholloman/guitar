@@ -117,3 +117,58 @@ fn graph_service_reports_progress_and_answers_visible_window() {
     cancel.store(true, std::sync::atomic::Ordering::SeqCst);
     handle.join().unwrap();
 }
+
+#[test]
+fn graph_service_file_history_returns_visible_graph_indices() {
+    let (path, repo) = temp_repo("file-history");
+    let first = commit(&repo, "target.txt", "first");
+    commit(&repo, "other.txt", "other");
+    let latest = commit(&repo, "target.txt", "latest");
+
+    let generation = 77;
+    let (cmd_tx, cmd_rx) = channel();
+    let (event_tx, event_rx) = channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let handle = spawn_graph_service(
+        GraphServiceConfig { generation, path: path.display().to_string(), amount: 10000, visible_branch_names: HashSet::new(), include_head_reflog_roots: false, worktrees: Vec::new() },
+        cmd_rx,
+        event_tx,
+        cancel.clone(),
+    );
+
+    let mut complete = false;
+    for _ in 0..20 {
+        match event_rx.recv_timeout(Duration::from_millis(250)).unwrap() {
+            GraphEvent::Progress { generation: event_generation, is_complete, .. } if event_generation == generation && is_complete => {
+                complete = true;
+                break;
+            },
+            _ => {},
+        }
+    }
+    assert!(complete);
+
+    cmd_tx.send(GraphCommand::QueryFileHistory { generation: generation + 1, request_id: 41, path: "target.txt".to_string() }).unwrap();
+    cmd_tx.send(GraphCommand::QueryFileHistory { generation, request_id: 42, path: "target.txt".to_string() }).unwrap();
+
+    let mut saw_history = false;
+    for _ in 0..20 {
+        match event_rx.recv_timeout(Duration::from_millis(250)).unwrap() {
+            GraphEvent::FileHistory { generation: event_generation, request_id, path, rows, error } if event_generation == generation && request_id == 42 => {
+                saw_history = true;
+                assert_eq!(path, "target.txt");
+                assert_eq!(error, None);
+                assert_eq!(rows.iter().map(|row| row.graph_index).collect::<Vec<_>>(), vec![1, 3]);
+                assert_eq!(rows.iter().map(|row| row.oid).collect::<Vec<_>>(), vec![latest, first]);
+                break;
+            },
+            GraphEvent::FileHistory { request_id: 41, .. } => panic!("stale generation should not produce file history"),
+            _ => {},
+        }
+    }
+    assert!(saw_history);
+
+    let _ = cmd_tx.send(GraphCommand::Shutdown);
+    cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+    handle.join().unwrap();
+}
