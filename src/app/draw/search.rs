@@ -72,9 +72,9 @@ impl App {
             for row in &self.search_rows[start..end] {
                 let marker_color = match row.status {
                     FileStatus::Added => self.theme.COLOR_GRASS,
-                    FileStatus::Modified => self.theme.COLOR_ORANGE,
-                    FileStatus::Deleted => self.theme.COLOR_GRAPEFRUIT,
-                    FileStatus::Renamed => self.theme.COLOR_CYAN,
+                    FileStatus::Modified => self.theme.COLOR_BLUE,
+                    FileStatus::Deleted => self.theme.COLOR_RED,
+                    FileStatus::Renamed => self.theme.COLOR_BLUE,
                     FileStatus::Other => self.theme.COLOR_TEXT,
                 };
                 lines.push(Line::from(vec![
