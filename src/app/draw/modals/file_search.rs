@@ -60,7 +60,7 @@ impl App {
         modal_block.render(modal_area, frame.buffer_mut());
 
         let inner_width = modal_area.width.saturating_sub(8);
-        let inner_x = modal_area.x + 4;
+        let inner_x = modal_area.x + 1;
         let title_area = Rect { x: inner_x, y: modal_area.y + 2, width: inner_width, height: 1 };
         let input_area = Rect { x: modal_area.x + 1, y: modal_area.y + 4, width: modal_area.width.saturating_sub(2), height: 5 };
         let action_area = Rect { x: inner_x, y: modal_area.y + modal_area.height.saturating_sub(3), width: inner_width, height: 1 };
