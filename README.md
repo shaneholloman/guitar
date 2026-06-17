@@ -265,7 +265,7 @@ For merge commits, file lists and file diffs compare against the first parent.
 
 ### Settings
 
-The settings/help view is opened with `?`. It shows version, commit heatmap, config paths, recent repositories, remotes, Git identity, auth notes, theme choices, layout visibility, and active keymaps. Recent repository rows, remote rows, theme rows, layout rows, and keybinding rows are selectable.
+The settings/help view is opened with `?`. It shows version and the commit heatmap above tabbed settings sections for paths, display, auth, repo, and shortcuts. Recent repository rows, remote rows, theme rows, layout rows, and keybinding rows are selectable.
 
 ## Navigation
 
@@ -871,19 +871,13 @@ Only one network operation can run at a time.
 
 Open settings with `?`.
 
-The settings view includes:
+The settings view includes app version and commit heatmap above these tabs:
 
-- App version.
-- Commit heatmap.
-- Config file paths.
-- Recent repositories.
-- Git `user.name` and `user.email`.
-- Remotes and remote URLs.
-- Auth behavior notes.
-- Theme list.
-- Layout visibility toggles.
-- Normal-mode shortcuts.
-- Action-mode shortcuts that differ from normal mode.
+- `paths`: config file paths and recent repositories.
+- `display`: layout visibility toggles and theme list.
+- `auth`: Git `user.name`, `user.email`, and auth behavior notes.
+- `repo`: remotes and remote URLs.
+- `shortcuts`: normal-mode shortcuts and action-mode shortcuts that differ from normal mode.
 
 Selectable rows:
 
@@ -894,7 +888,7 @@ Selectable rows:
 - Layout visibility rows: `Enter` toggles the row or resets layout.
 - Keybinding rows: `Enter` opens key capture.
 
-Settings reuses normal navigation. Use `j`/`k`, page keys, `g`, `Shift+G`, or mouse wheel to move. Use `h`, `Esc`, or `?` to return to the graph.
+Settings reuses normal navigation. Use `Tab` / `Shift+Tab` or click a tab label to switch tabs. Use `j`/`k`, page keys, `g`, `Shift+G`, or mouse wheel to move within the active tab. Use `h`, `Esc`, or `?` to return to the graph.
 
 Available built-in themes:
 

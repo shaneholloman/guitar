@@ -278,6 +278,11 @@ impl App {
                 self.viewport = Viewport::Settings;
                 self.settings_selected = index;
             },
+            MouseSelectionTarget::SettingsTab(tab) => {
+                self.focus = Focus::Viewport;
+                self.viewport = Viewport::Settings;
+                self.switch_settings_tab(tab);
+            },
         }
     }
 
@@ -427,6 +432,11 @@ impl App {
         let visible_height = if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(2) as usize } else { self.layout.graph.height as usize };
         let row_offset = self.row_offset_in_content(self.layout.graph, column, row, visible_height, self.layout_config.is_zen)?;
         let index = self.settings_scroll.get().saturating_add(row_offset);
+
+        if let Some(hitbox) = self.settings_tab_hitboxes.iter().find(|hitbox| hitbox.line == index && column >= hitbox.start && column < hitbox.end) {
+            return Some(MouseSelectionTarget::SettingsTab(hitbox.tab));
+        }
+
         self.settings_selections.iter().any(|selection| selection.line == index).then_some(MouseSelectionTarget::Settings(index))
     }
 

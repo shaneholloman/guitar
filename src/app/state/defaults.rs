@@ -7,7 +7,7 @@ use crate::{
 };
 use crate::{
     app::{
-        app::{App, AuthInputField, BranchModalAction, Focus, OperationKind, RemoteInputAction, Viewport, WorktreeModalAction},
+        app::{App, AuthInputField, BranchModalAction, Focus, OperationKind, RemoteInputAction, SettingsTab, Viewport, WorktreeModalAction},
         draw::buffered::SurfaceBuffers,
         state::layout::Layout,
     },
@@ -136,9 +136,11 @@ impl Default for App {
             recent_save_path: None,
 
             // Settings
+            settings_tab: SettingsTab::Paths,
             settings_selected: 0,
             settings_scroll: 0.into(),
             settings_selections: Vec::new(),
+            settings_tab_hitboxes: Vec::new(),
             modal_key_capture_selection: None,
             modal_key_capture_candidate: None,
             modal_key_capture_error: None,

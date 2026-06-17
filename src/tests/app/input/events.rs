@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     app::{
-        app::{SettingsSelection, SettingsSelectionKind},
+        app::{SettingsSelection, SettingsSelectionKind, SettingsTab},
         state::defaults::ViewerMode,
         state::layout::Layout,
     },
@@ -370,6 +370,38 @@ fn mouse_click_selects_only_selectable_settings_rows() {
 
     app.handle_mouse_event(left_down(1, 3));
     assert_eq!(app.settings_selected, 12);
+}
+
+#[test]
+fn mouse_click_on_settings_tab_switches_active_tab() {
+    let (_path, repo) = temp_repo("settings-tab-click");
+    let repo = Rc::new(repo);
+    let mut app = App {
+        repo: Some(repo.clone()),
+        viewport: Viewport::Settings,
+        focus: Focus::Viewport,
+        layout_config: LayoutConfig::default(),
+        layout: Layout::default(),
+        settings_tab: SettingsTab::Paths,
+        settings_selected: 99,
+        ..Default::default()
+    };
+    app.layout.app = Rect::new(0, 0, 120, 40);
+    app.layout.graph = Rect::new(0, 0, 120, 40);
+    app.settings_scroll.set(8);
+    app.settings_lines(&repo);
+    let hitbox = *app.settings_tab_hitboxes.iter().find(|hitbox| hitbox.tab == SettingsTab::Repo).unwrap();
+    let column = hitbox.start.saturating_add(hitbox.end.saturating_sub(hitbox.start) / 2);
+    let row = hitbox.line.saturating_sub(app.settings_scroll.get()) as u16;
+
+    app.handle_mouse_event(left_down(column, row));
+
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.settings_tab, SettingsTab::Repo);
+    assert_eq!(app.settings_scroll.get(), 0);
+    assert!(app.settings_selections.iter().any(|selection| selection.line == app.settings_selected));
+    assert!(app.settings_selected > app.settings_tab_hitboxes.first().unwrap().line);
 }
 
 #[test]

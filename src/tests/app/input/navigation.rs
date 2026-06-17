@@ -7,7 +7,7 @@ use crate::core::{
 };
 use crate::{
     app::{
-        app::{SettingsSelection, SettingsSelectionKind},
+        app::{SettingsSelection, SettingsSelectionKind, SettingsTab},
         state::layout::Layout,
     },
     git::queries::helpers::FileStatus,
@@ -966,6 +966,46 @@ fn settings_shortcut_selection_opens_key_capture() {
     assert_eq!(app.modal_key_capture_selection, Some(key_selection));
     assert_eq!(app.modal_key_capture_candidate, None);
     assert_eq!(app.modal_key_capture_error, None);
+}
+
+#[test]
+fn settings_tab_commands_cycle_tabs_and_reset_selection() {
+    let (_path, repo) = temp_repo("settings-tabs");
+    let mut keymaps = minimal_keymaps();
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Tab, KeyModifiers::NONE), Command::FocusNextPane);
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::BackTab, KeyModifiers::SHIFT), Command::FocusPreviousPane);
+    let mut app = App { repo: Some(Rc::new(repo)), viewport: Viewport::Settings, focus: Focus::Viewport, settings_tab: SettingsTab::Paths, settings_selected: 99, keymaps, ..Default::default() };
+    app.layout.graph = Rect::new(0, 0, 120, 40);
+    app.layout.app = Rect::new(0, 0, 120, 40);
+    app.settings_scroll.set(12);
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+
+    assert_eq!(app.settings_tab, SettingsTab::Display);
+    assert_eq!(app.settings_scroll.get(), 0);
+    assert!(app.settings_selections.iter().any(|selection| selection.line == app.settings_selected));
+    assert!(app.settings_selected > app.settings_tab_hitboxes.first().unwrap().line);
+
+    app.handle_key_event(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+
+    assert_eq!(app.settings_tab, SettingsTab::Paths);
+    assert_eq!(app.settings_scroll.get(), 0);
+    assert!(app.settings_selections.iter().any(|selection| selection.line == app.settings_selected));
+    assert!(app.settings_selected > app.settings_tab_hitboxes.first().unwrap().line);
+}
+
+#[test]
+fn toggle_help_opens_settings_on_paths_tab() {
+    let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, settings_tab: SettingsTab::Shortcuts, settings_selected: 42, ..Default::default() };
+    app.settings_scroll.set(9);
+
+    app.on_toggle_help();
+
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.settings_tab, SettingsTab::Paths);
+    assert_eq!(app.settings_selected, 0);
+    assert_eq!(app.settings_scroll.get(), 0);
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    app::app::Viewport,
+    app::app::{SettingsTab, Viewport},
     helpers::keymap::{Command, InputMode, KeyBinding},
 };
 use git2::Repository;
@@ -73,9 +73,62 @@ fn remote_selection_lines(app: &App, remote_name: &str) -> Vec<usize> {
 }
 
 #[test]
+fn settings_default_tab_is_paths_and_only_paths_sections_render() {
+    let (_path, repo) = temp_repo("default-tab");
+    let mut app = settings_app();
+    app.layout.graph = Rect::new(0, 0, 140, 120);
+    app.layout.app = Rect::new(0, 0, 140, 120);
+
+    let rendered = rendered_settings(&mut app, &repo, 140, 120);
+
+    assert_eq!(app.settings_tab, SettingsTab::Paths);
+    assert!(rendered.contains("version:"));
+    assert!(rendered.contains("paths"));
+    assert!(rendered.contains("display"));
+    assert!(rendered.contains("auth"));
+    assert!(rendered.contains("repo"));
+    assert!(rendered.contains("shortcuts"));
+    assert!(rendered.contains("paths:"));
+    assert!(rendered.contains("recent repositories:"));
+    assert!(!rendered.contains("layout visibility:"));
+    assert!(!rendered.contains("credentials:"));
+    assert!(!rendered.contains("remotes:"));
+    assert!(!rendered.contains("shortcuts / normal mode:"));
+}
+
+#[test]
+fn settings_active_tabs_render_their_grouped_sections_only() {
+    let (_path, repo) = temp_repo("tab-groups");
+    let mut app = settings_app();
+    app.layout.graph = Rect::new(0, 0, 160, 160);
+    app.layout.app = Rect::new(0, 0, 160, 160);
+
+    app.settings_tab = SettingsTab::Display;
+    let display = rendered_settings(&mut app, &repo, 160, 160);
+    assert!(display.contains("layout visibility:"));
+    assert!(display.contains("themes:"));
+    assert!(!display.contains("recent repositories:"));
+    assert!(!display.contains("remotes:"));
+
+    app.settings_tab = SettingsTab::Auth;
+    let auth = rendered_settings(&mut app, &repo, 160, 160);
+    assert!(auth.contains("credentials:"));
+    assert!(!auth.contains("themes:"));
+    assert!(!auth.contains("remotes:"));
+
+    app.settings_tab = SettingsTab::Shortcuts;
+    let shortcuts = rendered_settings(&mut app, &repo, 160, 160);
+    assert!(shortcuts.contains("shortcuts / normal mode:"));
+    assert!(shortcuts.contains("shortcuts / action mode:"));
+    assert!(!shortcuts.contains("paths:"));
+    assert!(!shortcuts.contains("credentials:"));
+}
+
+#[test]
 fn settings_scroll_keeps_visible_selection_without_recentering() {
     let (_path, repo) = temp_repo("visible");
     let mut app = settings_app();
+    app.settings_tab = SettingsTab::Display;
     draw_settings_once(&mut app, &repo);
 
     let visible_height = app.layout.graph.height as usize;
@@ -94,6 +147,7 @@ fn settings_scroll_keeps_visible_selection_without_recentering() {
 fn settings_scroll_moves_only_when_selection_leaves_view() {
     let (_path, repo) = temp_repo("bounded");
     let mut app = settings_app();
+    app.settings_tab = SettingsTab::Display;
     draw_settings_once(&mut app, &repo);
 
     let visible_height = app.layout.graph.height as usize;
@@ -117,6 +171,7 @@ fn settings_scroll_moves_only_when_selection_leaves_view() {
 fn settings_scroll_clamps_at_top_and_bottom() {
     let (_path, repo) = temp_repo("clamp");
     let mut app = settings_app();
+    app.settings_tab = SettingsTab::Display;
     draw_settings_once(&mut app, &repo);
 
     let visible_height = app.layout.graph.height as usize;
@@ -148,6 +203,7 @@ fn settings_selection_snaps_to_selectable_line() {
 fn settings_renders_layout_visibility_rows_with_states() {
     let (_path, repo) = temp_repo("layout-section");
     let mut app = settings_app();
+    app.settings_tab = SettingsTab::Display;
     app.layout.graph = Rect::new(0, 0, 120, 120);
     app.layout.app = Rect::new(0, 0, 120, 120);
     app.layout_config.is_branches = true;
@@ -173,19 +229,29 @@ fn settings_section_names_use_highlight_color() {
 
     let backend = TestBackend::new(120, 160);
     let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|frame| app.draw_settings(frame, &repo)).unwrap();
-    let buffer = terminal.backend().buffer();
 
-    for label in ["paths:", "recent repositories:", "remotes:", "credentials:", "themes:", "layout visibility:", "shortcuts / normal mode:", "shortcuts / action mode:"] {
-        let row = (0..buffer.area.height)
-            .find(|&y| {
-                let line = (0..buffer.area.width).map(|x| buffer[(x, y)].symbol()).collect::<String>();
-                line.contains(label)
-            })
-            .unwrap();
-        let col = (0..buffer.area.width).find(|&x| buffer[(x, row)].symbol() == &label[0..1]).unwrap();
+    for (tab, labels) in [
+        (SettingsTab::Paths, vec!["paths:", "recent repositories:"]),
+        (SettingsTab::Display, vec!["layout visibility:", "themes:"]),
+        (SettingsTab::Auth, vec!["credentials:"]),
+        (SettingsTab::Repo, vec!["remotes:"]),
+        (SettingsTab::Shortcuts, vec!["shortcuts / normal mode:", "shortcuts / action mode:"]),
+    ] {
+        app.settings_tab = tab;
+        terminal.draw(|frame| app.draw_settings(frame, &repo)).unwrap();
+        let buffer = terminal.backend().buffer();
 
-        assert_eq!(buffer[(col, row)].fg, app.theme.COLOR_HIGHLIGHTED);
+        for label in labels {
+            let row = (0..buffer.area.height)
+                .find(|&y| {
+                    let line = (0..buffer.area.width).map(|x| buffer[(x, y)].symbol()).collect::<String>();
+                    line.contains(label)
+                })
+                .unwrap();
+            let col = (0..buffer.area.width).find(|&x| buffer[(x, row)].symbol() == &label[0..1]).unwrap();
+
+            assert_eq!(buffer[(col, row)].fg, app.theme.COLOR_HIGHLIGHTED);
+        }
     }
 }
 
@@ -193,6 +259,7 @@ fn settings_section_names_use_highlight_color() {
 fn settings_layout_rows_use_current_normal_keymap_binding() {
     let (_path, repo) = temp_repo("layout-key");
     let mut app = settings_app();
+    app.settings_tab = SettingsTab::Display;
     app.layout.graph = Rect::new(0, 0, 120, 120);
     app.layout.app = Rect::new(0, 0, 120, 120);
     app.keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('s'), KeyModifiers::NONE), Command::ToggleShas);
@@ -259,6 +326,7 @@ fn settings_empty_recent_repositories_row_is_not_selectable() {
 fn settings_renders_remotes_section_with_add_and_empty_state() {
     let (_path, repo) = temp_repo("empty-remotes-section");
     let mut app = settings_app();
+    app.settings_tab = SettingsTab::Repo;
     app.layout.graph = Rect::new(0, 0, 140, 120);
     app.layout.app = Rect::new(0, 0, 140, 120);
 
@@ -276,6 +344,7 @@ fn settings_renders_remote_rows_with_fetch_and_push_urls() {
     let (_path, repo) = temp_repo("remote-rows");
     repo.remote("origin", "https://example.com/repo.git").unwrap();
     let mut app = settings_app();
+    app.settings_tab = SettingsTab::Repo;
     app.layout.graph = Rect::new(0, 0, 180, 140);
     app.layout.app = Rect::new(0, 0, 180, 140);
 
@@ -298,6 +367,7 @@ fn settings_renders_remote_rows_with_explicit_push_url() {
     repo.remote("origin", "https://example.com/repo.git").unwrap();
     repo.remote_set_pushurl("origin", Some("ssh://example.com/repo.git")).unwrap();
     let mut app = settings_app();
+    app.settings_tab = SettingsTab::Repo;
     app.layout.graph = Rect::new(0, 0, 180, 140);
     app.layout.app = Rect::new(0, 0, 180, 140);
 
@@ -318,6 +388,7 @@ fn settings_truncates_long_remote_urls() {
     let long_url = "https://example.com/this/is/a/very/long/path/that/should/not/overflow/the/settings/row/repository.git";
     repo.remote("origin", long_url).unwrap();
     let mut app = settings_app();
+    app.settings_tab = SettingsTab::Repo;
     app.layout.graph = Rect::new(0, 0, 80, 120);
     app.layout.app = Rect::new(0, 0, 80, 120);
 

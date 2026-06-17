@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        app::{App, BranchModalAction, Direction, Focus, PendingGraphLookup, SettingsSelectionKind, Viewport},
+        app::{App, BranchModalAction, Direction, Focus, PendingGraphLookup, SettingsSelectionKind, SettingsTab, Viewport},
         state::defaults::ViewerMode,
     },
     core::graph_service::{GraphBranchJumpDirection, GraphLookupKind, GraphPane, GraphPaneRow},
@@ -789,6 +789,11 @@ impl App {
     }
 
     pub fn on_focus_next_pane(&mut self) {
+        if self.viewport == Viewport::Settings && self.focus == Focus::Viewport {
+            self.switch_settings_tab(self.settings_tab.next());
+            return;
+        }
+
         let active = self.get_focusable_panes();
         if active.is_empty() {
             return;
@@ -798,6 +803,11 @@ impl App {
     }
 
     pub fn on_focus_prev_pane(&mut self) {
+        if self.viewport == Viewport::Settings && self.focus == Focus::Viewport {
+            self.switch_settings_tab(self.settings_tab.previous());
+            return;
+        }
+
         let active = self.get_focusable_panes();
         if active.is_empty() {
             return;
@@ -2192,6 +2202,10 @@ impl App {
             Viewport::Graph => {
                 self.viewport = Viewport::Settings;
                 self.focus = Focus::Viewport;
+                self.settings_tab = SettingsTab::Paths;
+                self.settings_selected = 0;
+                self.settings_scroll.set(0);
+                self.last_input_direction = None;
             },
             _ => {
                 self.viewport = Viewport::Graph;

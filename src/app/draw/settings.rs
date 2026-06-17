@@ -7,7 +7,7 @@ use crate::helpers::symbols::WEEKDAY_LABELS;
 use crate::helpers::version::VERSION;
 use crate::{
     app::{
-        app::{App, Direction, Focus, SettingsSelection, SettingsSelectionKind},
+        app::{App, Direction, Focus, SettingsSelection, SettingsSelectionKind, SettingsTab, SettingsTabHitbox},
         draw::buffered::DrawTarget,
     },
     core::renderers::render_keybindings,
@@ -124,16 +124,302 @@ impl App {
         }
     }
 
-    pub(crate) fn settings_lines(&mut self, repo: &git2::Repository) -> Vec<Line<'static>> {
-        let available_width = self.layout.graph.width.saturating_sub(1) as usize;
+    fn settings_filled_line(&self, left: &str, right: &str, width: usize, style: Style) -> Line<'static> {
+        Line::from(Span::styled(fill_width(left, right, width), style)).centered()
+    }
 
+    fn settings_text_area(&self) -> (u16, u16) {
+        let border = u16::from(self.layout_config.is_zen);
+        let x = self.layout.graph.x.saturating_add(border).saturating_add(1);
+        let width = self.layout.graph.width.saturating_sub(border.saturating_mul(2)).saturating_sub(2);
+        (x, width)
+    }
+
+    fn settings_centered_text_start(&self, text_width: usize) -> u16 {
+        let (x, width) = self.settings_text_area();
+        x.saturating_add(width.saturating_sub(text_width as u16) / 2)
+    }
+
+    fn settings_tab_bar_line(&mut self, width: usize, line: usize) -> Line<'static> {
+        let tab_gap = "  ";
+        let labels: Vec<(SettingsTab, String)> = SettingsTab::ALL.iter().map(|&tab| (tab, format!(" {} ", tab.label()))).collect();
+        let base_width = labels.iter().map(|(_, label)| label.chars().count()).sum::<usize>().saturating_add(tab_gap.chars().count().saturating_mul(labels.len().saturating_sub(1)));
+        let pad = width.saturating_sub(base_width);
+        let left_pad = pad / 2;
+        let right_pad = pad.saturating_sub(left_pad);
+        let text_width = base_width.saturating_add(pad);
+        let row_start = self.settings_centered_text_start(text_width);
+        let mut offset = left_pad;
+        let mut spans = Vec::new();
+
+        if left_pad > 0 {
+            spans.push(Span::raw(" ".repeat(left_pad)));
+        }
+
+        for (idx, (tab, label)) in labels.iter().enumerate() {
+            if idx > 0 {
+                spans.push(Span::raw(tab_gap));
+                offset = offset.saturating_add(tab_gap.chars().count());
+            }
+
+            let label_width = label.chars().count();
+            let start = row_start.saturating_add(offset as u16);
+            let end = start.saturating_add(label_width as u16);
+            self.settings_tab_hitboxes.push(SettingsTabHitbox { tab: *tab, line, start, end });
+
+            let style = if *tab == self.settings_tab {
+                Style::default().fg(self.theme.COLOR_HIGHLIGHTED).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900))
+            } else {
+                Style::default().fg(self.theme.COLOR_TEXT)
+            };
+            spans.push(Span::styled(label.clone(), style));
+            offset = offset.saturating_add(label_width);
+        }
+
+        if right_pad > 0 {
+            spans.push(Span::raw(" ".repeat(right_pad)));
+        }
+
+        Line::from(spans).centered()
+    }
+
+    fn add_settings_selection(&mut self, lines: &[Line<'static>], kind: SettingsSelectionKind) {
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind });
+    }
+
+    fn append_settings_paths(&mut self, lines: &mut Vec<Line<'static>>, width: usize) {
+        // Config paths are informational, but still selectable for consistent navigation.
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" paths:", width));
+        lines.push(Line::default());
+        let mut pathbuf = dirs::config_dir().unwrap();
+        pathbuf.push("guitar");
+        let path = pathbuf.as_path().to_str().unwrap();
+
+        let shaded = Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+        let plain = Style::default().fg(self.theme.COLOR_TEXT);
+
+        lines.push(self.settings_filled_line(" keymap:", format!(" {}/keymap.json ", path).as_str(), width, shaded));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+        lines.push(self.settings_filled_line(" layout:", format!(" {}/layout.json ", path).as_str(), width, plain));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+        lines.push(self.settings_filled_line(" theme:", format!(" {}/theme.json ", path).as_str(), width, shaded));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+        lines.push(self.settings_filled_line(" recent file:", format!(" {}/recent.json ", path).as_str(), width, plain));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" recent repositories:", width));
+        lines.push(Line::default());
+        lines.push(self.settings_filled_line(" actions:", format!("{} ", self.recent_repository_actions_detail_text()).as_str(), width, plain));
+        lines.push(Line::default());
+
+        if self.recent.is_empty() {
+            lines.push(self.settings_filled_line(" no recent repositories", "", width, plain));
+        } else {
+            let recent = self.recent.clone();
+            for (idx, path) in recent.iter().enumerate() {
+                let mut style = Style::default().fg(if Some(path) == self.path.as_ref() { self.theme.COLOR_GRASS } else { self.theme.COLOR_TEXT });
+                if idx.is_multiple_of(2) {
+                    style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+                }
+                lines.push(self.settings_filled_line(format!(" {}", path).as_str(), "", width, style));
+                self.add_settings_selection(lines, SettingsSelectionKind::RecentRepository(idx));
+            }
+        }
+    }
+
+    fn append_settings_repo(&mut self, lines: &mut Vec<Line<'static>>, repo: &git2::Repository, width: usize) {
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" remotes:", width));
+        lines.push(Line::default());
+        lines.push(self.settings_filled_line(" actions:", "select remote to manage | + add remote to create ", width, Style::default().fg(self.theme.COLOR_TEXT)));
+        lines.push(Line::default());
+
+        lines.push(self.settings_filled_line(" + add remote", "(enter) ", width, Style::default().fg(self.theme.COLOR_GRASS).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900))));
+        self.add_settings_selection(lines, SettingsSelectionKind::RemoteAdd);
+
+        match list_remotes(repo) {
+            Ok(remotes) if remotes.is_empty() => {
+                lines.push(self.settings_filled_line(" no remotes", "", width, Style::default().fg(self.theme.COLOR_TEXT)));
+            },
+            Ok(remotes) => {
+                for (idx, remote) in remotes.iter().enumerate() {
+                    let effective_push_url = remote.push_url.as_deref().filter(|url| !url.is_empty()).unwrap_or(remote.url.as_str());
+
+                    let mut style = Style::default().fg(self.theme.COLOR_TEXT);
+                    if (idx + 1).is_multiple_of(2) {
+                        style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+                    }
+
+                    lines.push(self.settings_filled_line(format!(" {} fetch:", remote.name).as_str(), format!(" {} ", remote.url).as_str(), width, style));
+                    self.add_settings_selection(lines, SettingsSelectionKind::Remote(remote.name.clone()));
+
+                    if !effective_push_url.is_empty() {
+                        lines.push(self.settings_filled_line(format!(" {} push:", remote.name).as_str(), format!(" {effective_push_url} ").as_str(), width, style));
+                        self.add_settings_selection(lines, SettingsSelectionKind::Remote(remote.name.clone()));
+                    }
+                }
+            },
+            Err(error) => {
+                lines.push(self.settings_filled_line(" remote error:", format!(" {error} ").as_str(), width, Style::default().fg(self.theme.COLOR_ORANGE)));
+            },
+        }
+    }
+
+    fn append_settings_auth(&mut self, lines: &mut Vec<Line<'static>>, repo: &git2::Repository, width: usize) {
         // Credentials are read live so the settings view reflects git config changes.
         let (name, email) = get_git_user_info(repo).unwrap();
+        let shaded = Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+        let plain = Style::default().fg(self.theme.COLOR_TEXT);
+
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" credentials:", width));
+        lines.push(Line::default());
+
+        lines.push(self.settings_filled_line(" name:", format!("{} ", name.unwrap()).as_str(), width, shaded));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+        lines.push(self.settings_filled_line(" email:", format!("{} ", email.unwrap()).as_str(), width, plain));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+        lines.push(self.settings_filled_line(" authorization:", "ssh-agent when available ", width, shaded));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+        lines.push(self.settings_filled_line(" ssh fallback:", "key passphrase prompt ", width, plain));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+        lines.push(self.settings_filled_line(" https:", "username/password or token prompt ", width, shaded));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+        lines.push(self.settings_filled_line(" secrets:", "session only ", width, plain));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+    }
+
+    fn append_settings_themes(&mut self, lines: &mut Vec<Line<'static>>, width: usize) {
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" themes:", width));
+        lines.push(Line::default());
+
+        if self.theme.name == ThemeNames::Custom {
+            lines.push(self.settings_filled_line(
+                " active custom:",
+                format!(" {} ", self.theme.label()).as_str(),
+                width,
+                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
+            ));
+            lines.push(Line::default());
+        }
+
+        for (idx, preset) in Theme::presets().iter().enumerate() {
+            let label = format!(" {}", preset.label);
+            let marker = format!("({}) ", if self.theme.name == preset.theme.name { "*" } else { " " });
+            let mut style = Style::default().fg(self.theme.COLOR_TEXT);
+            if idx.is_multiple_of(2) {
+                style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+            }
+            lines.push(self.settings_filled_line(&label, &marker, width, style));
+            self.add_settings_selection(lines, SettingsSelectionKind::Theme(idx));
+        }
+    }
+
+    fn append_settings_layout(&mut self, lines: &mut Vec<Line<'static>>, width: usize) {
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" layout visibility:", width));
+        lines.push(Line::default());
+        for (idx, (fallback, command, label)) in SETTINGS_LAYOUT_COMMANDS.iter().enumerate() {
+            let key = self.settings_layout_command_key(command, *fallback);
+            let label = format!(" {} {}:", key, label);
+            let state = format!(" {} ", self.settings_layout_command_state(command));
+            let mut style = Style::default().fg(self.theme.COLOR_TEXT);
+            if idx.is_multiple_of(2) {
+                style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+            }
+            lines.push(self.settings_filled_line(&label, &state, width, style));
+            self.add_settings_selection(lines, SettingsSelectionKind::LayoutCommand(command.clone()));
+        }
+    }
+
+    fn append_settings_shortcuts(&mut self, lines: &mut Vec<Line<'static>>, width: usize) {
+        // Keymap sections are generated from the active keymap data, not duplicated text.
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" shortcuts / normal mode:", width));
+        lines.push(Line::default());
+        if let Some(mode_keymap) = self.keymaps.get(&InputMode::Normal).cloned() {
+            let rendered = render_keybindings(&self.theme, &mode_keymap, width);
+            for (idx, ((kb, cmd), kb_line)) in mode_keymap.iter().zip(rendered).enumerate() {
+                let spans: Vec<Span> = kb_line
+                    .spans
+                    .iter()
+                    .map(|span| {
+                        let mut style = span.style;
+                        if idx % 2 == 0 {
+                            style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+                        }
+                        Span::styled(span.content.clone(), style)
+                    })
+                    .collect();
+                lines.push(Line::from(spans).centered());
+                self.add_settings_selection(lines, SettingsSelectionKind::KeyBinding(KeymapSelection::new(InputMode::Normal, kb.clone(), cmd.clone())));
+            }
+        }
+
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" shortcuts / action mode:", width));
+        lines.push(Line::default());
+        if let Some(action_keymap) = self.keymaps.get(&InputMode::Action).cloned() {
+            let normal_keymap = self.keymaps.get(&InputMode::Normal).cloned();
+            let unique_action = action_keymap_visible_entries(normal_keymap.as_ref(), &action_keymap);
+            let rendered = render_keybindings(&self.theme, &unique_action, width);
+            for (idx, ((kb, cmd), kb_line)) in unique_action.iter().zip(rendered).enumerate() {
+                let spans: Vec<Span> = kb_line
+                    .spans
+                    .iter()
+                    .map(|span| {
+                        let mut style = span.style;
+                        if idx % 2 == 0 {
+                            style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+                        }
+                        Span::styled(span.content.clone(), style)
+                    })
+                    .collect();
+
+                lines.push(Line::from(spans).centered());
+                self.add_settings_selection(lines, SettingsSelectionKind::KeyBinding(KeymapSelection::new(InputMode::Action, kb.clone(), cmd.clone())));
+            }
+        }
+    }
+
+    fn append_settings_header(&mut self, lines: &mut Vec<Line<'static>>, width: usize, week_start: usize) {
+        lines.push(Line::default());
+        lines.push(self.settings_filled_line(
+            " version:",
+            format!("{} ", VERSION).as_str(),
+            width,
+            Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
+        ));
+        self.add_settings_selection(lines, SettingsSelectionKind::Info);
+
+        // Heatmap rows use weekday labels followed by the cropped commit grid.
+        lines.push(Line::default());
+        for (day_idx, &label) in WEEKDAY_LABELS.iter().enumerate() {
+            let mut spans = Vec::new();
+            spans.push(Span::styled(format!(" {}  ", label), Style::default().fg(self.theme.COLOR_TEXT)));
+            spans.extend(self.heatmap[day_idx][week_start..].iter().map(|&count| {
+                let span = heat_cell(count, &self.theme);
+                Span::styled(span.content.to_string(), span.style)
+            }));
+            lines.push(Line::from(spans).centered());
+        }
+
+        lines.push(Line::default());
+        let tab_line = lines.len();
+        lines.push(self.settings_tab_bar_line(width, tab_line));
+        lines.push(Line::default());
+    }
+
+    pub(crate) fn settings_lines(&mut self, repo: &git2::Repository) -> Vec<Line<'static>> {
+        let available_width = self.layout.graph.width.saturating_sub(1) as usize;
 
         // settings_selections maps selectable line indices to their settings action.
         let mut lines: Vec<Line<'static>> = Vec::new();
         self.settings_selections = Vec::new();
-        lines.push(Line::default());
+        self.settings_tab_hitboxes = Vec::new();
 
         // Each heat cell renders as two terminal columns.
         let cell_width = 2;
@@ -154,250 +440,40 @@ impl App {
         // All settings rows align to the heatmap body width.
         let heatmap_width = visible_weeks * cell_width;
 
-        lines.push(Line::default());
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" version:", format!("{} ", VERSION).as_str(), heatmap_width),
-                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-            ))
-            .centered(),
-        );
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
+        self.append_settings_header(&mut lines, heatmap_width, week_start);
 
-        // Heatmap rows use weekday labels followed by the cropped commit grid.
-        lines.push(Line::default());
-        for (day_idx, &label) in WEEKDAY_LABELS.iter().enumerate() {
-            let mut spans = Vec::new();
-            spans.push(Span::styled(format!(" {}  ", label), Style::default().fg(self.theme.COLOR_TEXT)));
-            spans.extend(self.heatmap[day_idx][week_start..].iter().map(|&count| {
-                let span = heat_cell(count, &self.theme);
-                Span::styled(span.content.to_string(), span.style)
-            }));
-            lines.push(Line::from(spans).centered());
-        }
-
-        // Config paths are informational, but still selectable for consistent navigation.
-        lines.push(Line::default());
-        lines.push(self.settings_section_line(" paths:", heatmap_width));
-        lines.push(Line::default());
-        let mut pathbuf = dirs::config_dir().unwrap();
-        pathbuf.push("guitar");
-        let path = pathbuf.as_path().to_str().unwrap();
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" keymap:", format!(" {}/keymap.json ", path).as_str(), heatmap_width),
-                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-            ))
-            .centered(),
-        );
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(Line::from(Span::styled(fill_width(" layout:", format!(" {}/layout.json ", path).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" theme:", format!(" {}/theme.json ", path).as_str(), heatmap_width),
-                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-            ))
-            .centered(),
-        );
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(Line::from(Span::styled(fill_width(" recent file:", format!(" {}/recent.json ", path).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-
-        lines.push(Line::default());
-        lines.push(self.settings_section_line(" recent repositories:", heatmap_width));
-        lines.push(Line::default());
-        lines.push(
-            Line::from(Span::styled(fill_width(" actions:", format!("{} ", self.recent_repository_actions_detail_text()).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT)))
-                .centered(),
-        );
-        lines.push(Line::default());
-
-        if self.recent.is_empty() {
-            lines.push(Line::from(Span::styled(fill_width(" no recent repositories", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
-        } else {
-            self.recent.iter().enumerate().for_each(|(idx, path)| {
-                let mut style = Style::default().fg(if Some(path) == self.path.as_ref() { self.theme.COLOR_GRASS } else { self.theme.COLOR_TEXT });
-                if idx.is_multiple_of(2) {
-                    style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
-                }
-                lines.push(Line::from(Span::styled(fill_width(format!(" {}", path).as_str(), "", heatmap_width), style)).centered());
-                self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::RecentRepository(idx) });
-            });
-        }
-
-        lines.push(Line::default());
-        lines.push(self.settings_section_line(" remotes:", heatmap_width));
-        lines.push(Line::default());
-        lines.push(Line::from(Span::styled(fill_width(" actions:", "select remote to manage | + add remote to create ", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
-        lines.push(Line::default());
-
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" + add remote", "(enter) ", heatmap_width),
-                Style::default().fg(self.theme.COLOR_GRASS).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-            ))
-            .centered(),
-        );
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::RemoteAdd });
-
-        match list_remotes(repo) {
-            Ok(remotes) if remotes.is_empty() => {
-                lines.push(Line::from(Span::styled(fill_width(" no remotes", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        match self.settings_tab {
+            SettingsTab::Paths => self.append_settings_paths(&mut lines, heatmap_width),
+            SettingsTab::Display => {
+                self.append_settings_layout(&mut lines, heatmap_width);
+                self.append_settings_themes(&mut lines, heatmap_width);
             },
-            Ok(remotes) => {
-                for (idx, remote) in remotes.iter().enumerate() {
-                    let effective_push_url = remote.push_url.as_deref().filter(|url| !url.is_empty()).unwrap_or(remote.url.as_str());
-
-                    let mut style = Style::default().fg(self.theme.COLOR_TEXT);
-                    if (idx + 1).is_multiple_of(2) {
-                        style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
-                    }
-                    lines.push(Line::from(Span::styled(fill_width(format!(" {} fetch:", remote.name).as_str(), format!(" {} ", remote.url).as_str(), heatmap_width), style)).centered());
-                    self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Remote(remote.name.clone()) });
-
-                    if !effective_push_url.is_empty() {
-                        lines.push(Line::from(Span::styled(fill_width(format!(" {} push:", remote.name).as_str(), format!(" {effective_push_url} ").as_str(), heatmap_width), style)).centered());
-                        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Remote(remote.name.clone()) });
-                    }
-                }
-            },
-            Err(error) => {
-                lines.push(Line::from(Span::styled(fill_width(" remote error:", format!(" {error} ").as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_ORANGE))).centered());
-            },
-        }
-
-        // Credential rows are selectable because they are important setup information.
-        lines.push(Line::default());
-        lines.push(self.settings_section_line(" credentials:", heatmap_width));
-        lines.push(Line::default());
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" name:", format!("{} ", name.unwrap()).as_str(), heatmap_width),
-                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-            ))
-            .centered(),
-        );
-
-        // Selectable rows are recorded immediately after being pushed.
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(Line::from(Span::styled(fill_width(" email:", format!("{} ", email.unwrap()).as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
-
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" authorization:", "ssh-agent when available ", heatmap_width),
-                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-            ))
-            .centered(),
-        );
-
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(Line::from(Span::styled(fill_width(" ssh fallback:", "key passphrase prompt ", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(
-            Line::from(Span::styled(
-                fill_width(" https:", "username/password or token prompt ", heatmap_width),
-                Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-            ))
-            .centered(),
-        );
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(Line::from(Span::styled(fill_width(" secrets:", "session only ", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
-        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Info });
-        lines.push(Line::default());
-        lines.push(self.settings_section_line(" themes:", heatmap_width));
-        lines.push(Line::default());
-
-        if self.theme.name == ThemeNames::Custom {
-            lines.push(
-                Line::from(Span::styled(
-                    fill_width(" active custom:", format!(" {} ", self.theme.label()).as_str(), heatmap_width),
-                    Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
-                ))
-                .centered(),
-            );
-            lines.push(Line::default());
-        }
-
-        for (idx, preset) in Theme::presets().iter().enumerate() {
-            let label = format!(" {}", preset.label);
-            let marker = format!("({}) ", if self.theme.name == preset.theme.name { "*" } else { " " });
-            let mut style = Style::default().fg(self.theme.COLOR_TEXT);
-            if idx.is_multiple_of(2) {
-                style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
-            }
-            lines.push(Line::from(Span::styled(fill_width(&label, &marker, heatmap_width), style)).centered());
-            self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Theme(idx) });
-        }
-
-        lines.push(Line::default());
-        lines.push(self.settings_section_line(" layout visibility:", heatmap_width));
-        lines.push(Line::default());
-        for (idx, (fallback, command, label)) in SETTINGS_LAYOUT_COMMANDS.iter().enumerate() {
-            let key = self.settings_layout_command_key(command, *fallback);
-            let label = format!(" {} {}:", key, label);
-            let state = format!(" {} ", self.settings_layout_command_state(command));
-            let mut style = Style::default().fg(self.theme.COLOR_TEXT);
-            if idx.is_multiple_of(2) {
-                style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
-            }
-            lines.push(Line::from(Span::styled(fill_width(&label, &state, heatmap_width), style)).centered());
-            self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::LayoutCommand(command.clone()) });
-        }
-
-        // Keymap sections are generated from the active keymap data, not duplicated text.
-        lines.push(Line::default());
-        lines.push(self.settings_section_line(" shortcuts / normal mode:", heatmap_width));
-        lines.push(Line::default());
-        if let Some(mode_keymap) = self.keymaps.get(&InputMode::Normal) {
-            let rendered = render_keybindings(&self.theme, mode_keymap, heatmap_width);
-            mode_keymap.iter().zip(rendered).enumerate().for_each(|(idx, ((kb, cmd), kb_line))| {
-                let spans: Vec<Span> = kb_line
-                    .spans
-                    .iter()
-                    .map(|span| {
-                        let mut style = span.style;
-                        if idx % 2 == 0 {
-                            style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
-                        }
-                        Span::styled(span.content.clone(), style)
-                    })
-                    .collect();
-                lines.push(Line::from(spans).centered());
-
-                self.settings_selections
-                    .push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::KeyBinding(KeymapSelection::new(InputMode::Normal, kb.clone(), cmd.clone())) });
-            });
-        }
-        lines.push(Line::default());
-        lines.push(self.settings_section_line(" shortcuts / action mode:", heatmap_width));
-        lines.push(Line::default());
-        if let Some(action_keymap) = self.keymaps.get(&InputMode::Action) {
-            // Action mode hides inherited duplicates, but shows keys whose command changes.
-            let unique_action = action_keymap_visible_entries(self.keymaps.get(&InputMode::Normal), action_keymap);
-
-            let rendered = render_keybindings(&self.theme, &unique_action, heatmap_width);
-            unique_action.iter().zip(rendered).enumerate().for_each(|(idx, ((kb, cmd), kb_line))| {
-                let spans: Vec<Span> = kb_line
-                    .spans
-                    .iter()
-                    .map(|span| {
-                        let mut style = span.style;
-                        if idx % 2 == 0 {
-                            style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
-                        }
-                        Span::styled(span.content.clone(), style)
-                    })
-                    .collect();
-
-                lines.push(Line::from(spans).centered());
-                self.settings_selections
-                    .push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::KeyBinding(KeymapSelection::new(InputMode::Action, kb.clone(), cmd.clone())) });
-            });
+            SettingsTab::Auth => self.append_settings_auth(&mut lines, repo, heatmap_width),
+            SettingsTab::Repo => self.append_settings_repo(&mut lines, repo, heatmap_width),
+            SettingsTab::Shortcuts => self.append_settings_shortcuts(&mut lines, heatmap_width),
         }
 
         lines
+    }
+
+    pub(crate) fn switch_settings_tab(&mut self, tab: SettingsTab) {
+        if self.settings_tab == tab {
+            return;
+        }
+
+        self.settings_tab = tab;
+        self.settings_scroll.set(0);
+        self.last_input_direction = None;
+        self.settings_selected = 0;
+
+        if let Some(repo) = self.repo.clone() {
+            let _ = self.settings_lines(&repo);
+            let content_start = self.settings_tab_hitboxes.first().map(|hitbox| hitbox.line.saturating_add(1)).unwrap_or(0);
+            let selection = self.settings_selections.iter().find(|selection| selection.line >= content_start).or_else(|| self.settings_selections.first());
+            if let Some(first) = selection {
+                self.settings_selected = first.line;
+            }
+        }
     }
 
     pub fn draw_settings(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {

@@ -250,6 +250,39 @@ pub enum Direction {
     Up,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettingsTab {
+    Paths,
+    Display,
+    Auth,
+    Repo,
+    Shortcuts,
+}
+
+impl SettingsTab {
+    pub const ALL: [SettingsTab; 5] = [SettingsTab::Paths, SettingsTab::Display, SettingsTab::Auth, SettingsTab::Repo, SettingsTab::Shortcuts];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SettingsTab::Paths => "paths",
+            SettingsTab::Display => "display",
+            SettingsTab::Auth => "auth",
+            SettingsTab::Repo => "repo",
+            SettingsTab::Shortcuts => "shortcuts",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        let index = Self::ALL.iter().position(|&tab| tab == self).unwrap_or(0);
+        Self::ALL[(index + 1) % Self::ALL.len()]
+    }
+
+    pub fn previous(self) -> Self {
+        let index = Self::ALL.iter().position(|&tab| tab == self).unwrap_or(0);
+        Self::ALL[(index + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsSelectionKind {
     Info,
@@ -265,6 +298,14 @@ pub enum SettingsSelectionKind {
 pub struct SettingsSelection {
     pub line: usize,
     pub kind: SettingsSelectionKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SettingsTabHitbox {
+    pub tab: SettingsTab,
+    pub line: usize,
+    pub start: u16,
+    pub end: u16,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -342,6 +383,7 @@ pub enum MouseSelectionTarget {
     Search(usize),
     Splash(usize),
     Settings(usize),
+    SettingsTab(SettingsTab),
 }
 
 pub struct App {
@@ -444,9 +486,11 @@ pub struct App {
     pub recent_save_path: Option<PathBuf>,
 
     // Settings
+    pub settings_tab: SettingsTab,
     pub settings_selected: usize,
     pub settings_scroll: Cell<usize>,
     pub settings_selections: Vec<SettingsSelection>,
+    pub settings_tab_hitboxes: Vec<SettingsTabHitbox>,
     pub modal_key_capture_selection: Option<KeymapSelection>,
     pub modal_key_capture_candidate: Option<KeyBinding>,
     pub modal_key_capture_error: Option<KeymapEditError>,
