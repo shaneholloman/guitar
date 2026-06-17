@@ -44,7 +44,7 @@ pub struct Walker {
 
 impl Walker {
     // Open the repository and seed all metadata that does not depend on walking commits.
-    pub fn new(path: String, amount: usize, visible_branch_names: HashSet<String>, include_head_reflog_roots: bool) -> Result<Self, git2::Error> {
+    pub fn new(path: String, amount: usize, hidden_branch_names: HashSet<String>, include_head_reflog_roots: bool) -> Result<Self, git2::Error> {
         let path = path.clone();
         let repo = Rc::new(RefCell::new(Repository::open(path).expect("Failed to open repo")));
 
@@ -77,7 +77,7 @@ impl Walker {
             }
         }
 
-        let batcher = Batcher::new(repo.clone(), &visible_branch_names, &head_reflog_roots).expect("Error");
+        let batcher = Batcher::new(repo.clone(), &hidden_branch_names, &head_reflog_roots).expect("Error");
 
         Ok(Self { repo, batcher, buffer, oids, branches_lanes, branches_local, branches_remote, tags_lanes, tags_local, stashes_lanes, reflogs_lanes, head_reflog_entries, amount })
     }

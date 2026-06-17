@@ -182,7 +182,7 @@ The branch pane lists local branches first and remote branches after them, sorte
 - Filled diamond: visible remote branch.
 - Hollow diamond: hidden remote branch.
 
-Branch visibility affects graph roots and filtering. An empty visibility set means all branches are visible.
+Branch visibility affects graph roots and filtering. Branches are visible by default unless their exact local or remote name is saved in the hidden-branch layer. Hidden branch names are saved per repository, pruned when refs disappear, and new branches are visible until explicitly hidden.
 
 ### Tags
 
@@ -597,8 +597,10 @@ Branch visibility filters graph roots and branch labels.
 - From branch pane focus, the action applies to the selected branch.
 - From graph focus, the action applies to branch labels on the selected commit.
 - If multiple branch labels are present, a modal lets you choose.
-- When no branches are hidden, toggling one branch creates an explicit "all except this branch" visibility set.
-- If filtering would hide every branch, the filter resets to all visible.
+- Toggling a visible branch adds it to the hidden layer.
+- Toggling a hidden branch removes it from the hidden layer.
+- Solo hides every current branch except the selected branch.
+- If filtering would hide every current branch, the hidden layer resets to all visible.
 
 ### Create Branch
 
@@ -926,6 +928,7 @@ The app writes:
 - `layout.json`: pane visibility, widths, weights, SHA display, graph reflog setting, zen/minimal state.
 - `theme.json`: active theme and all color slots.
 - `recent.json`: recent repository paths.
+- `branch_visibility.json`: per-repository hidden branch names.
 
 The app may also temporarily write `.git/GUITAR_CHERRYPICK_MSG` inside a repository during a conflicted cherry-pick and `.git/GUITAR_REVERT_MSG` during a conflicted revert.
 
@@ -933,7 +936,6 @@ Not persisted by `guitar`:
 
 - SSH key passphrases entered in the auth modal.
 - HTTPS usernames, passwords, or tokens entered in the auth modal.
-- Branch visibility filters. They are preserved across reloads during a session, but not written to config.
 - Current selection, scroll positions, open modal state, or current viewport.
 
 Reset all saved app config:
@@ -1150,7 +1152,6 @@ Important source areas:
 - Search matches loaded commit SHA prefixes only.
 - Search does not match commit messages, authors, branches, tags, filenames, or unloaded history.
 - Recent repositories are append-only from inside the app.
-- Branch visibility is not persisted between app launches.
 - Text prompts are single-line.
 
 ## Roadmap

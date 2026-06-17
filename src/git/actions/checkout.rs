@@ -16,7 +16,7 @@ pub fn checkout_head(repo: &Repository, oid: Oid) -> Result<(), git2::Error> {
     Ok(())
 }
 
-pub fn checkout_branch(repo: &Repository, visible_branch_names: &mut HashSet<String>, local: &mut HashMap<u32, Vec<String>>, alias: u32, branch_name: &str) -> Result<(), git2::Error> {
+pub fn checkout_branch(repo: &Repository, hidden_branch_names: &mut HashSet<String>, local: &mut HashMap<u32, Vec<String>>, alias: u32, branch_name: &str) -> Result<(), git2::Error> {
     fn checkout(repo: &Repository, branch_name: &str) -> Result<(), git2::Error> {
         let branch = repo.find_branch(branch_name, BranchType::Local)?;
         let reference_name = branch.get().name().ok_or_else(|| git2::Error::from_str("Branch reference name is not valid UTF-8"))?;
@@ -26,19 +26,21 @@ pub fn checkout_branch(repo: &Repository, visible_branch_names: &mut HashSet<Str
 
     // Local branches can be checked out directly and only need visibility refreshed.
     if repo.find_branch(branch_name, BranchType::Local).is_ok() {
-        if !visible_branch_names.is_empty() {
-            visible_branch_names.insert(branch_name.to_string());
+        let result = checkout(repo, branch_name);
+        if result.is_ok() {
+            hidden_branch_names.remove(branch_name);
         }
-        return checkout(repo, branch_name);
+        return result;
     }
 
     // Remote names arrive as origin/foo; the local branch should be called foo.
     if let Some((_remote, branch)) = branch_name.split_once('/') {
         if repo.find_branch(branch, BranchType::Local).is_ok() {
-            if !visible_branch_names.is_empty() {
-                visible_branch_names.insert(branch.to_string());
+            let result = checkout(repo, branch);
+            if result.is_ok() {
+                hidden_branch_names.remove(branch);
             }
-            return checkout(repo, branch);
+            return result;
         }
 
         if repo.find_branch(branch_name, BranchType::Remote).is_ok() {
@@ -51,12 +53,12 @@ pub fn checkout_branch(repo: &Repository, visible_branch_names: &mut HashSet<Str
             // Mirror the newly created branch in the in-memory branch map until reload rebuilds it.
             local.entry(alias).or_default().push(branch.to_string());
 
-            // Preserve the current branch filter by adding the branch we just materialized.
-            if !visible_branch_names.is_empty() {
-                visible_branch_names.insert(branch.to_string());
+            let result = checkout(repo, branch);
+            if result.is_ok() {
+                // The checked-out local branch should remain visible under the hide-layer model.
+                hidden_branch_names.remove(branch);
             }
-
-            return checkout(repo, branch);
+            return result;
         }
     }
 

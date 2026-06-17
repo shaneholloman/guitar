@@ -11,14 +11,14 @@ pub struct Batcher {
 
 impl Batcher {
     // Build the initial revwalk from all visible local and remote branch tips.
-    pub fn new(repo: Rc<RefCell<Repository>>, visible_branch_names: &HashSet<String>, extra_roots: &[Oid]) -> Result<Self, git2::Error> {
-        let revwalk = Self::build(&repo.borrow(), visible_branch_names, extra_roots)?;
+    pub fn new(repo: Rc<RefCell<Repository>>, hidden_branch_names: &HashSet<String>, extra_roots: &[Oid]) -> Result<Self, git2::Error> {
+        let revwalk = Self::build(&repo.borrow(), hidden_branch_names, extra_roots)?;
         Ok(Self { revwalk: Mutex::new(revwalk) })
     }
 
     // Recreate the cursor after branch filters, fetches, or repository state changes.
-    pub fn reset(&self, repo: Rc<RefCell<Repository>>, visible_branch_names: &HashSet<String>, extra_roots: &[Oid]) -> Result<(), git2::Error> {
-        let revwalk = Self::build(&repo.borrow(), visible_branch_names, extra_roots)?;
+    pub fn reset(&self, repo: Rc<RefCell<Repository>>, hidden_branch_names: &HashSet<String>, extra_roots: &[Oid]) -> Result<(), git2::Error> {
+        let revwalk = Self::build(&repo.borrow(), hidden_branch_names, extra_roots)?;
         let mut guard = self.revwalk.lock().unwrap();
         *guard = revwalk;
         Ok(())
@@ -30,7 +30,7 @@ impl Batcher {
         revwalk.by_ref().take(count).filter_map(Result::ok).collect()
     }
 
-    fn build(repo: &Repository, visible_branch_names: &HashSet<String>, extra_roots: &[Oid]) -> Result<Revwalk<'static>, git2::Error> {
+    fn build(repo: &Repository, hidden_branch_names: &HashSet<String>, extra_roots: &[Oid]) -> Result<Revwalk<'static>, git2::Error> {
         // The repository outlives the revwalk in App state; this keeps libgit2's lifetime usable here.
         let repo_ref: &'static Repository = unsafe { std::mem::transmute::<&Repository, &'static Repository>(repo) };
 
@@ -45,8 +45,8 @@ impl Batcher {
 
                 let name = branch.name()?.unwrap_or("").to_string();
 
-                // An empty filter means every branch contributes a tip.
-                if visible_branch_names.is_empty() || visible_branch_names.contains(&name) {
+                // Hidden branch names are a deny-list; new branches are visible by default.
+                if !hidden_branch_names.contains(&name) {
                     revwalk.push(oid)?;
                     pushed.insert(oid);
                 }

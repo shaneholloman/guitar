@@ -10,6 +10,7 @@ use crate::{
         queries::{diffs::get_filenames_diff_at_oid, files::FileSearchResult, worktrees::list_worktrees},
     },
     helpers::{
+        branch_visibility::{current_branch_names, load_branch_visibility, prune_hidden_branches, save_branch_visibility},
         copy::{
             STR_CHERRYPICK_COMMIT, STR_CREATE_BRANCH, STR_CREATE_COMMIT, STR_CREATE_TAG, STR_CREATE_WORKTREE_NAME, STR_CREATE_WORKTREE_PATH, STR_FIND_FILE, STR_FIND_SHA, STR_LOCK_WORKTREE,
             STR_REVERT_COMMIT,
@@ -674,8 +675,9 @@ impl App {
     pub fn reload(&mut self, override_path: Option<String>) {
         self.surface_buffers.clear();
 
-        // Preserve branch filters across reloads because reload also follows git actions.
-        let visible_branch_names = self.branches.visible_branch_names.clone();
+        let existing_hidden_branch_names = self.branches.hidden_branch_names.clone();
+        let previous_path = self.path.clone();
+        let has_override_path = override_path.is_some();
         let pending_selection_restore = if override_path.is_none() && self.graph_selected != 0 {
             self.graph_identity_at(self.graph_selected)
                 .map(|identity| GraphSelectionRestore { oid: identity.oid, selected_offset: self.graph_selected.saturating_sub(self.graph_scroll.get()) })
@@ -700,8 +702,7 @@ impl App {
         self.reflogs = HeadReflogs::default();
         self.worktrees = Worktrees::default();
         self.clear_file_history_search();
-
-        self.branches.visible_branch_names = visible_branch_names;
+        self.branches.hidden_branch_names = existing_hidden_branch_names.clone();
 
         // Prefer an explicit path, then the current path, then the first non-flag CLI arg.
         let path = if let Some(path) = override_path {
@@ -729,6 +730,14 @@ impl App {
         if let Some(repo) = &self.repo {
             let current_path = PathBuf::from(&absolute_path);
             self.worktrees = Worktrees::from_entries(list_worktrees(repo, Some(current_path.as_path())).unwrap_or_default());
+
+            let same_repo_reload = !has_override_path && previous_path.as_deref() == Some(absolute_path.as_str());
+            let mut hidden_branch_names = if same_repo_reload { existing_hidden_branch_names } else { load_branch_visibility(&absolute_path) };
+            let current_names = current_branch_names(repo);
+            if prune_hidden_branches(&mut hidden_branch_names, &current_names) {
+                save_branch_visibility(&absolute_path, &hidden_branch_names);
+            }
+            self.branches.hidden_branch_names = hidden_branch_names;
 
             // Recent paths are append-only here; the splash screen controls selection.
             if !self.recent.iter().any(|v| v == &absolute_path) {
@@ -775,13 +784,13 @@ impl App {
             self.graph_rx = Some(event_rx);
 
             // Move only serializable state into the worker thread.
-            let visible_branch_names = self.branches.visible_branch_names.clone();
+            let hidden_branch_names = self.branches.hidden_branch_names.clone();
             let include_head_reflog_roots = self.layout_config.is_graph_reflogs;
             let worktrees = self.worktrees.entries.clone();
 
             // The worker streams partial graph state so large repositories become usable quickly.
             let handle = spawn_graph_service(
-                GraphServiceConfig { generation, path: absolute_path, amount: 10000, visible_branch_names, include_head_reflog_roots, worktrees },
+                GraphServiceConfig { generation, path: absolute_path, amount: 10000, hidden_branch_names, include_head_reflog_roots, worktrees },
                 command_rx,
                 event_tx,
                 cancel_clone,

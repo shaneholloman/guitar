@@ -4,7 +4,7 @@ use crate::{
         draw::buffered::DrawTarget,
     },
     git::queries::commits::get_current_branch,
-    helpers::{keymap::InputMode, symbols::SYM_WORKTREE},
+    helpers::{branch_visibility::current_branch_names, keymap::InputMode, symbols::SYM_WORKTREE},
 };
 use ratatui::{
     style::Style,
@@ -45,7 +45,7 @@ impl App {
                 }
             },
             Focus::StatusBottom => self.uncommitted.conflicts.len() + self.uncommitted.unstaged.modified.len() + self.uncommitted.unstaged.added.len() + self.uncommitted.unstaged.deleted.len(),
-            Focus::Branches => self.graph.branches_window.as_ref().map(|window| window.total).unwrap_or(self.branches.sorted.len()),
+            Focus::Branches => self.graph.branches_window.as_ref().map(|window| window.total).unwrap_or_else(|| current_branch_names(repo).len()),
             Focus::Tags => self.graph.tags_window.as_ref().map(|window| window.total).unwrap_or(self.tags.sorted.len()),
             Focus::Stashes => self.graph.stashes_window.as_ref().map(|window| window.total).unwrap_or(self.oids.stashes.len()),
             Focus::Reflogs => self.graph.reflogs_window.as_ref().map(|window| window.total).unwrap_or(self.reflogs.entries.len()),
@@ -66,11 +66,9 @@ impl App {
                 Focus::StatusTop => self.status_top_selected + 1,
                 Focus::StatusBottom => self.status_bottom_selected + 1,
                 Focus::Branches => {
-                    if self.branches.visible_branch_names.is_empty() {
-                        self.branches.all.len()
-                    } else {
-                        self.branches.visible_branch_names.len()
-                    }
+                    let branch_names = current_branch_names(repo);
+                    let hidden = branch_names.iter().filter(|branch| self.branches.hidden_branch_names.contains(*branch)).count();
+                    branch_names.len().saturating_sub(hidden)
                 },
                 Focus::Tags => self.tags_selected + 1,
                 Focus::Stashes => self.stashes_selected + 1,

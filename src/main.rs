@@ -50,6 +50,7 @@ pub mod git {
     }
 }
 pub mod helpers {
+    pub mod branch_visibility;
     pub mod colors;
     pub mod copy;
     pub mod heatmap;

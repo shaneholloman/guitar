@@ -49,7 +49,7 @@ impl App {
             let color_picker = ColorPicker::from_theme(&self.theme);
             for row in rows {
                 if let Some(GraphPaneRow::Branch { name, is_local, lane, .. }) = row {
-                    let is_visible = self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(name);
+                    let is_visible = !self.branches.hidden_branch_names.contains(name);
                     let truncated = truncate_with_ellipsis(name, max_text_width.saturating_sub(1));
                     let icon = if is_visible {
                         if *is_local { "●" } else { "◆" }
@@ -66,7 +66,7 @@ impl App {
             }
         } else if self.graph_tx.is_none() {
             for (branch_alias, branch_name) in self.branches.get_sorted_aliases().iter() {
-                let is_visible = self.branches.visible_branch_names.contains(branch_name) || self.branches.visible_branch_names.is_empty();
+                let is_visible = !self.branches.hidden_branch_names.contains(branch_name);
                 let is_local = self.branches.is_local(branch_name);
 
                 let truncated = truncate_with_ellipsis(branch_name, max_text_width.saturating_sub(1));
@@ -145,3 +145,7 @@ impl App {
         SurfaceRender::Ready
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/app/draw/branches.rs"]
+mod tests;

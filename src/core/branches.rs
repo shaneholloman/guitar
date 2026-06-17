@@ -9,7 +9,7 @@ pub struct Branches {
     pub all: HashMap<u32, Vec<String>>,
     pub colors: HashMap<u32, Color>,
     pub sorted: Vec<(u32, String)>,
-    pub visible_branch_names: HashSet<String>,
+    pub hidden_branch_names: HashSet<String>,
 }
 
 impl Branches {

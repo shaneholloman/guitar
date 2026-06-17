@@ -34,10 +34,17 @@ pub enum GraphPane {
     Reflogs,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GraphBranchJumpDirection {
+    Previous,
+    Next,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GraphLookupKind {
     GraphRowAt { index: usize },
     PaneRowAt { pane: GraphPane, index: usize },
+    BranchIndex { from: usize, direction: GraphBranchJumpDirection },
     ShaPrefix { prefix: String },
     Oid { oid: Oid },
     ParentIndex { index: usize },
@@ -134,7 +141,7 @@ pub struct GraphServiceConfig {
     pub generation: Generation,
     pub path: String,
     pub amount: usize,
-    pub visible_branch_names: HashSet<String>,
+    pub hidden_branch_names: HashSet<String>,
     pub include_head_reflog_roots: bool,
     pub worktrees: Vec<WorktreeEntry>,
 }
@@ -145,7 +152,7 @@ pub fn spawn_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand
 
 fn run_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand>, tx: Sender<GraphEvent>, cancel: Arc<AtomicBool>) {
     let generation = config.generation;
-    let mut walk_ctx = match Walker::new(config.path, config.amount, config.visible_branch_names.clone(), config.include_head_reflog_roots) {
+    let mut walk_ctx = match Walker::new(config.path, config.amount, config.hidden_branch_names.clone(), config.include_head_reflog_roots) {
         Ok(walker) => walker,
         Err(error) => {
             let _ = tx.send(GraphEvent::Error { generation, message: format!("Walker failed: {error}") });
@@ -165,12 +172,12 @@ fn run_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand>, tx:
             break;
         }
 
-        if !drain_commands(generation, version, &rx, &tx, &walk_ctx, &mut worktrees, &mut pending_graph, &mut pending_file_history, &config.visible_branch_names) {
+        if !drain_commands(generation, version, &rx, &tx, &walk_ctx, &mut worktrees, &mut pending_graph, &mut pending_file_history, &config.hidden_branch_names) {
             break;
         }
 
         if let Some((request_id, start, end)) = pending_graph.take() {
-            send_graph_window(generation, request_id, version, start, end, &tx, &walk_ctx, &worktrees, &config.visible_branch_names);
+            send_graph_window(generation, request_id, version, start, end, &tx, &walk_ctx, &worktrees, &config.hidden_branch_names);
         }
 
         if is_complete && let Some((request_id, path)) = pending_file_history.take() {
@@ -181,7 +188,7 @@ fn run_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand>, tx:
             match rx.recv_timeout(Duration::from_millis(50)) {
                 Ok(GraphCommand::Shutdown) => break,
                 Ok(command) => {
-                    if !handle_command(generation, version, command, &tx, &walk_ctx, &mut worktrees, &mut pending_graph, &mut pending_file_history, &config.visible_branch_names) {
+                    if !handle_command(generation, version, command, &tx, &walk_ctx, &mut worktrees, &mut pending_graph, &mut pending_file_history, &config.hidden_branch_names) {
                         break;
                     }
                 },
@@ -213,10 +220,10 @@ fn run_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand>, tx:
 
 fn drain_commands(
     generation: Generation, version: GraphVersion, rx: &Receiver<GraphCommand>, tx: &Sender<GraphEvent>, walk_ctx: &Walker, worktrees: &mut Worktrees,
-    pending_graph: &mut Option<(RequestId, usize, usize)>, pending_file_history: &mut Option<(RequestId, String)>, visible_branch_names: &HashSet<String>,
+    pending_graph: &mut Option<(RequestId, usize, usize)>, pending_file_history: &mut Option<(RequestId, String)>, hidden_branch_names: &HashSet<String>,
 ) -> bool {
     while let Ok(command) = rx.try_recv() {
-        if !handle_command(generation, version, command, tx, walk_ctx, worktrees, pending_graph, pending_file_history, visible_branch_names) {
+        if !handle_command(generation, version, command, tx, walk_ctx, worktrees, pending_graph, pending_file_history, hidden_branch_names) {
             return false;
         }
     }
@@ -225,7 +232,7 @@ fn drain_commands(
 
 fn handle_command(
     generation: Generation, version: GraphVersion, command: GraphCommand, tx: &Sender<GraphEvent>, walk_ctx: &Walker, worktrees: &mut Worktrees, pending_graph: &mut Option<(RequestId, usize, usize)>,
-    pending_file_history: &mut Option<(RequestId, String)>, visible_branch_names: &HashSet<String>,
+    pending_file_history: &mut Option<(RequestId, String)>, hidden_branch_names: &HashSet<String>,
 ) -> bool {
     match command {
         GraphCommand::Shutdown => false,
@@ -249,7 +256,7 @@ fn handle_command(
         },
         GraphCommand::Lookup { generation: cmd_generation, request_id, kind } => {
             if cmd_generation == generation {
-                let result = lookup(kind, walk_ctx, worktrees, visible_branch_names);
+                let result = lookup(kind, walk_ctx, worktrees, hidden_branch_names);
                 let _ = tx.send(GraphEvent::LookupResult { generation, request_id, result });
             }
             true
@@ -259,13 +266,13 @@ fn handle_command(
 
 fn send_graph_window(
     generation: Generation, request_id: RequestId, version: GraphVersion, start: usize, end: usize, tx: &Sender<GraphEvent>, walk_ctx: &Walker, worktrees: &Worktrees,
-    visible_branch_names: &HashSet<String>,
+    hidden_branch_names: &HashSet<String>,
 ) {
     let total = walk_ctx.oids.get_commit_count();
     let start = start.min(total);
     let end = end.min(total);
     let history = walk_ctx.buffer.borrow().window(start, end.saturating_add(1));
-    let rows = graph_rows(walk_ctx, worktrees, visible_branch_names, start, end);
+    let rows = graph_rows(walk_ctx, worktrees, hidden_branch_names, start, end);
     let head_alias = head_alias(walk_ctx);
 
     let _ = tx.send(GraphEvent::GraphWindow { generation, request_id, version, start, end, total, head_alias, rows, history });
@@ -315,7 +322,7 @@ fn file_history_rows(walk_ctx: &Walker, path: &str) -> Result<Vec<GraphFileHisto
     Ok(rows)
 }
 
-fn graph_rows(walk_ctx: &Walker, worktrees: &Worktrees, visible_branch_names: &HashSet<String>, start: usize, end: usize) -> Vec<GraphRow> {
+fn graph_rows(walk_ctx: &Walker, worktrees: &Worktrees, hidden_branch_names: &HashSet<String>, start: usize, end: usize) -> Vec<GraphRow> {
     let repo = walk_ctx.repo.borrow();
     let latest_reflogs = latest_reflogs_by_alias(walk_ctx);
     let mut rows = Vec::with_capacity(end.saturating_sub(start));
@@ -334,7 +341,7 @@ fn graph_rows(walk_ctx: &Walker, worktrees: &Worktrees, visible_branch_names: &H
             .into_iter()
             .map(|name| (name, true))
             .chain(remote.into_iter().map(|name| (name, false)))
-            .filter(|(name, _)| visible_branch_names.is_empty() || visible_branch_names.contains(name))
+            .filter(|(name, _)| !hidden_branch_names.contains(name))
             .map(|(name, is_local)| GraphBranchLabel { name, is_local, lane: branch_lane })
             .collect();
 
@@ -352,12 +359,12 @@ fn graph_rows(walk_ctx: &Walker, worktrees: &Worktrees, visible_branch_names: &H
     rows
 }
 
-fn graph_row_at(walk_ctx: &Walker, worktrees: &Worktrees, visible_branch_names: &HashSet<String>, index: usize) -> Option<GraphRow> {
+fn graph_row_at(walk_ctx: &Walker, worktrees: &Worktrees, hidden_branch_names: &HashSet<String>, index: usize) -> Option<GraphRow> {
     if index >= walk_ctx.oids.get_commit_count() {
         return None;
     }
 
-    graph_rows(walk_ctx, worktrees, visible_branch_names, index, index.saturating_add(1)).into_iter().next()
+    graph_rows(walk_ctx, worktrees, hidden_branch_names, index, index.saturating_add(1)).into_iter().next()
 }
 
 fn pane_rows(pane: GraphPane, walk_ctx: &Walker) -> Vec<GraphPaneRow> {
@@ -409,10 +416,11 @@ fn pane_rows(pane: GraphPane, walk_ctx: &Walker) -> Vec<GraphPaneRow> {
     }
 }
 
-fn lookup(kind: GraphLookupKind, walk_ctx: &Walker, worktrees: &Worktrees, visible_branch_names: &HashSet<String>) -> GraphLookupResult {
+fn lookup(kind: GraphLookupKind, walk_ctx: &Walker, worktrees: &Worktrees, hidden_branch_names: &HashSet<String>) -> GraphLookupResult {
     match kind {
-        GraphLookupKind::GraphRowAt { index } => GraphLookupResult::GraphRow(graph_row_at(walk_ctx, worktrees, visible_branch_names, index)),
+        GraphLookupKind::GraphRowAt { index } => GraphLookupResult::GraphRow(graph_row_at(walk_ctx, worktrees, hidden_branch_names, index)),
         GraphLookupKind::PaneRowAt { pane, index } => GraphLookupResult::PaneRow(pane_rows(pane, walk_ctx).get(index).cloned()),
+        GraphLookupKind::BranchIndex { from, direction } => GraphLookupResult::Index(branch_index(walk_ctx, hidden_branch_names, from, direction)),
         GraphLookupKind::ShaPrefix { prefix } => {
             let oid = walk_ctx.oids.oids.iter().find(|oid| oid.to_string().starts_with(&prefix)).copied();
             let index = oid.and_then(|oid| walk_ctx.oids.aliases.get(&oid).copied()).and_then(|alias| walk_ctx.oids.get_sorted_aliases().iter().position(|&current| current == alias));
@@ -424,6 +432,23 @@ fn lookup(kind: GraphLookupKind, walk_ctx: &Walker, worktrees: &Worktrees, visib
         },
         GraphLookupKind::ParentIndex { index } => GraphLookupResult::Index(parent_index(walk_ctx, index)),
         GraphLookupKind::ChildIndex { index } => GraphLookupResult::Index(child_index(walk_ctx, index)),
+    }
+}
+
+fn branch_index(walk_ctx: &Walker, hidden_branch_names: &HashSet<String>, from: usize, direction: GraphBranchJumpDirection) -> Option<usize> {
+    let mut indices: Vec<usize> = pane_rows(GraphPane::Branches, walk_ctx)
+        .into_iter()
+        .filter_map(|row| match row {
+            GraphPaneRow::Branch { name, graph_index: Some(index), .. } if !hidden_branch_names.contains(&name) => Some(index),
+            _ => None,
+        })
+        .collect();
+    indices.sort_unstable();
+    indices.dedup();
+
+    match direction {
+        GraphBranchJumpDirection::Previous => indices.into_iter().rev().find(|&index| index < from),
+        GraphBranchJumpDirection::Next => indices.into_iter().find(|&index| index > from),
     }
 }
 

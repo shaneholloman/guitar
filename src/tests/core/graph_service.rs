@@ -1,5 +1,5 @@
 use super::*;
-use git2::{Oid, Repository, Signature};
+use git2::{Oid, Repository, Signature, build::CheckoutBuilder};
 use im::HashSet;
 use std::{
     fs,
@@ -47,7 +47,7 @@ fn graph_service_reports_progress_and_answers_visible_window() {
     let (event_tx, event_rx) = channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let handle = spawn_graph_service(
-        GraphServiceConfig { generation, path: path.display().to_string(), amount: 1, visible_branch_names: HashSet::new(), include_head_reflog_roots: false, worktrees: Vec::new() },
+        GraphServiceConfig { generation, path: path.display().to_string(), amount: 1, hidden_branch_names: HashSet::new(), include_head_reflog_roots: false, worktrees: Vec::new() },
         cmd_rx,
         event_tx,
         cancel.clone(),
@@ -130,7 +130,7 @@ fn graph_service_file_history_returns_visible_graph_indices() {
     let (event_tx, event_rx) = channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let handle = spawn_graph_service(
-        GraphServiceConfig { generation, path: path.display().to_string(), amount: 10000, visible_branch_names: HashSet::new(), include_head_reflog_roots: false, worktrees: Vec::new() },
+        GraphServiceConfig { generation, path: path.display().to_string(), amount: 10000, hidden_branch_names: HashSet::new(), include_head_reflog_roots: false, worktrees: Vec::new() },
         cmd_rx,
         event_tx,
         cancel.clone(),
@@ -171,4 +171,141 @@ fn graph_service_file_history_returns_visible_graph_indices() {
     let _ = cmd_tx.send(GraphCommand::Shutdown);
     cancel.store(true, std::sync::atomic::Ordering::SeqCst);
     handle.join().unwrap();
+}
+
+#[test]
+fn graph_service_uses_hidden_branch_names_as_deny_list() {
+    let (path, repo) = temp_repo("hidden-branches");
+    let root = commit(&repo, "root.txt", "root");
+    let root_commit = repo.find_commit(root).unwrap();
+    repo.branch("hidden", &root_commit, false).unwrap();
+    let visible = commit(&repo, "visible.txt", "visible");
+
+    repo.set_head("refs/heads/hidden").unwrap();
+    repo.checkout_head(Some(CheckoutBuilder::default().force())).unwrap();
+    let hidden = commit(&repo, "hidden.txt", "hidden");
+
+    let generation = 88;
+    let (cmd_tx, cmd_rx) = channel();
+    let (event_tx, event_rx) = channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let handle = spawn_graph_service(
+        GraphServiceConfig { generation, path: path.display().to_string(), amount: 10000, hidden_branch_names: hidden_set(&["hidden"]), include_head_reflog_roots: false, worktrees: Vec::new() },
+        cmd_rx,
+        event_tx,
+        cancel.clone(),
+    );
+
+    let mut complete = false;
+    for _ in 0..20 {
+        match event_rx.recv_timeout(Duration::from_millis(250)).unwrap() {
+            GraphEvent::Progress { generation: event_generation, is_complete, .. } if event_generation == generation && is_complete => {
+                complete = true;
+                break;
+            },
+            _ => {},
+        }
+    }
+    assert!(complete);
+
+    cmd_tx.send(GraphCommand::QueryGraphWindow { generation, request_id: 91, start: 0, end: 10 }).unwrap();
+
+    let mut saw_window = false;
+    for _ in 0..20 {
+        match event_rx.recv_timeout(Duration::from_millis(250)).unwrap() {
+            GraphEvent::GraphWindow { generation: event_generation, request_id: 91, rows, .. } if event_generation == generation => {
+                saw_window = true;
+                assert!(rows.iter().any(|row| row.oid == visible));
+                assert!(!rows.iter().any(|row| row.oid == hidden));
+                break;
+            },
+            _ => {},
+        }
+    }
+    assert!(saw_window);
+
+    cmd_tx.send(GraphCommand::QueryPaneWindow { generation, pane: GraphPane::Branches, start: 0, end: 10 }).unwrap();
+
+    let mut saw_pane = false;
+    for _ in 0..20 {
+        match event_rx.recv_timeout(Duration::from_millis(250)).unwrap() {
+            GraphEvent::PaneWindow { generation: event_generation, pane: GraphPane::Branches, rows, .. } if event_generation == generation => {
+                saw_pane = true;
+                assert!(rows.iter().any(|row| matches!(row, GraphPaneRow::Branch { name, .. } if name == "hidden")));
+                break;
+            },
+            _ => {},
+        }
+    }
+    assert!(saw_pane);
+
+    let _ = cmd_tx.send(GraphCommand::Shutdown);
+    cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+    handle.join().unwrap();
+}
+
+#[test]
+fn graph_service_omits_hidden_labels_on_visible_commits() {
+    let (path, repo) = temp_repo("hidden-labels");
+    let oid = commit(&repo, "one.txt", "one");
+    let commit = repo.find_commit(oid).unwrap();
+    repo.branch("hidden", &commit, false).unwrap();
+    repo.reference("refs/remotes/origin/archive", oid, true, "test").unwrap();
+
+    let generation = 89;
+    let (cmd_tx, cmd_rx) = channel();
+    let (event_tx, event_rx) = channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let handle = spawn_graph_service(
+        GraphServiceConfig {
+            generation,
+            path: path.display().to_string(),
+            amount: 10000,
+            hidden_branch_names: hidden_set(&["hidden", "origin/archive"]),
+            include_head_reflog_roots: false,
+            worktrees: Vec::new(),
+        },
+        cmd_rx,
+        event_tx,
+        cancel.clone(),
+    );
+
+    let mut complete = false;
+    for _ in 0..20 {
+        match event_rx.recv_timeout(Duration::from_millis(250)).unwrap() {
+            GraphEvent::Progress { generation: event_generation, is_complete, .. } if event_generation == generation && is_complete => {
+                complete = true;
+                break;
+            },
+            _ => {},
+        }
+    }
+    assert!(complete);
+
+    cmd_tx.send(GraphCommand::QueryGraphWindow { generation, request_id: 92, start: 0, end: 2 }).unwrap();
+
+    let mut saw_window = false;
+    for _ in 0..20 {
+        match event_rx.recv_timeout(Duration::from_millis(250)).unwrap() {
+            GraphEvent::GraphWindow { generation: event_generation, request_id: 92, rows, .. } if event_generation == generation => {
+                saw_window = true;
+                let row = rows.iter().find(|row| row.oid == oid).unwrap();
+                let labels: Vec<_> = row.branches.iter().map(|branch| branch.name.as_str()).collect();
+                assert!(!labels.contains(&"hidden"));
+                assert!(!labels.contains(&"origin/archive"));
+                assert!(labels.contains(&"master"));
+                break;
+            },
+            _ => {},
+        }
+    }
+    assert!(saw_window);
+
+    let _ = cmd_tx.send(GraphCommand::Shutdown);
+    cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+    handle.join().unwrap();
+}
+
+fn hidden_set(names: &[&str]) -> HashSet<String> {
+    names.iter().map(|name| name.to_string()).collect()
 }

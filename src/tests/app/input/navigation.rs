@@ -1,8 +1,8 @@
 use super::*;
-use crate::app::app::GraphWindowCache;
+use crate::app::app::{GraphWindowCache, PaneWindowCache};
 use crate::core::{
     chunk::NONE,
-    graph_service::{GraphCommand, GraphEvent, GraphFileHistoryRow, GraphLookupKind, GraphLookupResult, GraphPane, GraphReflogLabel, GraphRow},
+    graph_service::{GraphCommand, GraphEvent, GraphFileHistoryRow, GraphLookupKind, GraphLookupResult, GraphPane, GraphPaneRow, GraphReflogLabel, GraphRow},
     reflogs::HeadReflogAliasEntry,
 };
 use crate::{
@@ -121,8 +121,8 @@ fn branch_app() -> App {
     app
 }
 
-fn visible_branches(app: &App) -> Vec<String> {
-    let mut branches: Vec<String> = app.branches.visible_branch_names.iter().cloned().collect();
+fn hidden_branches(app: &App) -> Vec<String> {
+    let mut branches: Vec<String> = app.branches.hidden_branch_names.iter().cloned().collect();
     branches.sort();
     branches
 }
@@ -266,34 +266,45 @@ fn solo_branch_from_pane_keeps_selected_as_only_visible() {
     let mut app = branch_app();
     app.focus = Focus::Branches;
     app.branches_selected = 1;
-    app.branches.visible_branch_names.insert("main".to_string());
 
     app.on_solo_branch();
 
-    assert_eq!(visible_branches(&app), vec!["main"]);
+    assert_eq!(hidden_branches(&app), vec!["feature"]);
 }
 
 #[test]
-fn toggle_branch_from_all_visible_hides_selected_branch() {
+fn toggle_visible_branch_adds_selected_branch_to_hidden_layer() {
     let mut app = branch_app();
     app.focus = Focus::Branches;
     app.branches_selected = 1;
 
     app.on_toggle_branch();
 
-    assert_eq!(visible_branches(&app), vec!["feature"]);
+    assert_eq!(hidden_branches(&app), vec!["main"]);
 }
 
 #[test]
-fn toggle_last_visible_branch_returns_to_all_visible() {
+fn toggle_hidden_branch_removes_selected_branch_from_hidden_layer() {
     let mut app = branch_app();
     app.focus = Focus::Branches;
     app.branches_selected = 1;
-    app.branches.visible_branch_names.insert("main".to_string());
+    app.branches.hidden_branch_names.insert("main".to_string());
 
     app.on_toggle_branch();
 
-    assert!(app.branches.visible_branch_names.is_empty());
+    assert!(app.branches.hidden_branch_names.is_empty());
+}
+
+#[test]
+fn toggle_last_visible_branch_clears_hidden_layer() {
+    let mut app = branch_app();
+    app.focus = Focus::Branches;
+    app.branches_selected = 1;
+    app.branches.hidden_branch_names.insert("feature".to_string());
+
+    app.on_toggle_branch();
+
+    assert!(app.branches.hidden_branch_names.is_empty());
 }
 
 #[test]
@@ -304,7 +315,7 @@ fn graph_solo_uses_selected_commit_branch() {
 
     app.on_solo_branch();
 
-    assert_eq!(visible_branches(&app), vec!["main"]);
+    assert_eq!(hidden_branches(&app), vec!["feature"]);
 }
 
 #[test]
@@ -315,7 +326,7 @@ fn graph_toggle_uses_selected_commit_branch() {
 
     app.on_toggle_branch();
 
-    assert_eq!(visible_branches(&app), vec!["feature"]);
+    assert_eq!(hidden_branches(&app), vec!["main"]);
 }
 
 #[test]
@@ -330,6 +341,33 @@ fn graph_toggle_multiple_branch_commit_opens_toggle_modal() {
     assert_eq!(app.focus, Focus::ModalSolo);
     assert_eq!(app.modal_branch_action, BranchModalAction::Toggle);
     assert_eq!(app.modal_solo_selected, 0);
+}
+
+#[test]
+fn branch_toggle_uses_git_branch_universe_when_pane_window_is_partial() {
+    let (path, repo) = temp_repo("branch-window-toggle");
+    let oid = commit_file(&repo, "main.txt", "main");
+    {
+        let commit = repo.find_commit(oid).unwrap();
+        repo.branch("feature", &commit, false).unwrap();
+        repo.branch("main", &commit, false).unwrap();
+    }
+
+    let mut app = App {
+        path: Some(path.display().to_string()),
+        repo: Some(Rc::new(repo)),
+        recent_save_path: Some(temp_recent_path("branch-window-toggle")),
+        viewport: Viewport::Graph,
+        focus: Focus::Branches,
+        branches_selected: 1,
+        ..Default::default()
+    };
+    app.graph.branches_window =
+        Some(PaneWindowCache { version: 1, start: 1, end: 2, total: 3, rows: vec![GraphPaneRow::Branch { alias: 1, name: "main".to_string(), is_local: true, lane: None, graph_index: Some(1) }] });
+
+    app.on_toggle_branch();
+
+    assert_eq!(hidden_branches(&app), vec!["main"]);
 }
 
 #[test]

@@ -18,6 +18,7 @@ use crate::{
         auth::{AuthRequired, AuthSecret, NetworkResult},
         queries::commits::get_current_branch,
     },
+    helpers::branch_visibility::save_branch_visibility,
 };
 use git2::{BranchType, Repository, RepositoryState};
 use std::path::Path;
@@ -70,13 +71,22 @@ impl App {
     pub(crate) fn handle_network_result(&mut self, result: NetworkResult) {
         match result {
             NetworkResult::Success => {
-                self.pending_network_request = None;
+                let completed_request = self.pending_network_request.take();
                 self.network_auth_attempts = 0;
                 self.pending_auth_prompt = None;
                 self.auth_username_input.clear();
                 self.auth_secret_input.clear();
                 self.modal_network_title.clear();
                 self.modal_network_message.clear();
+                if let Some(NetworkRequest::DeleteRemoteBranch { remote_name, branch, .. }) = completed_request {
+                    let hidden_name = format!("{remote_name}/{branch}");
+                    if self.branches.hidden_branch_names.contains(hidden_name.as_str()) {
+                        self.branches.hidden_branch_names.remove(hidden_name.as_str());
+                        if let Some(path) = &self.path {
+                            save_branch_visibility(path, &self.branches.hidden_branch_names);
+                        }
+                    }
+                }
                 self.focus = Focus::Viewport;
                 self.reload(None);
             },
@@ -467,11 +477,14 @@ impl App {
                     return;
                 };
 
-                match checkout_branch(repo, &mut self.branches.visible_branch_names, &mut self.branches.local, alias, &branch) {
+                match checkout_branch(repo, &mut self.branches.hidden_branch_names, &mut self.branches.local, alias, &branch) {
                     Ok(_) => {
                         // Keep graph selection on the commit that owns the checked-out branch.
                         self.graph_selected = graph_index.or_else(|| self.oids.get_sorted_aliases().iter().position(|o| o == &alias)).unwrap_or(0);
 
+                        if let Some(path) = &self.path {
+                            save_branch_visibility(path, &self.branches.hidden_branch_names);
+                        }
                         self.focus = Focus::Viewport;
                         self.reload(None);
                     },
@@ -508,8 +521,11 @@ impl App {
                     },
                     1 => {
                         // A single label can be checked out without another prompt.
-                        match checkout_branch(repo, &mut self.branches.visible_branch_names, &mut self.branches.local, alias, &branches_for_alias[0]) {
+                        match checkout_branch(repo, &mut self.branches.hidden_branch_names, &mut self.branches.local, alias, &branches_for_alias[0]) {
                             Ok(_) => {
+                                if let Some(path) = &self.path {
+                                    save_branch_visibility(path, &self.branches.hidden_branch_names);
+                                }
                                 self.focus = Focus::Viewport;
                                 self.reload(None);
                             },
@@ -721,7 +737,12 @@ impl App {
         if repo.find_branch(branch, BranchType::Local).is_ok() {
             match delete_branch(&repo, branch) {
                 Ok(_) => {
-                    self.branches.visible_branch_names.remove(branch);
+                    if self.branches.hidden_branch_names.contains(branch) {
+                        self.branches.hidden_branch_names.remove(branch);
+                        if let Some(path) = &self.path {
+                            save_branch_visibility(path, &self.branches.hidden_branch_names);
+                        }
+                    }
                     self.modal_delete_branch_selected = 0;
                     self.focus = Focus::Viewport;
                     self.reload(None);
@@ -790,11 +811,11 @@ impl App {
                 let current = get_current_branch(repo);
 
                 // Current branch is excluded so graph deletion cannot remove checked-out HEAD.
-                let visible_branches = self.graph_deletable_branch_choices(alias, current.as_deref());
+                let branch_names = self.graph_deletable_branch_choices(alias, current.as_deref());
 
-                match visible_branches.len() {
+                match branch_names.len() {
                     0 => {},
-                    1 => self.delete_branch_from_ui(&visible_branches[0]),
+                    1 => self.delete_branch_from_ui(&branch_names[0]),
                     _ => {
                         self.focus = Focus::ModalDeleteBranch;
                     },

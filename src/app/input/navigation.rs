@@ -3,12 +3,13 @@ use crate::{
         app::{App, BranchModalAction, Direction, Focus, PendingGraphLookup, SettingsSelectionKind, Viewport},
         state::defaults::ViewerMode,
     },
-    core::graph_service::{GraphLookupKind, GraphPane, GraphPaneRow},
+    core::graph_service::{GraphBranchJumpDirection, GraphLookupKind, GraphPane, GraphPaneRow},
     git::{
         actions::{checkout::checkout_branch, tagging::untag},
         queries::{commits::get_current_branch, diffs::get_filenames_diff_at_oid},
     },
     helpers::{
+        branch_visibility::{current_branch_names as git_current_branch_names, save_branch_visibility},
         keymap::{Command, InputMode},
         layout::LayoutConfig,
         palette::Theme,
@@ -355,12 +356,15 @@ impl App {
     }
 
     fn graph_visible_branch_indices(&self) -> Vec<usize> {
-        if let Some(window) = &self.graph.branches_window {
+        if let Some(window) = &self.graph.branches_window
+            && window.start == 0
+            && window.end >= window.total
+        {
             let mut visible_indices: Vec<usize> = window
                 .rows
                 .iter()
                 .filter_map(|row| match row {
-                    GraphPaneRow::Branch { name, graph_index, .. } if self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(name) => *graph_index,
+                    GraphPaneRow::Branch { name, graph_index, .. } if !self.branches.hidden_branch_names.contains(name) => *graph_index,
                     _ => None,
                 })
                 .collect();
@@ -375,12 +379,16 @@ impl App {
             .all
             .iter()
             .filter_map(|(&alias, all_branches)| {
-                let has_visible_branch = all_branches.iter().any(|branch| self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(branch));
+                let has_visible_branch = all_branches.iter().any(|branch| !self.branches.hidden_branch_names.contains(branch));
                 has_visible_branch.then(|| self.oids.get_sorted_aliases().iter().position(|&current| current == alias)).flatten()
             })
             .collect();
         visible_indices.sort_unstable();
         visible_indices
+    }
+
+    fn branch_count(&self) -> usize {
+        self.graph.branches_window.as_ref().map(|window| window.total).unwrap_or(self.branches.sorted.len())
     }
 
     pub(crate) fn graph_deletable_branch_choices(&self, alias: u32, current: Option<&str>) -> Vec<String> {
@@ -565,11 +573,12 @@ impl App {
                     let Some(alias) = self.graph_alias_at(self.graph_selected) else {
                         return;
                     };
-                    let visible_branch_names = self.graph_branch_choices(alias);
+                    let branch_names = self.graph_branch_choices(alias);
 
-                    if let Some(branch_name) = visible_branch_names.get(self.modal_checkout_selected as usize) {
-                        match checkout_branch(repo, &mut self.branches.visible_branch_names, &mut self.branches.local, alias, branch_name) {
+                    if let Some(branch_name) = branch_names.get(self.modal_checkout_selected as usize) {
+                        match checkout_branch(repo, &mut self.branches.hidden_branch_names, &mut self.branches.local, alias, branch_name) {
                             Ok(_) => {
+                                self.save_hidden_branch_names();
                                 self.modal_checkout_selected = 0;
                                 self.focus = Focus::Viewport;
                                 self.reload(None);
@@ -608,9 +617,9 @@ impl App {
                         return;
                     };
                     let current = get_current_branch(repo);
-                    let visible_branch_names = self.graph_deletable_branch_choices(alias, current.as_deref());
+                    let branch_names = self.graph_deletable_branch_choices(alias, current.as_deref());
 
-                    if let Some(branch) = visible_branch_names.get(self.modal_delete_branch_selected as usize) {
+                    if let Some(branch) = branch_names.get(self.modal_delete_branch_selected as usize) {
                         self.delete_branch_from_ui(branch);
                     }
                 }
@@ -1229,8 +1238,8 @@ impl App {
                 }
             },
             Focus::Branches => {
-                let total = self.branches.sorted.len();
-                self.branches_selected = self.branches_selected + (total - self.branches_selected) / 2
+                let total = self.branch_count();
+                self.branches_selected = self.branches_selected + total.saturating_sub(self.branches_selected) / 2
             },
             Focus::Tags => {
                 let total = self.tags.sorted.len();
@@ -1404,6 +1413,11 @@ impl App {
             return;
         }
 
+        if self.graph_tx.is_some() {
+            self.request_graph_lookup(GraphLookupKind::BranchIndex { from: self.graph_selected, direction: GraphBranchJumpDirection::Previous }, PendingGraphLookup::SelectIndex);
+            return;
+        }
+
         if let Some(&next) = self.graph_visible_branch_indices().iter().rev().find(|&&idx| idx < self.graph_selected) {
             self.select_graph_index(next);
         }
@@ -1411,6 +1425,11 @@ impl App {
 
     pub fn on_scroll_down_branch(&mut self) {
         if self.focus != Focus::Viewport || self.viewport != Viewport::Graph {
+            return;
+        }
+
+        if self.graph_tx.is_some() {
+            self.request_graph_lookup(GraphLookupKind::BranchIndex { from: self.graph_selected, direction: GraphBranchJumpDirection::Next }, PendingGraphLookup::SelectIndex);
             return;
         }
 
@@ -1667,6 +1686,13 @@ impl App {
     }
 
     fn all_branch_names(&self) -> im::HashSet<String> {
+        if let Some(repo) = &self.repo {
+            let names = git_current_branch_names(repo);
+            if !names.is_empty() {
+                return names;
+            }
+        }
+
         let mut names: im::HashSet<String> = self.branches.sorted.iter().map(|(_, branch)| branch.clone()).collect();
         if let Some(window) = &self.graph.branches_window {
             for row in &window.rows {
@@ -1678,29 +1704,38 @@ impl App {
         names
     }
 
+    fn save_hidden_branch_names(&self) {
+        if self.repo.is_some()
+            && let Some(path) = &self.path
+        {
+            save_branch_visibility(path, &self.branches.hidden_branch_names);
+        }
+    }
+
     fn solo_branch_name(&mut self, branch: &str) {
-        self.branches.visible_branch_names.clear();
-        self.branches.visible_branch_names.insert(branch.to_string());
+        let all_branches = self.all_branch_names();
+        if all_branches.len() <= 1 || !all_branches.contains(branch) {
+            self.branches.hidden_branch_names.clear();
+        } else {
+            self.branches.hidden_branch_names = all_branches;
+            self.branches.hidden_branch_names.remove(branch);
+        }
+        self.save_hidden_branch_names();
     }
 
     fn toggle_branch_name(&mut self, branch: &str) {
-        if self.branches.visible_branch_names.is_empty() {
-            self.branches.visible_branch_names = self.all_branch_names();
-            self.branches.visible_branch_names.remove(branch);
-        } else if self.branches.visible_branch_names.contains(branch) {
-            self.branches.visible_branch_names.remove(branch);
+        if self.branches.hidden_branch_names.contains(branch) {
+            self.branches.hidden_branch_names.remove(branch);
         } else {
-            self.branches.visible_branch_names.insert(branch.to_string());
+            self.branches.hidden_branch_names.insert(branch.to_string());
         }
 
-        if self.branches.visible_branch_names.is_empty() {
-            return;
+        let all_branches = self.all_branch_names();
+        let has_visible_branch = all_branches.iter().any(|branch| !self.branches.hidden_branch_names.contains(branch));
+        if !all_branches.is_empty() && !has_visible_branch {
+            self.branches.hidden_branch_names.clear();
         }
-
-        let has_visible_branch = self.branches.sorted.iter().any(|(_, branch)| self.branches.visible_branch_names.contains(branch));
-        if !has_visible_branch {
-            self.branches.visible_branch_names.clear();
-        }
+        self.save_hidden_branch_names();
     }
 
     pub(crate) fn graph_branch_choices(&self, alias: u32) -> Vec<String> {
@@ -1718,13 +1753,8 @@ impl App {
             return choices;
         }
 
-        choices = self
-            .branches
-            .sorted
-            .iter()
-            .filter(|(branch_alias, branch)| *branch_alias == alias && (self.branches.visible_branch_names.is_empty() || self.branches.visible_branch_names.contains(branch)))
-            .map(|(_, branch)| branch.clone())
-            .collect();
+        choices =
+            self.branches.sorted.iter().filter(|(branch_alias, branch)| *branch_alias == alias && !self.branches.hidden_branch_names.contains(branch)).map(|(_, branch)| branch.clone()).collect();
 
         choices
     }

@@ -79,7 +79,7 @@ impl App {
                 {
                     lines.push(Line::default());
                     lines.push(Line::from(Span::styled("featured branches:", Style::default().fg(self.theme.COLOR_HIGHLIGHTED))));
-                    for branch in branches {
+                    for branch in branches.iter().filter(|branch| !self.branches.hidden_branch_names.contains(*branch)) {
                         let text = truncate_with_ellipsis(&format!("● {}", branch), max_text_width);
                         lines.push(Line::from(Span::styled(text, Style::default().fg(*color))));
                     }
