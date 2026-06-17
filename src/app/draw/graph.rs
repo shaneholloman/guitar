@@ -146,7 +146,7 @@ impl App {
         }
         constraints.push(ratatui::layout::Constraint::Length(width + 5));
         if self.layout_config.is_graph_dates {
-            constraints.push(ratatui::layout::Constraint::Length(10));
+            constraints.push(ratatui::layout::Constraint::Length(16));
         }
         if self.layout_config.is_graph_committers {
             constraints.push(ratatui::layout::Constraint::Length(GRAPH_COMMITTER_WIDTH as u16));

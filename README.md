@@ -194,7 +194,7 @@ The stash pane lists stash commits. Stashes are real commits and are rendered in
 
 ### Reflogs
 
-The reflog pane lists recent HEAD reflog entries. Reflog rows can jump to commits that are visible in the graph. If the reflog commit is hidden, enable graph reflogs with `Ctrl+0` so the walker includes HEAD reflog roots.
+The reflog pane lists recent HEAD reflog entries. Reflog rows can jump to commits that are visible in the graph. If the reflog commit is hidden, enable graph reflogs with `)` so the walker includes HEAD reflog roots.
 
 ### Worktrees
 
@@ -503,11 +503,11 @@ Defaults are written to `keymap.json` on first run. User-edited keymaps can diff
 | Toggle Search | `7` |
 | Toggle Inspector | `8` |
 | Toggle Status | `9` |
-| Toggle Graph Reflogs | `Ctrl+0` |
-| Toggle SHAs | `Ctrl+1` |
-| Toggle Graph Dates | `Ctrl+2` |
-| Toggle Graph Committers | `Ctrl+3` |
-| Toggle Graph Refs | `Ctrl+4` |
+| Toggle Graph Reflogs | `)` |
+| Toggle SHAs | `!` |
+| Toggle Graph Committer Date/Time | `@` |
+| Toggle Graph Committers | `#` |
+| Toggle Graph Refs | `$` |
 | Toggle Help / Settings | `?` |
 | Return To Parent Repository | `Backspace` |
 | Action Mode | `Ctrl+a` |
@@ -1087,7 +1087,9 @@ Supported commands are the command names listed in the keymap tables, without sp
 
 Existing `keymap.json` files are preserved. When a new default command is missing and its default key is unbound, `guitar` may add that binding automatically; otherwise, edit the keymap or reset saved config to adopt changed defaults.
 
-If an existing keymap still has the old untouched number/symbol pane-toggle defaults, `guitar` migrates that row to the current `1`-through-`9` pane toggles and `Ctrl+0`-through-`Ctrl+4` graph metadata toggles. `Ctrl+digit` handling depends on terminal support; rebind those commands if your terminal does not emit distinct keys for them.
+If an existing keymap still has the old untouched number/symbol pane-toggle defaults, `guitar` migrates that row to the current `1`-through-`9` pane toggles and graph metadata toggles on `)` through `$`. If it still has the untouched `Ctrl+0`-through-`Ctrl+4` graph metadata defaults from an earlier version, `guitar` migrates those to the same graph metadata commands.
+
+Terminals vary in how they report shifted number keys. `guitar` stores these graph metadata keys as Shift-modified digits but displays them as `)`, `!`, `@`, `#`, and `$`, and accepts those shifted-character events as fallbacks. `Ctrl+digit` remains terminal-dependent, but when a terminal emits distinct `Ctrl+0` through `Ctrl+4` events they fall back to the same graph metadata commands.
 
 ### layout.json
 

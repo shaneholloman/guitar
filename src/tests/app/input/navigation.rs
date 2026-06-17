@@ -1089,26 +1089,79 @@ fn settings_reset_layout_command_resets_and_stays_in_settings() {
 #[test]
 fn toggle_shas_shortcut_works_from_left_and_right_panes() {
     let mut keymaps = minimal_keymaps();
-    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('1'), KeyModifiers::CONTROL), Command::ToggleShas);
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('1'), KeyModifiers::SHIFT), Command::ToggleShas);
     let mut app = App { viewport: Viewport::Graph, focus: Focus::Branches, keymaps, ..Default::default() };
     app.layout_config.is_shas = true;
 
-    app.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::CONTROL));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::SHIFT));
     assert!(!app.layout_config.is_shas);
 
     app.focus = Focus::StatusTop;
-    app.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::CONTROL));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::SHIFT));
     assert!(app.layout_config.is_shas);
 }
 
 #[test]
-fn graph_metadata_ctrl_digit_shortcuts_toggle_display_flags() {
+fn graph_metadata_shift_digit_shortcuts_toggle_display_flags() {
     let mut keymaps = minimal_keymaps();
     let normal = keymaps.get_mut(&InputMode::Normal).unwrap();
-    normal.insert(KeyBinding::new(KeyCode::Char('2'), KeyModifiers::CONTROL), Command::ToggleGraphDates);
-    normal.insert(KeyBinding::new(KeyCode::Char('3'), KeyModifiers::CONTROL), Command::ToggleGraphCommitters);
-    normal.insert(KeyBinding::new(KeyCode::Char('4'), KeyModifiers::CONTROL), Command::ToggleGraphRefs);
+    normal.insert(KeyBinding::new(KeyCode::Char('2'), KeyModifiers::SHIFT), Command::ToggleGraphDates);
+    normal.insert(KeyBinding::new(KeyCode::Char('3'), KeyModifiers::SHIFT), Command::ToggleGraphCommitters);
+    normal.insert(KeyBinding::new(KeyCode::Char('4'), KeyModifiers::SHIFT), Command::ToggleGraphRefs);
     let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, keymaps, ..Default::default() };
+    app.layout_config.is_graph_dates = false;
+    app.layout_config.is_graph_committers = false;
+    app.layout_config.is_graph_refs = true;
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::SHIFT));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::SHIFT));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::SHIFT));
+
+    assert!(app.layout_config.is_graph_dates);
+    assert!(app.layout_config.is_graph_committers);
+    assert!(!app.layout_config.is_graph_refs);
+}
+
+#[test]
+fn graph_metadata_shifted_punctuation_aliases_toggle_display_flags() {
+    let mut keymaps = minimal_keymaps();
+    let normal = keymaps.get_mut(&InputMode::Normal).unwrap();
+    normal.insert(KeyBinding::new(KeyCode::Char('0'), KeyModifiers::SHIFT), Command::ToggleGraphReflogs);
+    normal.insert(KeyBinding::new(KeyCode::Char('1'), KeyModifiers::SHIFT), Command::ToggleShas);
+    normal.insert(KeyBinding::new(KeyCode::Char('2'), KeyModifiers::SHIFT), Command::ToggleGraphDates);
+    normal.insert(KeyBinding::new(KeyCode::Char('3'), KeyModifiers::SHIFT), Command::ToggleGraphCommitters);
+    normal.insert(KeyBinding::new(KeyCode::Char('4'), KeyModifiers::SHIFT), Command::ToggleGraphRefs);
+    let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, keymaps, ..Default::default() };
+    app.layout_config.is_graph_reflogs = false;
+    app.layout_config.is_shas = true;
+    app.layout_config.is_graph_dates = false;
+    app.layout_config.is_graph_committers = false;
+    app.layout_config.is_graph_refs = true;
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char(')'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('!'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('@'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('$'), KeyModifiers::NONE));
+
+    assert!(app.layout_config.is_graph_reflogs);
+    assert!(!app.layout_config.is_shas);
+    assert!(app.layout_config.is_graph_dates);
+    assert!(app.layout_config.is_graph_committers);
+    assert!(!app.layout_config.is_graph_refs);
+}
+
+#[test]
+fn graph_metadata_legacy_ctrl_digit_aliases_toggle_display_flags() {
+    let mut keymaps = minimal_keymaps();
+    let normal = keymaps.get_mut(&InputMode::Normal).unwrap();
+    normal.insert(KeyBinding::new(KeyCode::Char('2'), KeyModifiers::SHIFT), Command::ToggleGraphDates);
+    normal.insert(KeyBinding::new(KeyCode::Char('3'), KeyModifiers::SHIFT), Command::ToggleGraphCommitters);
+    normal.insert(KeyBinding::new(KeyCode::Char('4'), KeyModifiers::SHIFT), Command::ToggleGraphRefs);
+    let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, keymaps, ..Default::default() };
+    app.layout_config.is_graph_dates = false;
+    app.layout_config.is_graph_committers = false;
+    app.layout_config.is_graph_refs = true;
 
     app.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::CONTROL));
     app.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::CONTROL));
@@ -1120,15 +1173,15 @@ fn graph_metadata_ctrl_digit_shortcuts_toggle_display_flags() {
 }
 
 #[test]
-fn graph_reflog_ctrl_digit_shortcut_toggles_and_reloads() {
+fn graph_reflog_shift_digit_shortcut_toggles_and_reloads() {
     let (path, repo) = temp_repo("graph-reflog-shortcut");
     commit_file(&repo, "head.txt", "head");
     let path = path.display().to_string();
     let mut keymaps = minimal_keymaps();
-    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('0'), KeyModifiers::CONTROL), Command::ToggleGraphReflogs);
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('0'), KeyModifiers::SHIFT), Command::ToggleGraphReflogs);
     let mut app = App { path: Some(path.clone()), recent: vec![path], repo: Some(Rc::new(repo)), viewport: Viewport::Graph, focus: Focus::Branches, keymaps, ..Default::default() };
 
-    app.handle_key_event(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::CONTROL));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::SHIFT));
 
     assert!(app.layout_config.is_graph_reflogs);
     assert_eq!(app.viewport, Viewport::Graph);

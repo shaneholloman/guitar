@@ -8,7 +8,7 @@ use crate::{
     git::queries::{file_history::changed_file_status_at_commit, helpers::FileStatus, reflogs::HeadReflogEntry},
     helpers::{
         heatmap::{DAYS, WEEKS, build_heatmap},
-        time::timestamp_to_utc_date,
+        time::timestamp_to_utc_date_time,
     },
 };
 use git2::Oid;
@@ -341,7 +341,7 @@ fn graph_rows(walk_ctx: &Walker, worktrees: &Worktrees, hidden_branch_names: &Ha
         } else if let Ok(commit) = repo.find_commit(oid) {
             let summary = commit.summary().map(str::to_string).unwrap_or_else(|| "⊘ no message".to_string());
             let committer = commit.committer();
-            let committer_date = timestamp_to_utc_date(committer.when());
+            let committer_date = timestamp_to_utc_date_time(committer.when());
             let committer_name = committer.name().unwrap_or("-").to_string();
             (summary, committer_date, committer_name)
         } else {

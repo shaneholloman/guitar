@@ -34,18 +34,85 @@ fn defaults_include_numeric_ui_toggles() {
 }
 
 #[test]
-fn defaults_include_ctrl_numeric_graph_metadata_toggles() {
+fn defaults_include_shift_numeric_graph_metadata_toggles() {
     let maps = default_keymaps();
     let normal = maps.get(&InputMode::Normal).unwrap();
     let action = maps.get(&InputMode::Action).unwrap();
 
     for mode_map in [normal, action] {
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('0'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphReflogs));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::CONTROL)), Some(&Command::ToggleShas));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('2'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphDates));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('3'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphCommitters));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphRefs));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('0'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphReflogs));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::SHIFT)), Some(&Command::ToggleShas));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('2'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphDates));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('3'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphCommitters));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphRefs));
     }
+}
+
+#[test]
+fn visual_string_renders_shift_digits_as_symbols() {
+    assert_eq!(keybinding_to_visual_string(&KeyBinding::new(Char('0'), KeyModifiers::SHIFT)), ")");
+    assert_eq!(keybinding_to_visual_string(&KeyBinding::new(Char('1'), KeyModifiers::SHIFT)), "!");
+    assert_eq!(keybinding_to_visual_string(&KeyBinding::new(Char('2'), KeyModifiers::SHIFT)), "@");
+    assert_eq!(keybinding_to_visual_string(&KeyBinding::new(Char('3'), KeyModifiers::SHIFT)), "#");
+    assert_eq!(keybinding_to_visual_string(&KeyBinding::new(Char('4'), KeyModifiers::SHIFT)), "$");
+    assert_eq!(keybinding_to_visual_string(&KeyBinding::new(Char('1'), KeyModifiers::ALT | KeyModifiers::SHIFT)), "Alt + !");
+}
+
+#[test]
+fn command_lookup_falls_back_from_shifted_punctuation_to_shift_digits() {
+    let maps = default_keymaps();
+    let normal = maps.get(&InputMode::Normal).unwrap();
+
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char(')'), KeyModifiers::NONE)), Some(Command::ToggleGraphReflogs));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('!'), KeyModifiers::NONE)), Some(Command::ToggleShas));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('@'), KeyModifiers::NONE)), Some(Command::ToggleGraphDates));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('#'), KeyModifiers::NONE)), Some(Command::ToggleGraphCommitters));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('$'), KeyModifiers::NONE)), Some(Command::ToggleGraphRefs));
+}
+
+#[test]
+fn command_lookup_supports_common_non_us_shift_digit_punctuation() {
+    let maps = default_keymaps();
+    let normal = maps.get(&InputMode::Normal).unwrap();
+
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('='), KeyModifiers::NONE)), Some(Command::ToggleGraphReflogs));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('"'), KeyModifiers::NONE)), Some(Command::ToggleGraphDates));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('§'), KeyModifiers::NONE)), Some(Command::ToggleGraphCommitters));
+}
+
+#[test]
+fn command_lookup_prefers_exact_binding_over_shift_digit_fallback() {
+    let mut map = IndexMap::new();
+    map.insert(KeyBinding::new(Char('2'), KeyModifiers::SHIFT), Command::ToggleGraphDates);
+    map.insert(KeyBinding::new(Char('@'), KeyModifiers::NONE), Command::Find);
+    map.insert(KeyBinding::new(Char('3'), KeyModifiers::SHIFT), Command::ToggleGraphCommitters);
+    map.insert(KeyBinding::new(Char('#'), KeyModifiers::SHIFT), Command::FindFile);
+
+    assert_eq!(command_for_key_binding(&map, &KeyBinding::new(Char('@'), KeyModifiers::NONE)), Some(Command::Find));
+    assert_eq!(command_for_key_binding(&map, &KeyBinding::new(Char('#'), KeyModifiers::SHIFT)), Some(Command::FindFile));
+}
+
+#[test]
+fn command_lookup_falls_back_from_legacy_ctrl_digits_to_shift_digits() {
+    let maps = default_keymaps();
+    let normal = maps.get(&InputMode::Normal).unwrap();
+
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('0'), KeyModifiers::CONTROL)), Some(Command::ToggleGraphReflogs));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('1'), KeyModifiers::CONTROL)), Some(Command::ToggleShas));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('2'), KeyModifiers::CONTROL)), Some(Command::ToggleGraphDates));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('3'), KeyModifiers::CONTROL)), Some(Command::ToggleGraphCommitters));
+    assert_eq!(command_for_key_binding(normal, &KeyBinding::new(Char('4'), KeyModifiers::CONTROL)), Some(Command::ToggleGraphRefs));
+}
+
+#[test]
+fn command_lookup_falls_back_to_existing_legacy_ctrl_digit_bindings() {
+    let mut map = IndexMap::new();
+    map.insert(KeyBinding::new(Char('2'), KeyModifiers::CONTROL), Command::ToggleGraphDates);
+    map.insert(KeyBinding::new(Char('3'), KeyModifiers::CONTROL), Command::ToggleGraphCommitters);
+
+    assert_eq!(command_for_key_binding(&map, &KeyBinding::new(Char('2'), KeyModifiers::SHIFT)), Some(Command::ToggleGraphDates));
+    assert_eq!(command_for_key_binding(&map, &KeyBinding::new(Char('@'), KeyModifiers::NONE)), Some(Command::ToggleGraphDates));
+    assert_eq!(command_for_key_binding(&map, &KeyBinding::new(Char('#'), KeyModifiers::NONE)), Some(Command::ToggleGraphCommitters));
 }
 
 #[test]
@@ -85,8 +152,8 @@ fn existing_keymaps_gain_search_toggle_when_available() {
     assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FindFile));
     assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
     assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
-    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('2'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphDates));
-    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('4'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphRefs));
+    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('2'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphDates));
+    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('4'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphRefs));
     assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('R'), KeyModifiers::SHIFT)), Some(&Command::ReloadAllBranches));
     assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Backspace, KeyModifiers::NONE)), Some(&Command::ReturnToParentRepository));
     assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('R'), KeyModifiers::SHIFT)), None);
@@ -152,10 +219,36 @@ fn existing_keymaps_rewrite_untouched_old_numeric_ui_defaults() {
         assert_eq!(mode_map.get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('8'), KeyModifiers::NONE)), Some(&Command::ToggleInspector));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('9'), KeyModifiers::NONE)), Some(&Command::ToggleStatus));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::CONTROL)), Some(&Command::ToggleShas));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphRefs));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::SHIFT)), Some(&Command::ToggleShas));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphRefs));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('\\'), KeyModifiers::NONE)), None);
         assert_eq!(mode_map.get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), None);
+    }
+}
+
+#[test]
+fn existing_keymaps_rewrite_untouched_ctrl_graph_metadata_defaults() {
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    for (key, command) in ctrl_graph_metadata_defaults() {
+        normal.insert(key, command);
+    }
+    let action = normal.clone();
+    maps.insert(InputMode::Normal, normal);
+    maps.insert(InputMode::Action, action);
+
+    assert!(ensure_default_keymap_bindings(&mut maps));
+
+    for mode in [InputMode::Normal, InputMode::Action] {
+        let mode_map = maps.get(&mode).unwrap();
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('0'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphReflogs));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::SHIFT)), Some(&Command::ToggleShas));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('2'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphDates));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('3'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphCommitters));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::SHIFT)), Some(&Command::ToggleGraphRefs));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('0'), KeyModifiers::CONTROL)), None);
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::CONTROL)), None);
     }
 }
 

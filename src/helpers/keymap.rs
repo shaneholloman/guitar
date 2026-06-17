@@ -158,13 +158,90 @@ pub fn command_to_visual_string(command: &Command) -> String {
     pascal_to_spaced(&format!("{command:?}"))
 }
 
+fn shifted_digit_visual_char(c: char) -> Option<char> {
+    match c {
+        '0' => Some(')'),
+        '1' => Some('!'),
+        '2' => Some('@'),
+        '3' => Some('#'),
+        '4' => Some('$'),
+        '5' => Some('%'),
+        '6' => Some('^'),
+        '7' => Some('&'),
+        '8' => Some('*'),
+        '9' => Some('('),
+        _ => None,
+    }
+}
+
+fn shifted_digit_visual_binding(binding: &KeyBinding) -> Option<KeyBinding> {
+    let KeyCode::Char(c) = binding.code else {
+        return None;
+    };
+    let shifted = shifted_digit_visual_char(c)?;
+    if !binding.modifiers.contains(KeyModifiers::SHIFT) {
+        return None;
+    }
+
+    let mut modifiers = binding.modifiers;
+    modifiers.remove(KeyModifiers::SHIFT);
+    Some(KeyBinding::new(KeyCode::Char(shifted), modifiers))
+}
+
 pub fn keybinding_to_visual_string(binding: &KeyBinding) -> String {
+    if let Some(visual_binding) = shifted_digit_visual_binding(binding) {
+        return keybinding_to_visual_string(&visual_binding);
+    }
+
     let mut key_string = modifiers_to_string(binding.modifiers);
     if !key_string.is_empty() {
         key_string = format!("{} + ", key_string);
     }
     key_string.push_str(&keycode_to_visual_string(binding.code));
     key_string
+}
+
+fn shifted_digit_alias(binding: &KeyBinding) -> Option<KeyBinding> {
+    let KeyCode::Char(c) = binding.code else {
+        return None;
+    };
+
+    let digit = match c {
+        ')' | '=' => '0',
+        '!' => '1',
+        '@' | '"' => '2',
+        '#' | '§' => '3',
+        '$' => '4',
+        _ => return None,
+    };
+
+    let mut modifiers = binding.modifiers;
+    modifiers.remove(KeyModifiers::SHIFT);
+    Some(KeyBinding::new(KeyCode::Char(digit), modifiers | KeyModifiers::SHIFT))
+}
+
+fn legacy_ctrl_digit_alias(binding: &KeyBinding) -> Option<KeyBinding> {
+    match binding {
+        KeyBinding { code: KeyCode::Char('0'..='4'), modifiers } if *modifiers == KeyModifiers::CONTROL => Some(KeyBinding::new(binding.code, KeyModifiers::SHIFT)),
+        _ => None,
+    }
+}
+
+fn legacy_ctrl_binding_for_shift_digit(binding: &KeyBinding) -> Option<KeyBinding> {
+    match binding {
+        KeyBinding { code: KeyCode::Char('0'..='4'), modifiers } if *modifiers == KeyModifiers::SHIFT => Some(KeyBinding::new(binding.code, KeyModifiers::CONTROL)),
+        _ => None,
+    }
+}
+
+pub fn command_for_key_binding(map: &ModeKeymap, binding: &KeyBinding) -> Option<Command> {
+    map.get(binding)
+        .cloned()
+        .or_else(|| {
+            shifted_digit_alias(binding).and_then(|alias| map.get(&alias).cloned().or_else(|| legacy_ctrl_binding_for_shift_digit(&alias).and_then(|legacy_alias| map.get(&legacy_alias).cloned())))
+        })
+        .or_else(|| legacy_ctrl_digit_alias(binding).and_then(|alias| map.get(&alias).cloned()))
+        .or_else(|| legacy_ctrl_binding_for_shift_digit(binding).and_then(|alias| map.get(&alias).cloned()))
 }
 
 fn rebind_key_in_mode(maps: &mut Keymaps, mode: InputMode, old_key: &KeyBinding, command: &Command, new_key: &KeyBinding) -> Result<(), KeymapEditError> {
@@ -392,11 +469,11 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     map.insert(KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleSearch);
     map.insert(KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleInspector);
     map.insert(KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleStatus);
-    map.insert(KeyBinding::new(Char('0'), KeyModifiers::CONTROL), Command::ToggleGraphReflogs);
-    map.insert(KeyBinding::new(Char('1'), KeyModifiers::CONTROL), Command::ToggleShas);
-    map.insert(KeyBinding::new(Char('2'), KeyModifiers::CONTROL), Command::ToggleGraphDates);
-    map.insert(KeyBinding::new(Char('3'), KeyModifiers::CONTROL), Command::ToggleGraphCommitters);
-    map.insert(KeyBinding::new(Char('4'), KeyModifiers::CONTROL), Command::ToggleGraphRefs);
+    map.insert(KeyBinding::new(Char('0'), KeyModifiers::SHIFT), Command::ToggleGraphReflogs);
+    map.insert(KeyBinding::new(Char('1'), KeyModifiers::SHIFT), Command::ToggleShas);
+    map.insert(KeyBinding::new(Char('2'), KeyModifiers::SHIFT), Command::ToggleGraphDates);
+    map.insert(KeyBinding::new(Char('3'), KeyModifiers::SHIFT), Command::ToggleGraphCommitters);
+    map.insert(KeyBinding::new(Char('4'), KeyModifiers::SHIFT), Command::ToggleGraphRefs);
 
     // Help and settings
     map.insert(KeyBinding::new(Char('?'), KeyModifiers::NONE), Command::ToggleHelp);
@@ -576,6 +653,14 @@ fn new_numeric_ui_defaults() -> Vec<(KeyBinding, Command)> {
         (KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleSearch),
         (KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleInspector),
         (KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleStatus),
+    ]
+    .into_iter()
+    .chain(shift_graph_metadata_defaults())
+    .collect()
+}
+
+fn ctrl_graph_metadata_defaults() -> Vec<(KeyBinding, Command)> {
+    vec![
         (KeyBinding::new(Char('0'), KeyModifiers::CONTROL), Command::ToggleGraphReflogs),
         (KeyBinding::new(Char('1'), KeyModifiers::CONTROL), Command::ToggleShas),
         (KeyBinding::new(Char('2'), KeyModifiers::CONTROL), Command::ToggleGraphDates),
@@ -584,27 +669,34 @@ fn new_numeric_ui_defaults() -> Vec<(KeyBinding, Command)> {
     ]
 }
 
-fn keymap_contains_old_numeric_ui_defaults(map: &ModeKeymap) -> bool {
-    old_numeric_ui_defaults().iter().all(|(key, command)| map.get(key) == Some(command))
+fn shift_graph_metadata_defaults() -> Vec<(KeyBinding, Command)> {
+    vec![
+        (KeyBinding::new(Char('0'), KeyModifiers::SHIFT), Command::ToggleGraphReflogs),
+        (KeyBinding::new(Char('1'), KeyModifiers::SHIFT), Command::ToggleShas),
+        (KeyBinding::new(Char('2'), KeyModifiers::SHIFT), Command::ToggleGraphDates),
+        (KeyBinding::new(Char('3'), KeyModifiers::SHIFT), Command::ToggleGraphCommitters),
+        (KeyBinding::new(Char('4'), KeyModifiers::SHIFT), Command::ToggleGraphRefs),
+    ]
 }
 
-fn rewrite_untouched_old_numeric_ui_defaults(map: &mut ModeKeymap) -> bool {
-    if !keymap_contains_old_numeric_ui_defaults(map) {
+fn keymap_can_rewrite_default_group(map: &ModeKeymap, old_defaults: &[(KeyBinding, Command)], new_defaults: &[(KeyBinding, Command)]) -> bool {
+    old_defaults.iter().all(|(key, command)| map.get(key) == Some(command))
+        && new_defaults.iter().all(|(new_key, new_command)| old_defaults.iter().any(|(old_key, _)| old_key == new_key) || !map.contains_key(new_key) || map.get(new_key) == Some(new_command))
+}
+
+fn rewrite_default_group(map: &mut ModeKeymap, old_defaults: &[(KeyBinding, Command)], new_defaults: &[(KeyBinding, Command)]) -> bool {
+    if !keymap_can_rewrite_default_group(map, old_defaults, new_defaults) {
         return false;
     }
 
-    let old_defaults = old_numeric_ui_defaults();
-    let new_defaults = new_numeric_ui_defaults();
     let mut updated = IndexMap::with_capacity(map.len().saturating_add(new_defaults.len()));
     let mut inserted = false;
 
     for (key, command) in map.iter() {
         if old_defaults.iter().any(|(old_key, _)| old_key == key) {
             if !inserted {
-                for (new_key, new_command) in &new_defaults {
-                    if old_defaults.iter().any(|(old_key, _)| old_key == new_key) || !map.contains_key(new_key) || map.get(new_key) == Some(new_command) {
-                        updated.insert(new_key.clone(), new_command.clone());
-                    }
+                for (new_key, new_command) in new_defaults {
+                    updated.insert(new_key.clone(), new_command.clone());
                 }
                 inserted = true;
             }
@@ -615,6 +707,14 @@ fn rewrite_untouched_old_numeric_ui_defaults(map: &mut ModeKeymap) -> bool {
 
     *map = updated;
     true
+}
+
+fn rewrite_untouched_old_numeric_ui_defaults(map: &mut ModeKeymap) -> bool {
+    rewrite_default_group(map, &old_numeric_ui_defaults(), &new_numeric_ui_defaults())
+}
+
+fn rewrite_untouched_ctrl_graph_metadata_defaults(map: &mut ModeKeymap) -> bool {
+    rewrite_default_group(map, &ctrl_graph_metadata_defaults(), &shift_graph_metadata_defaults())
 }
 
 fn insert_default_binding_if_available(map: &mut ModeKeymap, key: KeyBinding, command: Command) -> bool {
@@ -636,11 +736,11 @@ fn ensure_default_keymap_bindings(maps: &mut Keymaps) -> bool {
         (KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleSearch),
         (KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleInspector),
         (KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleStatus),
-        (KeyBinding::new(Char('0'), KeyModifiers::CONTROL), Command::ToggleGraphReflogs),
-        (KeyBinding::new(Char('1'), KeyModifiers::CONTROL), Command::ToggleShas),
-        (KeyBinding::new(Char('2'), KeyModifiers::CONTROL), Command::ToggleGraphDates),
-        (KeyBinding::new(Char('3'), KeyModifiers::CONTROL), Command::ToggleGraphCommitters),
-        (KeyBinding::new(Char('4'), KeyModifiers::CONTROL), Command::ToggleGraphRefs),
+        (KeyBinding::new(Char('0'), KeyModifiers::SHIFT), Command::ToggleGraphReflogs),
+        (KeyBinding::new(Char('1'), KeyModifiers::SHIFT), Command::ToggleShas),
+        (KeyBinding::new(Char('2'), KeyModifiers::SHIFT), Command::ToggleGraphDates),
+        (KeyBinding::new(Char('3'), KeyModifiers::SHIFT), Command::ToggleGraphCommitters),
+        (KeyBinding::new(Char('4'), KeyModifiers::SHIFT), Command::ToggleGraphRefs),
         (KeyBinding::new(Left, KeyModifiers::CONTROL), Command::FocusPaneLeft),
         (KeyBinding::new(Down, KeyModifiers::CONTROL), Command::FocusPaneDown),
         (KeyBinding::new(Up, KeyModifiers::CONTROL), Command::FocusPaneUp),
@@ -653,6 +753,9 @@ fn ensure_default_keymap_bindings(maps: &mut Keymaps) -> bool {
     for mode in [InputMode::Normal, InputMode::Action] {
         let mode_map = maps.entry(mode).or_default();
         if rewrite_untouched_old_numeric_ui_defaults(mode_map) {
+            changed = true;
+        }
+        if rewrite_untouched_ctrl_graph_metadata_defaults(mode_map) {
             changed = true;
         }
         for (key, command) in shared_defaults.iter() {

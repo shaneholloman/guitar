@@ -216,9 +216,10 @@ fn settings_renders_layout_visibility_rows_with_states() {
     assert!(rendered.contains("pane visibility:"));
     assert!(rendered.contains("graph metadata:"));
     assert!(rendered.contains("1 branches:"));
-    assert!(rendered.contains("Ctrl + 1 SHAs:"));
+    assert!(rendered.contains("! SHAs:"));
     assert!(rendered.contains("6 submodules:"));
-    assert!(rendered.contains("Ctrl + 4 refs:"));
+    assert!(rendered.contains("@ committer date/time:"));
+    assert!(rendered.contains("$ refs:"));
     assert!(rendered.contains("0 reset layout:"));
     assert!(rendered.contains("🞕"));
     assert!(rendered.contains("🞎"));

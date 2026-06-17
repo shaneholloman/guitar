@@ -567,7 +567,7 @@ mod tests {
     fn date_projection_renders_commit_dates_and_blanks_uncommitted_rows() {
         let theme = Theme::classic();
         let mut commit = graph_row(1, Oid::from_str("2222222222222222222222222222222222222222").unwrap(), "commit");
-        commit.committer_date = "2026-06-17".to_string();
+        commit.committer_date = "2026-06-17 14:23".to_string();
         let mut uncommitted = graph_row(0, Oid::zero(), "");
         uncommitted.alias = NONE;
         uncommitted.committer_date = "ignored".to_string();
@@ -575,7 +575,7 @@ mod tests {
         let lines = render_date_projection(&theme, &[uncommitted, commit], 1);
 
         assert_eq!(line_text(&lines[0]), "");
-        assert_eq!(line_text(&lines[1]), "2026-06-17");
+        assert_eq!(line_text(&lines[1]), "2026-06-17 14:23");
     }
 
     #[test]

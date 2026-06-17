@@ -15,11 +15,11 @@ pub fn timestamp_to_utc(time: Time) -> String {
     final_utc.to_rfc2822()
 }
 
-pub fn timestamp_to_utc_date(time: Time) -> String {
+pub fn timestamp_to_utc_date_time(time: Time) -> String {
     let offset = FixedOffset::east_opt(time.offset_minutes() * 60).unwrap();
     let utc_datetime = DateTime::from_timestamp(time.seconds(), 0).expect("Invalid timestamp");
     let local_datetime = offset.from_utc_datetime(&utc_datetime.naive_utc());
     let final_utc: DateTime<Utc> = local_datetime.with_timezone(&Utc);
 
-    final_utc.format("%Y-%m-%d").to_string()
+    final_utc.format("%Y-%m-%d %H:%M").to_string()
 }

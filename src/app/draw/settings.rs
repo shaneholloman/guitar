@@ -35,11 +35,11 @@ const SETTINGS_PANE_COMMANDS: &[(&str, Command, &str)] = &[
 ];
 
 const SETTINGS_GRAPH_COMMANDS: &[(&str, Command, &str)] = &[
-    ("Ctrl + 0", Command::ToggleGraphReflogs, "graph reflog commits"),
-    ("Ctrl + 1", Command::ToggleShas, "SHAs"),
-    ("Ctrl + 2", Command::ToggleGraphDates, "committer dates"),
-    ("Ctrl + 3", Command::ToggleGraphCommitters, "committers"),
-    ("Ctrl + 4", Command::ToggleGraphRefs, "refs"),
+    (")", Command::ToggleGraphReflogs, "graph reflog commits"),
+    ("!", Command::ToggleShas, "SHAs"),
+    ("@", Command::ToggleGraphDates, "committer date/time"),
+    ("#", Command::ToggleGraphCommitters, "committers"),
+    ("$", Command::ToggleGraphRefs, "refs"),
 ];
 
 const SETTINGS_TAB_COMPACT_LABEL: &str = "•";

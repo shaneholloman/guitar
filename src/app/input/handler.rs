@@ -1,6 +1,6 @@
 use crate::{
     app::app::{App, Focus, Viewport},
-    helpers::keymap::{Command, InputMode, KeyBinding, load_or_init_keymaps},
+    helpers::keymap::{Command, InputMode, KeyBinding, command_for_key_binding, load_or_init_keymaps},
 };
 use ratatui::crossterm::event::KeyEvent;
 
@@ -18,7 +18,7 @@ impl App {
             return;
         }
 
-        let command = self.keymaps.get(&self.mode).and_then(|mode_map| mode_map.get(&key_binding)).cloned();
+        let command = self.keymaps.get(&self.mode).and_then(|mode_map| command_for_key_binding(mode_map, &key_binding));
         if let Some(command) = command {
             if self.viewport == Viewport::Splash && self.focus == Focus::Viewport {
                 self.dispatch_splash_command(&command);
