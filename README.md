@@ -24,14 +24,6 @@ made with ♡
 
 ![guitar screenshot](https://github.com/user-attachments/assets/177dbf13-b9ad-480e-a1be-71a333454a44)
 
-shows all the changes
-
-<img width="100%" src="https://github.com/user-attachments/assets/e5b10939-f3f2-4309-b9e6-5b3b8b726dfc" />
-
-while looking really good
-
-<img width="100%" src="https://github.com/user-attachments/assets/95b5d056-2460-4435-9d26-b40ee20538fb" />
-
 ## Contents
 
 - [Status And Warning](#status-and-warning)
@@ -944,6 +936,8 @@ Selectable rows:
 Settings reuses normal navigation. Use `Tab` / `Shift+Tab` or click a tab label to switch tabs. Use `j`/`k`, page keys, `g`, `Shift+G`, or mouse wheel to move within the active tab. Use `h`, `Esc`, or `?` to return to the graph.
 
 Available built-in themes:
+
+<img width="100%" src="https://github.com/user-attachments/assets/95b5d056-2460-4435-9d26-b40ee20538fb" />
 
 ```text
 classic
