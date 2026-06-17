@@ -4,15 +4,13 @@ use crate::helpers::text::{center_line, empty_state_top_padding};
 use crate::{
     app::{
         app::{App, Focus},
-        draw::{
-            buffered::{DrawTarget, SurfaceRender},
-            pane_window::{aligned_pane_rows, blank_lines, preloaded_pane_window, zebra_list_items},
-        },
+        draw::pane_window::{aligned_pane_rows, blank_lines, preloaded_pane_window, zebra_list_items},
     },
     core::graph_service::{GraphPane, GraphPaneRow},
     helpers::colors::ColorPicker,
     helpers::text::truncate_with_ellipsis,
 };
+use ratatui::Frame;
 use ratatui::widgets::Borders;
 use ratatui::{layout::Rect, widgets::Paragraph};
 use ratatui::{
@@ -22,7 +20,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_stashes(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) -> SurfaceRender {
+    pub fn draw_stashes(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         // Left pane padding changes in zen mode because the pane has its own border.
         let padding = ratatui::widgets::Padding { left: if self.layout_config.is_zen { 1 } else { 2 }, right: 0, top: 0, bottom: 0 };
 
@@ -116,7 +114,7 @@ impl App {
 
             frame.render_stateful_widget(scrollbar, self.layout.stashes_scrollbar, &mut scrollbar_state);
 
-            return SurfaceRender::Ready;
+            return;
         }
 
         // Normal mode draws a top separator when this pane is stacked under another pane.
@@ -139,6 +137,5 @@ impl App {
             .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::Stashes { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
         frame.render_stateful_widget(scrollbar, self.layout.stashes_scrollbar, &mut scrollbar_state);
-        SurfaceRender::Ready
     }
 }

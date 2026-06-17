@@ -1,13 +1,11 @@
 use crate::{
     app::{
         app::{App, Focus},
-        draw::{
-            buffered::DrawTarget,
-            modals::shared::{action_row, modal_block},
-        },
+        draw::modals::shared::{action_row, modal_block},
     },
     helpers::text::wrap_words,
 };
+use ratatui::Frame;
 use ratatui::{
     layout::Alignment,
     style::Style,
@@ -16,7 +14,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_rebase(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_modal_rebase(&mut self, frame: &mut Frame) {
         let title = match self.focus {
             Focus::ModalOperationProgress => self.modal_operation_kind.label().to_string(),
             Focus::ModalOperationConflict => format!("{} conflict", self.modal_operation_kind.label()),

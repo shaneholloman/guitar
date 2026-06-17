@@ -1,14 +1,12 @@
 use crate::{
     app::{
         app::{App, AuthInputField},
-        draw::{
-            buffered::DrawTarget,
-            modals::shared::{action_row, modal_block, render_modal_text_input},
-        },
+        draw::modals::shared::{action_row, modal_block, render_modal_text_input},
     },
     git::auth::AuthProtocol,
     helpers::text::{truncate_start_with_ellipsis, wrap_words},
 };
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},
@@ -17,7 +15,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_network_progress(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_modal_network_progress(&mut self, frame: &mut Frame) {
         let max_modal_width = (frame.area().width as f32 * 0.8) as usize;
         let text_width = max_modal_width.saturating_sub(10).clamp(1, 70);
         let wrapped_message = wrap_words(self.modal_network_message.clone(), text_width);
@@ -32,7 +30,7 @@ impl App {
         self.draw_auth_text_modal(frame, lines, self.theme.COLOR_BORDER);
     }
 
-    pub fn draw_modal_auth(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_modal_auth(&mut self, frame: &mut Frame) {
         let Some(challenge) = self.pending_auth_prompt.clone() else {
             return;
         };
@@ -97,7 +95,7 @@ impl App {
         }
     }
 
-    fn draw_auth_field(&mut self, frame: &mut impl DrawTarget, area: Rect, label: &str, field: AuthInputField, masked: bool) {
+    fn draw_auth_field(&mut self, frame: &mut Frame, area: Rect, label: &str, field: AuthInputField, masked: bool) {
         let active = self.auth_input_field == field;
         let border = if active { self.theme.COLOR_HIGHLIGHTED } else { self.theme.COLOR_GREY_800 };
         let label_style = if active { Style::default().fg(self.theme.COLOR_HIGHLIGHTED).add_modifier(Modifier::BOLD) } else { Style::default().fg(self.theme.COLOR_GREY_600) };
@@ -107,7 +105,7 @@ impl App {
         render_modal_text_input(frame, area, input, masked, text_style, border_style, Some(Span::styled(format!(" {label} "), label_style)), active);
     }
 
-    fn draw_auth_text_modal(&mut self, frame: &mut impl DrawTarget, lines: Vec<Line>, border_color: ratatui::style::Color) {
+    fn draw_auth_text_modal(&mut self, frame: &mut Frame, lines: Vec<Line>, border_color: ratatui::style::Color) {
         let max_modal_width = (frame.area().width as f32 * 0.8) as usize;
         let content_width = lines.iter().map(|line| line.width()).max().unwrap_or(0);
         let modal_width = (content_width + 10).max(34).min(max_modal_width) as u16;

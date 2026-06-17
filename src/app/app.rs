@@ -1,5 +1,4 @@
 use crate::{
-    app::draw::buffered::{DrawSurface, SurfaceBuffers},
     app::input::TextInput,
     core::reflogs::HeadReflogs,
     core::stashes::Stashes,
@@ -449,7 +448,6 @@ pub struct App {
 
     // Last computed terminal rectangles.
     pub layout: Layout,
-    pub surface_buffers: SurfaceBuffers,
 
     // Persistent layout switches and current interaction target.
     pub layout_config: LayoutConfig,
@@ -634,11 +632,7 @@ impl App {
 
     pub fn draw(&mut self, frame: &mut Frame) {
         // Layout must be recomputed every frame because terminal size and focus can change.
-        let previous_layout = self.layout;
         self.layout(frame);
-        if self.layout != previous_layout {
-            self.surface_buffers.clear();
-        }
         if self.viewport == Viewport::Viewer {
             let signature = self.current_viewer_layout_signature();
             if self.viewer_layout_signature != Some(signature) {
@@ -668,21 +662,21 @@ impl App {
             // The central viewport is mutually exclusive, while side panes can be toggled.
             match self.viewport {
                 Viewport::Graph => {
-                    self.draw_surface(frame, DrawSurface::Graph, |app, surface| app.draw_graph(surface, repo));
+                    self.draw_graph(frame, repo);
                 },
                 Viewport::Viewer => {
-                    self.draw_surface(frame, DrawSurface::Viewer, |app, surface| app.draw_viewer(surface));
+                    self.draw_viewer(frame);
                 },
                 Viewport::Splash => {
-                    self.draw_surface(frame, DrawSurface::Splash, |app, surface| app.draw_splash(surface));
+                    self.draw_splash(frame);
                 },
                 Viewport::Settings => {
-                    self.draw_surface(frame, DrawSurface::Settings, |app, surface| app.draw_settings(surface, repo));
+                    self.draw_settings(frame, repo);
                 },
             }
 
             if !is_splash {
-                self.draw_surface(frame, DrawSurface::Title, |app, surface| app.draw_title(surface));
+                self.draw_title(frame);
             }
 
             // Side panes are hidden on splash/settings because those views own the frame.
@@ -691,126 +685,124 @@ impl App {
                 Viewport::Settings => {},
                 _ => {
                     if self.layout_config.is_branches {
-                        self.draw_surface(frame, DrawSurface::Branches, |app, surface| app.draw_branches(surface));
+                        self.draw_branches(frame);
                     }
                     if self.layout_config.is_tags {
-                        self.draw_surface(frame, DrawSurface::Tags, |app, surface| app.draw_tags(surface));
+                        self.draw_tags(frame);
                     }
                     if self.layout_config.is_stashes {
-                        self.draw_surface(frame, DrawSurface::Stashes, |app, surface| app.draw_stashes(surface, repo));
+                        self.draw_stashes(frame, repo);
                     }
                     if self.layout_config.is_reflogs {
-                        self.draw_surface(frame, DrawSurface::Reflogs, |app, surface| app.draw_reflogs(surface));
+                        self.draw_reflogs(frame);
                     }
                     if self.layout_config.is_worktrees {
-                        self.draw_surface(frame, DrawSurface::Worktrees, |app, surface| app.draw_worktrees(surface));
+                        self.draw_worktrees(frame);
                     }
                     if self.layout_config.is_submodules {
-                        self.draw_surface(frame, DrawSurface::Submodules, |app, surface| app.draw_submodules(surface));
+                        self.draw_submodules(frame);
                     }
                     if self.layout_config.is_search {
-                        self.draw_surface(frame, DrawSurface::Search, |app, surface| app.draw_search(surface));
+                        self.draw_search(frame);
                     }
                     if self.layout_config.is_status {
-                        self.draw_surface(frame, DrawSurface::Status, |app, surface| app.draw_status(surface));
+                        self.draw_status(frame);
                     }
                     if self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts) {
-                        self.draw_surface(frame, DrawSurface::Inspector, |app, surface| app.draw_inspector(surface, repo));
+                        self.draw_inspector(frame, repo);
                     }
                 },
             }
 
             if !is_splash {
-                self.draw_surface(frame, DrawSurface::Statusbar, |app, surface| app.draw_statusbar(surface, repo));
+                self.draw_statusbar(frame, repo);
             }
 
             // Modals render last so they overlay panes without changing pane layout.
             match self.focus {
                 Focus::ModalCheckout => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_checkout(surface));
+                    self.draw_modal_checkout(frame);
                 },
                 Focus::ModalSolo => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_solo(surface));
+                    self.draw_modal_solo(frame);
                 },
                 Focus::ModalDeleteBranch => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_delete_branch(surface, repo));
+                    self.draw_modal_delete_branch(frame, repo);
                 },
                 Focus::ModalWorktreeChooser => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_worktree_chooser(surface));
+                    self.draw_modal_worktree_chooser(frame);
                 },
                 Focus::ModalRemoveWorktree => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_remove_worktree(surface));
+                    self.draw_modal_remove_worktree(frame);
                 },
                 Focus::ModalRemoteAction => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_remote_action(surface));
+                    self.draw_modal_remote_action(frame);
                 },
                 Focus::ModalRemoteDelete => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_delete_remote(surface));
+                    self.draw_modal_delete_remote(frame);
                 },
                 Focus::ModalDeleteTag => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_delete_tag(surface));
+                    self.draw_modal_delete_tag(frame);
                 },
                 Focus::ModalOperationProgress | Focus::ModalOperationConflict | Focus::ModalOperationSuccess => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_rebase(surface));
+                    self.draw_modal_rebase(frame);
                 },
                 Focus::ModalError => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_error(surface));
+                    self.draw_modal_error(frame);
                 },
                 Focus::ModalCommit => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_COMMIT));
+                    self.draw_modal_input(frame, STR_CREATE_COMMIT);
                 },
                 Focus::ModalCherrypick => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CHERRYPICK_COMMIT));
+                    self.draw_modal_input(frame, STR_CHERRYPICK_COMMIT);
                 },
                 Focus::ModalRevert => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_REVERT_COMMIT));
+                    self.draw_modal_input(frame, STR_REVERT_COMMIT);
                 },
                 Focus::ModalCreateBranch => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_BRANCH));
+                    self.draw_modal_input(frame, STR_CREATE_BRANCH);
                 },
                 Focus::ModalRenameBranch => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_RENAME_BRANCH));
+                    self.draw_modal_input(frame, STR_RENAME_BRANCH);
                 },
                 Focus::ModalCreateWorktreeName => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_WORKTREE_NAME));
+                    self.draw_modal_input(frame, STR_CREATE_WORKTREE_NAME);
                 },
                 Focus::ModalCreateWorktreePath => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_WORKTREE_PATH));
+                    self.draw_modal_input(frame, STR_CREATE_WORKTREE_PATH);
                 },
                 Focus::ModalLockWorktree => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_LOCK_WORKTREE));
+                    self.draw_modal_input(frame, STR_LOCK_WORKTREE);
                 },
                 Focus::ModalRemoteName | Focus::ModalRemoteUrl => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, app.remote_input_title()));
+                    self.draw_modal_input(frame, self.remote_input_title());
                 },
                 Focus::ModalGrep => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_FIND_SHA));
+                    self.draw_modal_input(frame, STR_FIND_SHA);
                 },
                 Focus::ModalFileSearch => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_file_search(surface, STR_FIND_FILE));
+                    self.draw_modal_file_search(frame, STR_FIND_FILE);
                 },
                 Focus::ModalTag => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_CREATE_TAG));
+                    self.draw_modal_input(frame, STR_CREATE_TAG);
                 },
                 Focus::ModalKeyCapture => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_key_capture(surface));
+                    self.draw_modal_key_capture(frame);
                 },
                 Focus::ModalAuth => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_auth(surface));
+                    self.draw_modal_auth(frame);
                 },
                 Focus::ModalNetworkProgress => {
-                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_network_progress(surface));
+                    self.draw_modal_network_progress(frame);
                 },
                 _ => {},
             }
         } else {
-            self.draw_surface(frame, DrawSurface::Splash, |app, surface| app.draw_splash(surface));
+            self.draw_splash(frame);
         }
     }
 
     pub fn reload(&mut self, override_path: Option<String>) {
-        self.surface_buffers.clear();
-
         let existing_hidden_branch_names = self.branches.hidden_branch_names.clone();
         let previous_path = self.path.clone();
         let has_override_path = override_path.is_some();
@@ -1282,7 +1274,6 @@ impl App {
 
     pub fn set_theme(&mut self, theme: Theme) {
         self.theme = theme;
-        self.surface_buffers.clear();
         self.refresh_theme_assets();
     }
 

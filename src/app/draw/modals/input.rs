@@ -1,10 +1,8 @@
 use crate::app::{
     app::App,
-    draw::{
-        buffered::DrawTarget,
-        modals::shared::{action_row, modal_block, render_modal_text_input},
-    },
+    draw::modals::shared::{action_row, modal_block, render_modal_text_input},
 };
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
@@ -13,7 +11,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_input(&mut self, frame: &mut impl DrawTarget, title: &str) {
+    pub fn draw_modal_input(&mut self, frame: &mut Frame, title: &str) {
         // Fixed content dimensions are later clamped against the terminal size.
         let length = 60;
         let height = 13;

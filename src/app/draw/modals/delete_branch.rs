@@ -1,10 +1,8 @@
 use crate::{
-    app::{
-        app::App,
-        draw::{buffered::DrawTarget, modals::shared::modal_block},
-    },
+    app::{app::App, draw::modals::shared::modal_block},
     git::queries::commits::get_current_branch,
 };
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
@@ -13,7 +11,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_delete_branch(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
+    pub fn draw_modal_delete_branch(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         let mut length = 30;
         let mut height = 8;
         let Some(alias) = self.graph_alias_at(self.graph_selected) else {

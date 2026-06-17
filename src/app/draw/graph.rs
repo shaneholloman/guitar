@@ -1,9 +1,7 @@
-use crate::app::{
-    app::{App, Focus},
-    draw::buffered::{DrawTarget, SurfaceRender},
-};
+use crate::app::app::{App, Focus};
 use crate::core::renderers::{GRAPH_COMMITTER_WIDTH, render_committer_projection, render_date_projection, render_graph_projection, render_message_projection, render_sha_projection};
 use crate::helpers::layout::scrollbar_content_length;
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
@@ -14,9 +12,9 @@ use ratatui::{
 use std::collections::HashSet;
 
 impl App {
-    pub fn draw_graph(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) -> SurfaceRender {
+    pub fn draw_graph(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         if self.layout.graph.width == 0 || self.layout.graph.height == 0 {
-            return SurfaceRender::Ready;
+            return;
         }
 
         // Determine the visible graph window before requesting projected rows.
@@ -63,7 +61,7 @@ impl App {
                 let message = Paragraph::new("⊘ no commits").alignment(Alignment::Center).style(Style::default().fg(self.theme.COLOR_BORDER));
 
                 frame.render_widget(message, chunks[1]);
-                return SurfaceRender::Ready;
+                return;
             },
         }
 
@@ -173,7 +171,7 @@ impl App {
                 frame.render_stateful_widget(scrollbar, self.layout.graph_scrollbar, &mut scrollbar_state);
             }
 
-            return SurfaceRender::Ready;
+            return;
         }
 
         // Normal mode draws only side borders because title and status bars provide the rest.
@@ -194,7 +192,6 @@ impl App {
 
             frame.render_stateful_widget(scrollbar, self.layout.graph_scrollbar, &mut scrollbar_state);
         }
-        SurfaceRender::Ready
     }
 }
 

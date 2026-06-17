@@ -1,13 +1,11 @@
 use crate::{
     app::{
         app::App,
-        draw::{
-            buffered::DrawTarget,
-            modals::shared::{action_row, modal_block},
-        },
+        draw::modals::shared::{action_row, modal_block},
     },
     helpers::text::wrap_words,
 };
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
@@ -16,7 +14,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_error(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_modal_error(&mut self, frame: &mut Frame) {
         // Error text wraps to a readable width and then drives modal size.
         let max_modal_width = (frame.area().width as f32 * 0.8) as usize;
         let text_width = max_modal_width.saturating_sub(10).clamp(1, 70);

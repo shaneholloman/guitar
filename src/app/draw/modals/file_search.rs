@@ -1,13 +1,11 @@
 use crate::{
     app::{
         app::App,
-        draw::{
-            buffered::DrawTarget,
-            modals::shared::{action_row, modal_block, render_modal_text_input},
-        },
+        draw::modals::shared::{action_row, modal_block, render_modal_text_input},
     },
     git::queries::files::FileSearchResult,
 };
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Style},
@@ -41,7 +39,7 @@ fn path_spans(result: &FileSearchResult, max_width: usize, text_color: Color, ma
 }
 
 impl App {
-    pub fn draw_modal_file_search(&mut self, frame: &mut impl DrawTarget, title: &str) {
+    pub fn draw_modal_file_search(&mut self, frame: &mut Frame, title: &str) {
         let length = 76;
         let height = 20;
 

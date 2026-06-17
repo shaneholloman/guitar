@@ -1,7 +1,7 @@
 use crate::{
     app::{
         app::{App, Focus},
-        draw::{buffered::DrawTarget, pane_window::zebra_list_items},
+        draw::pane_window::zebra_list_items,
     },
     git::queries::helpers::FileStatus,
     helpers::{
@@ -9,6 +9,7 @@ use crate::{
         text::{center_line, empty_state_top_padding, truncate_with_ellipsis},
     },
 };
+use ratatui::Frame;
 use ratatui::{
     layout::Rect,
     style::Style,
@@ -27,7 +28,7 @@ fn status_marker(status: FileStatus) -> &'static str {
 }
 
 impl App {
-    pub fn draw_search(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_search(&mut self, frame: &mut Frame) {
         let padding = ratatui::widgets::Padding { left: if self.layout_config.is_zen { 1 } else { 2 }, right: 0, top: 0, bottom: 0 };
         let available_width = self.layout.search.width.saturating_sub(1) as usize;
         let max_text_width = available_width.saturating_sub(3);

@@ -1,14 +1,12 @@
 use crate::{
     app::{
         app::App,
-        draw::{
-            buffered::DrawTarget,
-            modals::shared::{action_row, modal_block},
-        },
+        draw::modals::shared::{action_row, modal_block},
         input::remotes::REMOTE_ACTIONS,
     },
     helpers::text::truncate_with_ellipsis,
 };
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
@@ -17,7 +15,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_remote_action(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_modal_remote_action(&mut self, frame: &mut Frame) {
         let remote_name = self.modal_remote_target.as_deref().unwrap_or("remote");
         let mut lines = Vec::new();
         let mut length = 36usize;
@@ -38,7 +36,7 @@ impl App {
         self.draw_remote_lines_modal(frame, lines, length);
     }
 
-    pub fn draw_modal_delete_remote(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_modal_delete_remote(&mut self, frame: &mut Frame) {
         let remote_name = self.modal_remote_target.as_deref().unwrap_or("remote");
         let mut lines = Vec::new();
         let mut length = 34usize;
@@ -56,7 +54,7 @@ impl App {
         self.draw_remote_lines_modal(frame, lines, length);
     }
 
-    fn draw_remote_lines_modal(&mut self, frame: &mut impl DrawTarget, lines: Vec<Line<'_>>, length: usize) {
+    fn draw_remote_lines_modal(&mut self, frame: &mut Frame, lines: Vec<Line<'_>>, length: usize) {
         let bg_block = Block::default().style(Style::default().fg(self.theme.COLOR_BORDER));
         bg_block.render(frame.area(), frame.buffer_mut());
 

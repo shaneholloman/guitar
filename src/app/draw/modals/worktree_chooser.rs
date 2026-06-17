@@ -1,13 +1,14 @@
 use crate::{
     app::{
         app::{App, WorktreeModalAction},
-        draw::{buffered::DrawTarget, modals::shared::modal_block},
+        draw::modals::shared::modal_block,
     },
     helpers::{
         symbols::{SYM_COMMIT_BRANCH, SYM_WORKTREE, SYM_WORKTREE_DIRTY, SYM_WORKTREE_INVALID, SYM_WORKTREE_LOCKED, SYM_WORKTREE_OTHER},
         text::truncate_with_ellipsis,
     },
 };
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
@@ -16,7 +17,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_worktree_chooser(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_modal_worktree_chooser(&mut self, frame: &mut Frame) {
         let title = match self.modal_worktree_action {
             WorktreeModalAction::Open => "select a worktree to open",
             WorktreeModalAction::Remove => "select a worktree to remove",

@@ -1,11 +1,9 @@
 use crate::{
-    app::{
-        app::{App, Focus},
-        draw::buffered::DrawTarget,
-    },
+    app::app::{App, Focus},
     git::queries::helpers::FileStatus,
     helpers::{layout::scrollbar_content_length, text::*},
 };
+use ratatui::Frame;
 use ratatui::{
     style::Style,
     text::{Line, Span},
@@ -29,7 +27,7 @@ impl<'a> StatusRow<'a> {
 }
 
 impl App {
-    pub fn draw_status(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_status(&mut self, frame: &mut Frame) {
         // Status panes keep icons close to the border and filenames flush after them.
         let padding = ratatui::widgets::Padding { left: 1, right: 0, top: 0, bottom: 0 };
 

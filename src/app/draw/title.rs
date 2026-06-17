@@ -1,16 +1,14 @@
-use crate::app::{
-    app::{App, Focus, Viewport},
-    draw::buffered::DrawTarget,
-};
+use crate::app::app::{App, Focus, Viewport};
 use crate::helpers::symbols::SYM_FOLDER;
 use crate::helpers::text::truncate_start_with_ellipsis;
+use ratatui::Frame;
 use ratatui::{
     style::Style,
     text::{Line, Span},
     widgets::Block,
 };
 impl App {
-    pub fn draw_title(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_title(&mut self, frame: &mut Frame) {
         let available_width = self.layout.title_left.width.saturating_sub(15) as usize;
 
         // Logo and path

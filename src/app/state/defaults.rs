@@ -8,7 +8,6 @@ use crate::{
 use crate::{
     app::{
         app::{App, AuthInputField, BranchModalAction, Focus, OperationKind, RemoteInputAction, SettingsTab, Viewport, WorktreeModalAction},
-        draw::buffered::SurfaceBuffers,
         state::layout::Layout,
     },
     core::{branches::Branches, oids::Oids, tags::Tags},
@@ -91,7 +90,6 @@ impl Default for App {
 
             // Interface
             layout: Layout::default(),
-            surface_buffers: SurfaceBuffers::default(),
 
             // Focus
             layout_config: load_layout_config(),

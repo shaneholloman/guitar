@@ -1,14 +1,12 @@
 use crate::{
+    app::app::{App, Focus},
     app::draw::pane_window::{aligned_pane_rows, blank_lines, preloaded_pane_window, zebra_list_items},
-    app::{
-        app::{App, Focus},
-        draw::buffered::{DrawTarget, SurfaceRender},
-    },
     core::graph_service::{GraphPane, GraphPaneRow},
     helpers::colors::ColorPicker,
     helpers::layout::scrollbar_content_length,
     helpers::text::{center_line, empty_state_top_padding, truncate_with_ellipsis},
 };
+use ratatui::Frame;
 use ratatui::{
     style::Style,
     text::{Line, Span},
@@ -16,7 +14,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_branches(&mut self, frame: &mut impl DrawTarget) -> SurfaceRender {
+    pub fn draw_branches(&mut self, frame: &mut Frame) {
         // Left pane padding changes in zen mode because the pane has its own border.
         let padding = ratatui::widgets::Padding { left: if self.layout_config.is_zen { 1 } else { 2 }, right: 0, top: 0, bottom: 0 };
 
@@ -120,7 +118,7 @@ impl App {
 
             frame.render_stateful_widget(scrollbar, self.layout.branches_scrollbar, &mut scrollbar_state);
 
-            return SurfaceRender::Ready;
+            return;
         }
 
         // Normal mode relies on the parent layout to draw pane separators.
@@ -143,7 +141,6 @@ impl App {
             .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::Branches { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
         frame.render_stateful_widget(scrollbar, self.layout.branches_scrollbar, &mut scrollbar_state);
-        SurfaceRender::Ready
     }
 }
 

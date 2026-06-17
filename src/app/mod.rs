@@ -3,7 +3,6 @@ pub mod app;
 
 pub mod draw {
     pub mod branches;
-    pub mod buffered;
     pub mod graph;
     pub mod inspector;
     pub mod modals {

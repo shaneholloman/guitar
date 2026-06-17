@@ -1,16 +1,14 @@
 use crate::{
     app::{
         app::App,
-        draw::{
-            buffered::DrawTarget,
-            modals::shared::{action_row, modal_block},
-        },
+        draw::modals::shared::{action_row, modal_block},
     },
     helpers::{
         keymap::{KeymapEditError, command_to_visual_string, input_mode_to_visual_string, keybinding_to_visual_string},
         text::wrap_words,
     },
 };
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
@@ -19,7 +17,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_key_capture(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_modal_key_capture(&mut self, frame: &mut Frame) {
         let Some(selection) = &self.modal_key_capture_selection else {
             return;
         };

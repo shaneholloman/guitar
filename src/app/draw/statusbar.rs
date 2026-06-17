@@ -1,8 +1,5 @@
 use crate::{
-    app::{
-        app::{App, Focus, Viewport},
-        draw::buffered::DrawTarget,
-    },
+    app::app::{App, Focus, Viewport},
     git::queries::commits::get_current_branch,
     helpers::{
         branch_visibility::current_branch_names,
@@ -10,6 +7,7 @@ use crate::{
         symbols::{SYM_SUBMODULE, SYM_WORKTREE},
     },
 };
+use ratatui::Frame;
 use ratatui::{
     style::Style,
     text::{Line, Span, Text},
@@ -25,7 +23,7 @@ impl App {
         Some(format!("{SYM_SUBMODULE} {} ", parts.join(" › ")))
     }
 
-    pub fn draw_statusbar(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
+    pub fn draw_statusbar(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         let mut left_spans: Vec<Span> = match self.worktrees.current_name() {
             Some(name) => vec![Span::styled(format!("  {SYM_WORKTREE} {name} "), Style::default().fg(self.theme.COLOR_GRASS))],
             None => vec![Span::raw("  ")],

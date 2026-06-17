@@ -1,4 +1,5 @@
-use crate::{app::draw::buffered::DrawTarget, app::input::TextInput};
+use crate::app::input::TextInput;
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Style},
@@ -29,9 +30,7 @@ pub(crate) fn action_row(actions: &[(&str, &str)], style: Style) -> Line<'static
     Line::from(Span::styled(text, style))
 }
 
-pub(crate) fn render_modal_text_input(
-    frame: &mut impl DrawTarget, area: Rect, input: &mut TextInput, masked: bool, text_style: Style, border_style: Style, title: Option<Span<'static>>, show_cursor: bool,
-) {
+pub(crate) fn render_modal_text_input(frame: &mut Frame, area: Rect, input: &mut TextInput, masked: bool, text_style: Style, border_style: Style, title: Option<Span<'static>>, show_cursor: bool) {
     let visible_width = area.width.saturating_sub(1) as usize;
     input.set_max_width(visible_width);
     let start = *input.scroll();

@@ -1,8 +1,5 @@
 use crate::{
-    app::{
-        app::{App, Focus, PendingGraphLookup},
-        draw::buffered::DrawTarget,
-    },
+    app::app::{App, Focus, PendingGraphLookup},
     helpers::{
         colors::ColorPicker,
         layout::scrollbar_content_length,
@@ -10,6 +7,7 @@ use crate::{
         time::timestamp_to_utc,
     },
 };
+use ratatui::Frame;
 use ratatui::{
     style::Style,
     text::{Line, Span},
@@ -17,7 +15,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_inspector(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
+    pub fn draw_inspector(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         // Inspector text is padded on both sides for readability in the narrow right pane.
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
 

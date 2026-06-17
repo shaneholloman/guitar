@@ -1,7 +1,8 @@
 use crate::app::{
     app::{App, BranchModalAction},
-    draw::{buffered::DrawTarget, modals::shared::modal_block},
+    draw::modals::shared::modal_block,
 };
+use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
@@ -10,7 +11,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_modal_solo(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_modal_solo(&mut self, frame: &mut Frame) {
         let mut length = 30;
         let mut height = 8;
         let Some(alias) = self.graph_alias_at(self.graph_selected) else {

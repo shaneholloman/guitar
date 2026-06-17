@@ -1,7 +1,6 @@
 use crate::{
     app::{
         app::{App, Focus, ViewerLayoutSignature, Viewport},
-        draw::buffered::DrawTarget,
         state::defaults::{SplitViewerRow, ViewerMode},
     },
     git::queries::{
@@ -11,6 +10,7 @@ use crate::{
     helpers::{layout::scrollbar_content_length, text::wrap_words},
 };
 use git2::Oid;
+use ratatui::Frame;
 use ratatui::{
     style::Style,
     text::{Line, Span},
@@ -75,7 +75,7 @@ impl App {
         self.viewer_split_rows.iter().enumerate().min_by_key(|(_, row)| row.unified_indices.iter().map(|idx| idx.abs_diff(unified_idx)).min().unwrap_or(usize::MAX)).map(|(idx, _)| idx).unwrap_or(0)
     }
 
-    pub fn draw_viewer(&mut self, frame: &mut impl DrawTarget) {
+    pub fn draw_viewer(&mut self, frame: &mut Frame) {
         if self.viewer_mode == ViewerMode::Split {
             self.draw_split_viewer(frame);
             return;
@@ -161,7 +161,7 @@ impl App {
         frame.render_stateful_widget(scrollbar, self.layout.graph_scrollbar, &mut scrollbar_state);
     }
 
-    fn draw_split_viewer(&mut self, frame: &mut impl DrawTarget) {
+    fn draw_split_viewer(&mut self, frame: &mut Frame) {
         if self.layout.viewer_split_left.width == 0 || self.layout.viewer_split_right.width == 0 {
             return;
         }
@@ -220,7 +220,7 @@ impl App {
         frame.render_stateful_widget(scrollbar, self.layout.graph_scrollbar, &mut scrollbar_state);
     }
 
-    fn draw_split_divider(&self, frame: &mut impl DrawTarget) {
+    fn draw_split_divider(&self, frame: &mut Frame) {
         let area = self.layout.divider_viewer_split;
         if area.width == 0 || area.height == 0 {
             return;

@@ -6,14 +6,12 @@ use crate::helpers::palette::*;
 use crate::helpers::symbols::WEEKDAY_LABELS;
 use crate::helpers::version::VERSION;
 use crate::{
-    app::{
-        app::{App, Direction, Focus, SettingsSelection, SettingsSelectionKind, SettingsTab, SettingsTabHitbox},
-        draw::buffered::DrawTarget,
-    },
+    app::app::{App, Direction, Focus, SettingsSelection, SettingsSelectionKind, SettingsTab, SettingsTabHitbox},
     core::renderers::render_keybindings,
     git::queries::commits::get_git_user_info,
     helpers::text::fill_width,
 };
+use ratatui::Frame;
 use ratatui::widgets::Borders;
 use ratatui::{
     style::Style,
@@ -556,7 +554,7 @@ impl App {
         }
     }
 
-    pub fn draw_settings(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
+    pub fn draw_settings(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         // Settings owns the center viewport and uses centered rows throughout.
         let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
 

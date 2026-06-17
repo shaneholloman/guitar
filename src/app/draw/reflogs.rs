@@ -1,10 +1,7 @@
 use crate::{
     app::{
         app::{App, Focus},
-        draw::{
-            buffered::{DrawTarget, SurfaceRender},
-            pane_window::{aligned_pane_rows, blank_lines, preloaded_pane_window, zebra_list_items},
-        },
+        draw::pane_window::{aligned_pane_rows, blank_lines, preloaded_pane_window, zebra_list_items},
     },
     core::graph_service::{GraphPane, GraphPaneRow},
     helpers::{
@@ -14,6 +11,7 @@ use crate::{
         text::{center_line, empty_state_top_padding, truncate_with_ellipsis},
     },
 };
+use ratatui::Frame;
 use ratatui::{
     layout::Rect,
     style::Style,
@@ -22,7 +20,7 @@ use ratatui::{
 };
 
 impl App {
-    pub fn draw_reflogs(&mut self, frame: &mut impl DrawTarget) -> SurfaceRender {
+    pub fn draw_reflogs(&mut self, frame: &mut Frame) {
         let padding = ratatui::widgets::Padding { left: if self.layout_config.is_zen { 1 } else { 2 }, right: 0, top: 0, bottom: 0 };
         let available_width = self.layout.reflogs.width.saturating_sub(1) as usize;
         let max_text_width = available_width.saturating_sub(3);
@@ -100,7 +98,7 @@ impl App {
                 .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::Reflogs { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
             frame.render_stateful_widget(scrollbar, self.layout.reflogs_scrollbar, &mut scrollbar_state);
-            return SurfaceRender::Ready;
+            return;
         }
 
         if has_previous {
@@ -122,6 +120,5 @@ impl App {
             .thumb_style(Style::default().fg(if total_lines > visible_height && self.focus == Focus::Reflogs { self.theme.COLOR_GREY_600 } else { self.theme.COLOR_BORDER }));
 
         frame.render_stateful_widget(scrollbar, self.layout.reflogs_scrollbar, &mut scrollbar_state);
-        SurfaceRender::Ready
     }
 }
