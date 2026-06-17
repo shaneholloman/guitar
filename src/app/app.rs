@@ -3,11 +3,14 @@ use crate::{
     app::input::TextInput,
     core::reflogs::HeadReflogs,
     core::stashes::Stashes,
-    core::worktrees::Worktrees,
+    core::{
+        submodules::{SubmoduleStackEntry, Submodules},
+        worktrees::Worktrees,
+    },
     git::{
         auth::{AuthChallenge, AuthSession, NetworkResult},
         os::path::try_into_git_repo_root,
-        queries::{diffs::get_filenames_diff_at_oid, files::FileSearchResult, worktrees::list_worktrees},
+        queries::{diffs::get_filenames_diff_at_oid, files::FileSearchResult, submodules::list_submodules, worktrees::list_worktrees},
     },
     helpers::{
         branch_visibility::{current_branch_names, load_branch_visibility, prune_hidden_branches, save_branch_visibility},
@@ -90,6 +93,7 @@ pub enum Focus {
     Stashes,
     Reflogs,
     Worktrees,
+    Submodules,
     ModalCheckout,
     ModalSolo,
     ModalCommit,
@@ -315,18 +319,24 @@ pub enum LayoutDrag {
     BranchesTags,
     BranchesStashes,
     BranchesWorktrees,
+    BranchesSubmodules,
     BranchesReflogs,
     BranchesSearch,
     TagsStashes,
     TagsWorktrees,
+    TagsSubmodules,
     StashesWorktrees,
+    StashesSubmodules,
     TagsReflogs,
     StashesReflogs,
     ReflogsWorktrees,
+    ReflogsSubmodules,
+    WorktreesSubmodules,
     TagsSearch,
     StashesSearch,
     ReflogsSearch,
     WorktreesSearch,
+    SubmodulesSearch,
     InspectorStatus,
     StatusFiles,
 }
@@ -341,6 +351,7 @@ pub enum ScrollbarTarget {
     Stashes,
     Reflogs,
     Worktrees,
+    Submodules,
     Search,
     Inspector,
     StatusTop,
@@ -377,6 +388,7 @@ pub enum MouseSelectionTarget {
     Stashes(usize),
     Reflogs(usize),
     Worktrees(usize),
+    Submodules(usize),
     Inspector(usize),
     StatusTop(usize),
     StatusBottom(usize),
@@ -418,6 +430,8 @@ pub struct App {
     pub stashes: Stashes,
     pub reflogs: HeadReflogs,
     pub worktrees: Worktrees,
+    pub submodules: Submodules,
+    pub submodule_stack: Vec<SubmoduleStackEntry>,
     pub uncommitted: UncommittedChanges,
 
     // Cached file and diff data for the currently selected graph or status row.
@@ -463,6 +477,10 @@ pub struct App {
     // Worktrees
     pub worktrees_selected: usize,
     pub worktrees_scroll: Cell<usize>,
+
+    // Submodules
+    pub submodules_selected: usize,
+    pub submodules_scroll: Cell<usize>,
 
     // Search
     pub search_path: Option<String>,
@@ -687,6 +705,9 @@ impl App {
                     if self.layout_config.is_worktrees {
                         self.draw_surface(frame, DrawSurface::Worktrees, |app, surface| app.draw_worktrees(surface));
                     }
+                    if self.layout_config.is_submodules {
+                        self.draw_surface(frame, DrawSurface::Submodules, |app, surface| app.draw_submodules(surface));
+                    }
                     if self.layout_config.is_search {
                         self.draw_surface(frame, DrawSurface::Search, |app, surface| app.draw_search(surface));
                     }
@@ -816,6 +837,7 @@ impl App {
         self.stashes = Stashes::default();
         self.reflogs = HeadReflogs::default();
         self.worktrees = Worktrees::default();
+        self.submodules = Submodules::default();
         self.clear_file_history_search();
         self.branches.hidden_branch_names = existing_hidden_branch_names.clone();
 
@@ -845,6 +867,7 @@ impl App {
         if let Some(repo) = &self.repo {
             let current_path = PathBuf::from(&absolute_path);
             self.worktrees = Worktrees::from_entries(list_worktrees(repo, Some(current_path.as_path())).unwrap_or_default());
+            self.submodules = Submodules::from_entries(list_submodules(repo).unwrap_or_default());
 
             let same_repo_reload = !has_override_path && previous_path.as_deref() == Some(absolute_path.as_str());
             let mut hidden_branch_names = if same_repo_reload { existing_hidden_branch_names } else { load_branch_visibility(&absolute_path) };
@@ -943,7 +966,15 @@ impl App {
                         self.viewport = Viewport::Graph;
                     }
 
-                    self.uncommitted = get_filenames_diff_at_workdir(repo).expect("Couldn't get the file diff");
+                    match get_filenames_diff_at_workdir(repo) {
+                        Ok(uncommitted) => {
+                            self.uncommitted = uncommitted;
+                        },
+                        Err(error) => {
+                            self.uncommitted = UncommittedChanges::default();
+                            self.show_error(format!("Couldn't get the file diff: {error}"));
+                        },
+                    }
                     self.is_uncommitted_loaded = true;
                 }
 

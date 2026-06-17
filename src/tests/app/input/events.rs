@@ -8,6 +8,7 @@ use crate::{
     core::{
         chunk::NONE,
         reflogs::HeadReflogAliasEntry,
+        submodules::SubmoduleEntry,
         worktrees::{WorktreeEntry, WorktreeKind},
     },
     helpers::{
@@ -92,6 +93,30 @@ fn worktree_entry(name: &str) -> WorktreeEntry {
         is_prunable: false,
         locked_reason: None,
         is_dirty: false,
+    }
+}
+
+fn submodule_entry(name: &str, absolute_path: PathBuf) -> SubmoduleEntry {
+    SubmoduleEntry {
+        name: name.to_string(),
+        path: PathBuf::from(name),
+        absolute_path,
+        url: None,
+        branch: Some("main".into()),
+        head: None,
+        index: None,
+        workdir: None,
+        is_open: true,
+        is_uninitialized: false,
+        is_in_head: true,
+        is_in_index: true,
+        is_in_config: true,
+        is_in_workdir: true,
+        is_index_modified: false,
+        is_workdir_modified: false,
+        has_new_commits: false,
+        has_modified_content: false,
+        has_untracked_content: false,
     }
 }
 
@@ -267,11 +292,13 @@ fn mouse_click_selects_left_pane_rows() {
     app.layout_config.is_stashes = true;
     app.layout_config.is_reflogs = true;
     app.layout_config.is_worktrees = true;
+    app.layout_config.is_submodules = true;
     app.layout.branches = Rect::new(0, 0, 20, 6);
     app.layout.tags = Rect::new(20, 0, 20, 6);
     app.layout.stashes = Rect::new(40, 0, 20, 6);
     app.layout.reflogs = Rect::new(60, 0, 20, 6);
     app.layout.worktrees = Rect::new(80, 0, 20, 6);
+    app.layout.submodules = Rect::new(100, 0, 20, 6);
     app.branches.sorted = (0..10).map(|idx| (idx, format!("branch-{idx}"))).collect();
     app.tags.sorted = (0..10).map(|idx| (idx, format!("tag-{idx}"))).collect();
     app.oids.stashes = (0..10).collect();
@@ -286,11 +313,13 @@ fn mouse_click_selects_left_pane_rows() {
         })
         .collect();
     app.worktrees.entries = (0..10).map(|idx| worktree_entry(&format!("worktree-{idx}"))).collect();
+    app.submodules.entries = (0..10).map(|idx| submodule_entry(&format!("submodule-{idx}"), PathBuf::from(format!("/tmp/submodule-{idx}")))).collect();
     app.branches_scroll.set(2);
     app.tags_scroll.set(2);
     app.stashes_scroll.set(2);
     app.reflogs_scroll.set(2);
     app.worktrees_scroll.set(2);
+    app.submodules_scroll.set(2);
 
     app.handle_mouse_event(left_down(1, 1));
     assert_eq!((app.focus, app.branches_selected), (Focus::Branches, 3));
@@ -306,6 +335,9 @@ fn mouse_click_selects_left_pane_rows() {
 
     app.handle_mouse_event(left_down(81, 1));
     assert_eq!((app.focus, app.worktrees_selected), (Focus::Worktrees, 3));
+
+    app.handle_mouse_event(left_down(101, 1));
+    assert_eq!((app.focus, app.submodules_selected), (Focus::Submodules, 3));
 }
 
 #[test]
@@ -561,6 +593,28 @@ fn double_click_on_worktree_row_acts_like_enter() {
         locked_reason: None,
         is_dirty: false,
     }];
+
+    app.handle_mouse_event(left_down(1, 0));
+    app.handle_mouse_event(left_down(1, 0));
+
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.viewport, Viewport::Graph);
+    assert_eq!(app.graph_selected, 0);
+    assert_eq!(app.path.as_deref(), Some(canonical_target.as_str()));
+}
+
+#[test]
+fn double_click_on_submodule_row_acts_like_enter() {
+    let (current_path, repo) = temp_repo("submodule-current");
+    let (target_path, _target_repo) = temp_repo("submodule-target");
+    let mut app = graph_app();
+    app.repo = Some(Rc::new(repo));
+    app.path = Some(current_path.display().to_string());
+    let canonical_target = fs::canonicalize(&target_path).unwrap().display().to_string();
+    app.recent = vec![canonical_target.clone()];
+    app.layout_config.is_submodules = true;
+    app.layout.submodules = Rect::new(0, 0, 20, 6);
+    app.submodules.entries = vec![submodule_entry("deps/child", target_path)];
 
     app.handle_mouse_event(left_down(1, 0));
     app.handle_mouse_event(left_down(1, 0));

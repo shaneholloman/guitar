@@ -1,0 +1,146 @@
+use super::*;
+use git2::{Repository, Signature};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+struct TestDir {
+    path: PathBuf,
+}
+
+impl TestDir {
+    fn new(name: &str) -> Self {
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = env::temp_dir().join(format!("guitar-submodule-query-{name}-{}-{suffix}", process::id()));
+        fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+}
+
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+fn init_repo(path: &Path) -> Repository {
+    fs::create_dir_all(path).unwrap();
+    let repo = Repository::init(path).unwrap();
+    {
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Test User").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
+    }
+    commit_file(&repo, "file.txt", "hello\n", "initial");
+    repo
+}
+
+fn commit_file(repo: &Repository, file: &str, contents: &str, message: &str) -> git2::Oid {
+    let workdir = repo.workdir().unwrap().to_path_buf();
+    fs::write(workdir.join(file), contents).unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new(file)).unwrap();
+    index.write().unwrap();
+    commit_index(repo, message)
+}
+
+fn commit_index(repo: &Repository, message: &str) -> git2::Oid {
+    let mut index = repo.index().unwrap();
+    let tree_id = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    let sig = Signature::now("Test User", "test@example.com").unwrap();
+    let parent = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
+    let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
+    repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents).unwrap()
+}
+
+fn parent_with_submodule(dir: &TestDir) -> (Repository, PathBuf) {
+    let child_path = dir.path.join("child");
+    let parent_path = dir.path.join("parent");
+    let child = init_repo(&child_path);
+    drop(child);
+    let parent = init_repo(&parent_path);
+    let mut submodule = parent.submodule(child_path.to_str().unwrap(), Path::new("deps/child"), true).unwrap();
+    submodule.clone(None).unwrap();
+    submodule.add_finalize().unwrap();
+    commit_index(&parent, "add submodule");
+    drop(submodule);
+    (parent, child_path)
+}
+
+fn only_entry(repo: &Repository) -> crate::core::submodules::SubmoduleEntry {
+    let entries = list_submodules(repo).unwrap();
+    assert_eq!(entries.len(), 1);
+    entries.into_iter().next().unwrap()
+}
+
+#[test]
+fn lists_clean_submodule() {
+    let dir = TestDir::new("clean");
+    let (parent, _child_path) = parent_with_submodule(&dir);
+
+    let entry = only_entry(&parent);
+
+    assert_eq!(entry.name, "deps/child");
+    assert_eq!(entry.path, PathBuf::from("deps/child"));
+    assert!(entry.is_open);
+    assert!(!entry.is_dirty());
+    assert!(entry.index.is_some());
+    assert_eq!(entry.index, entry.workdir);
+}
+
+#[test]
+fn detects_uninitialized_submodule_after_plain_clone() {
+    let dir = TestDir::new("uninitialized");
+    let (parent, _child_path) = parent_with_submodule(&dir);
+    let clone_path = dir.path.join("clone");
+    let clone = Repository::clone(parent.workdir().unwrap().to_str().unwrap(), &clone_path).unwrap();
+
+    let entry = only_entry(&clone);
+
+    assert!(!entry.is_open);
+    assert!(entry.is_uninitialized || !entry.is_in_workdir);
+}
+
+#[test]
+fn detects_submodule_new_commits() {
+    let dir = TestDir::new("new-commits");
+    let (parent, _child_path) = parent_with_submodule(&dir);
+    let sub_repo = Repository::open(parent.workdir().unwrap().join("deps/child")).unwrap();
+
+    commit_file(&sub_repo, "file.txt", "changed\n", "advance child");
+    let entry = only_entry(&parent);
+
+    assert!(entry.has_new_commits);
+    assert!(entry.is_dirty());
+    assert_ne!(entry.index, entry.workdir);
+}
+
+#[test]
+fn detects_submodule_modified_content() {
+    let dir = TestDir::new("modified-content");
+    let (parent, _child_path) = parent_with_submodule(&dir);
+    let sub_path = parent.workdir().unwrap().join("deps/child");
+
+    fs::write(sub_path.join("file.txt"), "dirty\n").unwrap();
+    let entry = only_entry(&parent);
+
+    assert!(entry.has_modified_content);
+    assert!(entry.is_dirty());
+}
+
+#[test]
+fn detects_submodule_untracked_content() {
+    let dir = TestDir::new("untracked-content");
+    let (parent, _child_path) = parent_with_submodule(&dir);
+    let sub_path = parent.workdir().unwrap().join("deps/child");
+
+    fs::write(sub_path.join("extra.txt"), "extra\n").unwrap();
+    let entry = only_entry(&parent);
+
+    assert!(entry.has_untracked_content);
+    assert!(entry.is_dirty());
+}

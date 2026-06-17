@@ -401,7 +401,19 @@ impl App {
         if self.viewport == Viewport::Settings || self.viewport == Viewport::Splash {
             return order;
         }
-        for focus in &[Focus::Viewport, Focus::Inspector, Focus::StatusTop, Focus::StatusBottom, Focus::Search, Focus::Worktrees, Focus::Reflogs, Focus::Stashes, Focus::Tags, Focus::Branches] {
+        for focus in &[
+            Focus::Viewport,
+            Focus::Inspector,
+            Focus::StatusTop,
+            Focus::StatusBottom,
+            Focus::Search,
+            Focus::Submodules,
+            Focus::Worktrees,
+            Focus::Reflogs,
+            Focus::Stashes,
+            Focus::Tags,
+            Focus::Branches,
+        ] {
             match focus {
                 Focus::Viewport => order.push(Focus::Viewport),
                 Focus::Inspector if self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts) => order.push(Focus::Inspector),
@@ -413,6 +425,7 @@ impl App {
                 Focus::Stashes if self.layout_config.is_stashes => order.push(Focus::Stashes),
                 Focus::Reflogs if self.layout_config.is_reflogs => order.push(Focus::Reflogs),
                 Focus::Worktrees if self.layout_config.is_worktrees => order.push(Focus::Worktrees),
+                Focus::Submodules if self.layout_config.is_submodules => order.push(Focus::Submodules),
                 _ => {},
             }
         }
@@ -477,6 +490,11 @@ impl App {
                 self.mark_viewer_layout_dirty();
                 self.save_layout();
             },
+            Command::ToggleSubmodules => {
+                self.layout_config.is_submodules = !self.layout_config.is_submodules;
+                self.mark_viewer_layout_dirty();
+                self.save_layout();
+            },
             Command::ToggleSearch => {
                 self.layout_config.is_search = !self.layout_config.is_search;
                 self.mark_viewer_layout_dirty();
@@ -538,8 +556,9 @@ impl App {
                     }
                 },
                 Viewport::Splash => {
-                    if let Some(path) = self.recent.get(self.splash_selected) {
-                        self.reload(Some(path.to_string()));
+                    if let Some(path) = self.recent.get(self.splash_selected).cloned() {
+                        self.submodule_stack.clear();
+                        self.reload(Some(path));
                         self.graph_selected = 0;
                     }
                 },
@@ -562,6 +581,9 @@ impl App {
             },
             Focus::Worktrees => {
                 self.open_selected_worktree();
+            },
+            Focus::Submodules => {
+                self.open_selected_submodule();
             },
             Focus::Search => {
                 self.open_search_result();
@@ -748,8 +770,9 @@ impl App {
                     }
                 },
                 Viewport::Splash => {
-                    if let Some(path) = self.recent.get(self.splash_selected) {
-                        self.reload(Some(path.to_string()));
+                    if let Some(path) = self.recent.get(self.splash_selected).cloned() {
+                        self.submodule_stack.clear();
+                        self.reload(Some(path));
                         self.graph_selected = 0;
                     }
                 },
@@ -773,6 +796,9 @@ impl App {
             },
             Focus::Worktrees => {
                 self.open_selected_worktree();
+            },
+            Focus::Submodules => {
+                self.open_selected_submodule();
             },
             Focus::Search => {
                 self.open_search_result();
@@ -874,6 +900,7 @@ impl App {
             Focus::Stashes => self.layout.pane_stashes,
             Focus::Reflogs => self.layout.pane_reflogs,
             Focus::Worktrees => self.layout.pane_worktrees,
+            Focus::Submodules => self.layout.pane_submodules,
             Focus::Search => self.layout.pane_search,
             _ => Rect::default(),
         }
@@ -962,6 +989,10 @@ impl App {
                 let page = self.layout.worktrees.height as usize - 1;
                 self.worktrees_selected = self.worktrees_selected.saturating_sub(page);
             },
+            Focus::Submodules => {
+                let page = self.layout.submodules.height as usize - 1;
+                self.submodules_selected = self.submodules_selected.saturating_sub(page);
+            },
             Focus::Search => {
                 let page = self.layout.search.height as usize - 1;
                 self.search_selected = self.search_selected.saturating_sub(page);
@@ -1022,6 +1053,10 @@ impl App {
             Focus::Worktrees => {
                 let page = self.layout.worktrees.height as usize - 1;
                 self.worktrees_selected += page;
+            },
+            Focus::Submodules => {
+                let page = self.layout.submodules.height as usize - 1;
+                self.submodules_selected += page;
             },
             Focus::Search => {
                 let page = self.layout.search.height as usize - 1;
@@ -1086,6 +1121,9 @@ impl App {
             },
             Focus::Worktrees => {
                 self.worktrees_selected = self.worktrees_selected.saturating_sub(1);
+            },
+            Focus::Submodules => {
+                self.submodules_selected = self.submodules_selected.saturating_sub(1);
             },
             Focus::Search => {
                 self.search_selected = self.search_selected.saturating_sub(1);
@@ -1181,6 +1219,9 @@ impl App {
             Focus::Worktrees => {
                 self.worktrees_selected += 1;
             },
+            Focus::Submodules => {
+                self.submodules_selected += 1;
+            },
             Focus::Search => {
                 self.search_selected = Self::clamp_selection(self.search_selected.saturating_add(1), self.search_result_count());
             },
@@ -1263,6 +1304,7 @@ impl App {
             Focus::Stashes => self.stashes_selected /= 2,
             Focus::Reflogs => self.reflogs_selected /= 2,
             Focus::Worktrees => self.worktrees_selected /= 2,
+            Focus::Submodules => self.submodules_selected /= 2,
             Focus::Search => self.search_selected /= 2,
             _ => {},
         };
@@ -1297,6 +1339,10 @@ impl App {
                 let total = self.worktrees.entries.len();
                 self.worktrees_selected = self.worktrees_selected + (total - self.worktrees_selected) / 2
             },
+            Focus::Submodules => {
+                let total = self.submodules.entries.len();
+                self.submodules_selected = self.submodules_selected + total.saturating_sub(self.submodules_selected) / 2
+            },
             Focus::Search => {
                 let total = self.search_result_count();
                 self.search_selected = self.search_selected + (total.saturating_sub(self.search_selected)) / 2;
@@ -1326,6 +1372,10 @@ impl App {
             Focus::Worktrees => {
                 let half = (self.layout.worktrees.height as usize - 1) / 2;
                 self.worktrees_selected = self.worktrees_selected.saturating_sub(half);
+            },
+            Focus::Submodules => {
+                let half = (self.layout.submodules.height as usize - 1) / 2;
+                self.submodules_selected = self.submodules_selected.saturating_sub(half);
             },
             Focus::Search => {
                 let half = (self.layout.search.height as usize - 1) / 2;
@@ -1397,6 +1447,10 @@ impl App {
             Focus::Worktrees => {
                 let half = (self.layout.worktrees.height.saturating_sub(1) as usize) / 2;
                 self.worktrees_selected += half;
+            },
+            Focus::Submodules => {
+                let half = (self.layout.submodules.height.saturating_sub(1) as usize) / 2;
+                self.submodules_selected += half;
             },
             Focus::Search => {
                 let half = (self.layout.search.height.saturating_sub(1) as usize) / 2;
@@ -1637,6 +1691,9 @@ impl App {
             Focus::Worktrees => {
                 self.worktrees_selected = 0;
             },
+            Focus::Submodules => {
+                self.submodules_selected = 0;
+            },
             Focus::Search => {
                 self.search_selected = 0;
             },
@@ -1683,6 +1740,9 @@ impl App {
             },
             Focus::Worktrees => {
                 self.worktrees_selected = usize::MAX;
+            },
+            Focus::Submodules => {
+                self.submodules_selected = usize::MAX;
             },
             Focus::Search => {
                 self.search_selected = Self::last_index(self.search_result_count());
@@ -2155,6 +2215,20 @@ impl App {
         }
         if self.layout_config.is_worktrees {
             self.focus = Focus::Worktrees;
+        } else {
+            self.focus = Focus::Viewport;
+        }
+        self.save_layout();
+    }
+
+    pub fn on_toggle_submodules(&mut self) {
+        self.layout_config.is_submodules = !self.layout_config.is_submodules;
+        self.mark_viewer_layout_dirty();
+        if self.viewport == Viewport::Settings {
+            return;
+        }
+        if self.layout_config.is_submodules {
+            self.focus = Focus::Submodules;
         } else {
             self.focus = Focus::Viewport;
         }

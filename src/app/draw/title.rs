@@ -43,6 +43,7 @@ impl App {
             Focus::Stashes => "stashes",
             Focus::Reflogs => "reflog",
             Focus::Worktrees => "worktrees",
+            Focus::Submodules => "submodules",
             Focus::Search => "search",
             Focus::Inspector => "inspector",
             Focus::StatusTop => "staged",

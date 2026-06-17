@@ -12,6 +12,7 @@ mod core {
     pub mod reflogs;
     pub mod renderers;
     pub mod stashes;
+    pub mod submodules;
     pub mod tags;
     pub mod walker;
     pub mod worktrees;
@@ -34,6 +35,7 @@ pub mod git {
         pub mod reverting;
         pub mod staging;
         pub mod stashing;
+        pub mod submodules;
         pub mod tagging;
         pub mod worktrees;
     }
@@ -48,6 +50,7 @@ pub mod git {
         pub mod helpers;
         pub mod reflogs;
         pub mod remotes;
+        pub mod submodules;
         pub mod worktrees;
     }
 }

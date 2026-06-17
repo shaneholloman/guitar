@@ -8,20 +8,29 @@ use std::path::Path;
 // Collect staged and unstaged changes separately so the status panes can act on each side.
 pub fn get_filenames_diff_at_workdir(repo: &Repository) -> Result<UncommittedChanges, Error> {
     let mut options = StatusOptions::new();
-    options.include_untracked(true).show(git2::StatusShow::IndexAndWorkdir).renames_head_to_index(false).renames_index_to_workdir(false);
+    options.include_untracked(true).exclude_submodules(true).show(git2::StatusShow::IndexAndWorkdir).renames_head_to_index(false).renames_index_to_workdir(false);
 
     let statuses = repo.statuses(Some(&mut options))?;
     let mut changes = UncommittedChanges::default();
     let workdir = repo.workdir().expect("Bare repo not supported");
+    let submodule_paths = repo.submodules().map(|entries| entries.into_iter().map(|entry| entry.path().to_path_buf()).collect::<Vec<_>>()).unwrap_or_default();
 
     for entry in statuses.iter() {
         let rel_path = entry.path().unwrap_or("");
+        if is_submodule_status_path(rel_path, &submodule_paths) {
+            continue;
+        }
+
         let full_path = workdir.join(rel_path);
 
         // Directory statuses are expanded so the UI can show actionable file rows.
         let files = if full_path.is_dir() { collect_files_for_status(repo, workdir, rel_path) } else { vec![rel_path.to_string()] };
 
         for file in files {
+            if is_submodule_status_path(&file, &submodule_paths) {
+                continue;
+            }
+
             // Query each file after expansion to avoid applying directory status to children.
             let file_status = repo.status_file(Path::new(&file))?;
 
@@ -74,6 +83,16 @@ pub fn get_filenames_diff_at_workdir(repo: &Repository) -> Result<UncommittedCha
     changes.is_clean = !changes.is_staged && !changes.is_unstaged && !changes.has_conflicts;
 
     Ok(changes)
+}
+
+fn is_submodule_status_path(path: &str, submodule_paths: &[std::path::PathBuf]) -> bool {
+    if path.is_empty() {
+        return false;
+    }
+
+    let normalized = path.trim_end_matches('/');
+    let path = Path::new(normalized);
+    submodule_paths.iter().any(|submodule_path| path == submodule_path || path.starts_with(submodule_path))
 }
 
 fn conflict_path(entry: &git2::IndexEntry) -> Option<String> {

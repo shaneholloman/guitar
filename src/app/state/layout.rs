@@ -66,6 +66,7 @@ pub struct Layout {
     pub pane_stashes: Rect,
     pub pane_reflogs: Rect,
     pub pane_worktrees: Rect,
+    pub pane_submodules: Rect,
     pub pane_search: Rect,
     pub pane_inspector: Rect,
     pub pane_status: Rect,
@@ -81,6 +82,8 @@ pub struct Layout {
     pub reflogs_scrollbar: Rect,
     pub worktrees: Rect,
     pub worktrees_scrollbar: Rect,
+    pub submodules: Rect,
+    pub submodules_scrollbar: Rect,
     pub search: Rect,
     pub search_scrollbar: Rect,
     pub graph: Rect,
@@ -98,18 +101,24 @@ pub struct Layout {
     pub divider_branches_tags: Rect,
     pub divider_branches_stashes: Rect,
     pub divider_branches_worktrees: Rect,
+    pub divider_branches_submodules: Rect,
     pub divider_branches_reflogs: Rect,
     pub divider_branches_search: Rect,
     pub divider_tags_stashes: Rect,
     pub divider_tags_worktrees: Rect,
+    pub divider_tags_submodules: Rect,
     pub divider_tags_reflogs: Rect,
     pub divider_stashes_worktrees: Rect,
+    pub divider_stashes_submodules: Rect,
     pub divider_stashes_reflogs: Rect,
     pub divider_reflogs_worktrees: Rect,
+    pub divider_reflogs_submodules: Rect,
+    pub divider_worktrees_submodules: Rect,
     pub divider_tags_search: Rect,
     pub divider_stashes_search: Rect,
     pub divider_reflogs_search: Rect,
     pub divider_worktrees_search: Rect,
+    pub divider_submodules_search: Rect,
     pub divider_inspector_status: Rect,
     pub divider_status_files: Rect,
     pub divider_viewer_split: Rect,
@@ -129,6 +138,7 @@ impl App {
             || self.layout_config.is_stashes
             || self.layout_config.is_reflogs
             || self.layout_config.is_worktrees
+            || self.layout_config.is_submodules
             || self.layout_config.is_search)
             && !is_settings;
         let is_viewer_split = self.viewport == Viewport::Viewer && self.viewer_mode == ViewerMode::Split;
@@ -170,14 +180,22 @@ impl App {
         let chunks_horizontal = RatatuiLayout::default().direction(Direction::Horizontal).constraints(constraints).split(chunks_vertical[1]);
 
         // Inactive left sections get zero height while active sections share the column.
-        let left_sections =
-            [self.layout_config.is_branches, self.layout_config.is_tags, self.layout_config.is_stashes, self.layout_config.is_reflogs, self.layout_config.is_worktrees, self.layout_config.is_search];
+        let left_sections = [
+            self.layout_config.is_branches,
+            self.layout_config.is_tags,
+            self.layout_config.is_stashes,
+            self.layout_config.is_reflogs,
+            self.layout_config.is_worktrees,
+            self.layout_config.is_submodules,
+            self.layout_config.is_search,
+        ];
         let left_weights = [
             self.layout_config.weight_branches,
             self.layout_config.weight_tags,
             self.layout_config.weight_stashes,
             self.layout_config.weight_reflogs,
             self.layout_config.weight_worktrees,
+            self.layout_config.weight_submodules,
             self.layout_config.weight_search,
         ];
         let left_weight_total = total_active_weight(&left_sections.into_iter().zip(left_weights).collect::<Vec<_>>());
@@ -214,9 +232,18 @@ impl App {
         let (reflogs, reflogs_scrollbar) = left_stack_rects(chunks_pane_left[3], self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes);
         let (worktrees, worktrees_scrollbar) =
             left_stack_rects(chunks_pane_left[4], self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs);
-        let (search, search_scrollbar) = left_stack_rects(
+        let (submodules, submodules_scrollbar) = left_stack_rects(
             chunks_pane_left[5],
             self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs || self.layout_config.is_worktrees,
+        );
+        let (search, search_scrollbar) = left_stack_rects(
+            chunks_pane_left[6],
+            self.layout_config.is_branches
+                || self.layout_config.is_tags
+                || self.layout_config.is_stashes
+                || self.layout_config.is_reflogs
+                || self.layout_config.is_worktrees
+                || self.layout_config.is_submodules,
         );
 
         // The graph leaves one row for its header and one for the status line.
@@ -267,16 +294,28 @@ impl App {
             chunks_pane_left[4].y.saturating_sub(1),
             chunks_pane_left[4].width,
         );
+        let divider_branches_submodules = divider_rect(
+            self.layout_config.is_branches
+                && !self.layout_config.is_tags
+                && !self.layout_config.is_stashes
+                && !self.layout_config.is_reflogs
+                && !self.layout_config.is_worktrees
+                && self.layout_config.is_submodules,
+            chunks_pane_left[5].x,
+            chunks_pane_left[5].y.saturating_sub(1),
+            chunks_pane_left[5].width,
+        );
         let divider_branches_search = divider_rect(
             self.layout_config.is_branches
                 && !self.layout_config.is_tags
                 && !self.layout_config.is_stashes
                 && !self.layout_config.is_reflogs
                 && !self.layout_config.is_worktrees
+                && !self.layout_config.is_submodules
                 && self.layout_config.is_search,
-            chunks_pane_left[5].x,
-            chunks_pane_left[5].y.saturating_sub(1),
-            chunks_pane_left[5].width,
+            chunks_pane_left[6].x,
+            chunks_pane_left[6].y.saturating_sub(1),
+            chunks_pane_left[6].width,
         );
         let divider_tags_stashes = divider_rect(self.layout_config.is_tags && self.layout_config.is_stashes, chunks_pane_left[2].x, chunks_pane_left[2].y.saturating_sub(1), chunks_pane_left[2].width);
         let divider_tags_reflogs = divider_rect(
@@ -291,11 +330,22 @@ impl App {
             chunks_pane_left[4].y.saturating_sub(1),
             chunks_pane_left[4].width,
         );
-        let divider_tags_search = divider_rect(
-            self.layout_config.is_tags && !self.layout_config.is_stashes && !self.layout_config.is_reflogs && !self.layout_config.is_worktrees && self.layout_config.is_search,
+        let divider_tags_submodules = divider_rect(
+            self.layout_config.is_tags && !self.layout_config.is_stashes && !self.layout_config.is_reflogs && !self.layout_config.is_worktrees && self.layout_config.is_submodules,
             chunks_pane_left[5].x,
             chunks_pane_left[5].y.saturating_sub(1),
             chunks_pane_left[5].width,
+        );
+        let divider_tags_search = divider_rect(
+            self.layout_config.is_tags
+                && !self.layout_config.is_stashes
+                && !self.layout_config.is_reflogs
+                && !self.layout_config.is_worktrees
+                && !self.layout_config.is_submodules
+                && self.layout_config.is_search,
+            chunks_pane_left[6].x,
+            chunks_pane_left[6].y.saturating_sub(1),
+            chunks_pane_left[6].width,
         );
         let divider_stashes_reflogs =
             divider_rect(self.layout_config.is_stashes && self.layout_config.is_reflogs, chunks_pane_left[3].x, chunks_pane_left[3].y.saturating_sub(1), chunks_pane_left[3].width);
@@ -305,22 +355,42 @@ impl App {
             chunks_pane_left[4].y.saturating_sub(1),
             chunks_pane_left[4].width,
         );
-        let divider_stashes_search = divider_rect(
-            self.layout_config.is_stashes && !self.layout_config.is_reflogs && !self.layout_config.is_worktrees && self.layout_config.is_search,
+        let divider_stashes_submodules = divider_rect(
+            self.layout_config.is_stashes && !self.layout_config.is_reflogs && !self.layout_config.is_worktrees && self.layout_config.is_submodules,
             chunks_pane_left[5].x,
             chunks_pane_left[5].y.saturating_sub(1),
             chunks_pane_left[5].width,
+        );
+        let divider_stashes_search = divider_rect(
+            self.layout_config.is_stashes && !self.layout_config.is_reflogs && !self.layout_config.is_worktrees && !self.layout_config.is_submodules && self.layout_config.is_search,
+            chunks_pane_left[6].x,
+            chunks_pane_left[6].y.saturating_sub(1),
+            chunks_pane_left[6].width,
         );
         let divider_reflogs_worktrees =
             divider_rect(self.layout_config.is_reflogs && self.layout_config.is_worktrees, chunks_pane_left[4].x, chunks_pane_left[4].y.saturating_sub(1), chunks_pane_left[4].width);
-        let divider_reflogs_search = divider_rect(
-            self.layout_config.is_reflogs && !self.layout_config.is_worktrees && self.layout_config.is_search,
+        let divider_reflogs_submodules = divider_rect(
+            self.layout_config.is_reflogs && !self.layout_config.is_worktrees && self.layout_config.is_submodules,
             chunks_pane_left[5].x,
             chunks_pane_left[5].y.saturating_sub(1),
             chunks_pane_left[5].width,
         );
-        let divider_worktrees_search =
-            divider_rect(self.layout_config.is_worktrees && self.layout_config.is_search, chunks_pane_left[5].x, chunks_pane_left[5].y.saturating_sub(1), chunks_pane_left[5].width);
+        let divider_reflogs_search = divider_rect(
+            self.layout_config.is_reflogs && !self.layout_config.is_worktrees && !self.layout_config.is_submodules && self.layout_config.is_search,
+            chunks_pane_left[6].x,
+            chunks_pane_left[6].y.saturating_sub(1),
+            chunks_pane_left[6].width,
+        );
+        let divider_worktrees_submodules =
+            divider_rect(self.layout_config.is_worktrees && self.layout_config.is_submodules, chunks_pane_left[5].x, chunks_pane_left[5].y.saturating_sub(1), chunks_pane_left[5].width);
+        let divider_worktrees_search = divider_rect(
+            self.layout_config.is_worktrees && !self.layout_config.is_submodules && self.layout_config.is_search,
+            chunks_pane_left[6].x,
+            chunks_pane_left[6].y.saturating_sub(1),
+            chunks_pane_left[6].width,
+        );
+        let divider_submodules_search =
+            divider_rect(self.layout_config.is_submodules && self.layout_config.is_search, chunks_pane_left[6].x, chunks_pane_left[6].y.saturating_sub(1), chunks_pane_left[6].width);
         let divider_inspector_status = divider_rect(is_inspector && is_status, chunks_pane_right[1].x, chunks_pane_right[1].y.saturating_sub(1), chunks_pane_right[1].width);
         let divider_status_files = divider_rect(is_status && self.graph_selected == 0, chunks_status[1].x, chunks_status[1].y.saturating_sub(1), chunks_status[1].width);
 
@@ -380,6 +450,7 @@ impl App {
                 pane_stashes: if matches!(self.focus, Focus::Stashes) { zen } else { zero },
                 pane_reflogs: if matches!(self.focus, Focus::Reflogs) { zen } else { zero },
                 pane_worktrees: if matches!(self.focus, Focus::Worktrees) { zen } else { zero },
+                pane_submodules: if matches!(self.focus, Focus::Submodules) { zen } else { zero },
                 pane_search: if matches!(self.focus, Focus::Search) { zen } else { zero },
                 pane_inspector: if matches!(self.focus, Focus::Inspector) { zen } else { zero },
                 pane_status: zero,
@@ -392,6 +463,7 @@ impl App {
                 stashes: if matches!(self.focus, Focus::Stashes) { zen } else { zero },
                 reflogs: if matches!(self.focus, Focus::Reflogs) { zen } else { zero },
                 worktrees: if matches!(self.focus, Focus::Worktrees) { zen } else { zero },
+                submodules: if matches!(self.focus, Focus::Submodules) { zen } else { zero },
                 search: if matches!(self.focus, Focus::Search) { zen } else { zero },
                 graph,
                 viewer_split_left,
@@ -406,6 +478,7 @@ impl App {
                 stashes_scrollbar: if matches!(self.focus, Focus::Stashes) { zen } else { zero },
                 reflogs_scrollbar: if matches!(self.focus, Focus::Reflogs) { zen } else { zero },
                 worktrees_scrollbar: if matches!(self.focus, Focus::Worktrees) { zen } else { zero },
+                submodules_scrollbar: if matches!(self.focus, Focus::Submodules) { zen } else { zero },
                 search_scrollbar: if matches!(self.focus, Focus::Search) { zen } else { zero },
                 graph_scrollbar: if matches!(
                     self.focus,
@@ -452,18 +525,24 @@ impl App {
                 divider_branches_tags: zero,
                 divider_branches_stashes: zero,
                 divider_branches_worktrees: zero,
+                divider_branches_submodules: zero,
                 divider_branches_reflogs: zero,
                 divider_branches_search: zero,
                 divider_tags_stashes: zero,
                 divider_tags_worktrees: zero,
+                divider_tags_submodules: zero,
                 divider_tags_reflogs: zero,
                 divider_stashes_worktrees: zero,
+                divider_stashes_submodules: zero,
                 divider_stashes_reflogs: zero,
                 divider_reflogs_worktrees: zero,
+                divider_reflogs_submodules: zero,
+                divider_worktrees_submodules: zero,
                 divider_tags_search: zero,
                 divider_stashes_search: zero,
                 divider_reflogs_search: zero,
                 divider_worktrees_search: zero,
+                divider_submodules_search: zero,
                 divider_inspector_status: zero,
                 divider_status_files: zero,
                 divider_viewer_split,
@@ -486,7 +565,8 @@ impl App {
             pane_stashes: chunks_pane_left[2],
             pane_reflogs: chunks_pane_left[3],
             pane_worktrees: chunks_pane_left[4],
-            pane_search: chunks_pane_left[5],
+            pane_submodules: chunks_pane_left[5],
+            pane_search: chunks_pane_left[6],
             pane_inspector: chunks_pane_right[0],
             pane_status: chunks_pane_right[1],
             pane_status_top: chunks_status[0],
@@ -503,6 +583,8 @@ impl App {
             reflogs_scrollbar,
             worktrees,
             worktrees_scrollbar,
+            submodules,
+            submodules_scrollbar,
             search,
             search_scrollbar,
             graph,
@@ -520,18 +602,24 @@ impl App {
             divider_branches_tags,
             divider_branches_stashes,
             divider_branches_worktrees,
+            divider_branches_submodules,
             divider_branches_reflogs,
             divider_branches_search,
             divider_tags_stashes,
             divider_tags_worktrees,
+            divider_tags_submodules,
             divider_tags_reflogs,
             divider_stashes_worktrees,
+            divider_stashes_submodules,
             divider_stashes_reflogs,
             divider_reflogs_worktrees,
+            divider_reflogs_submodules,
+            divider_worktrees_submodules,
             divider_tags_search,
             divider_stashes_search,
             divider_reflogs_search,
             divider_worktrees_search,
+            divider_submodules_search,
             divider_inspector_status,
             divider_status_files,
             divider_viewer_split,

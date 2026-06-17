@@ -3,9 +3,29 @@ use crate::git::actions::rebasing::{RebaseOutcome, start_rebase};
 use git2::{Repository, Signature, build::CheckoutBuilder};
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
+    process,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+struct TestDir {
+    path: PathBuf,
+}
+
+impl TestDir {
+    fn new(name: &str) -> Self {
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("guitar-diff-{name}-{}-{suffix}", process::id()));
+        fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+}
+
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
 
 fn temp_repo(name: &str) -> (PathBuf, Repository) {
     let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
@@ -28,12 +48,55 @@ fn commit(repo: &Repository, file: &str, message: &str) -> Oid {
     let mut index = repo.index().unwrap();
     index.add_path(Path::new(file)).unwrap();
     index.write().unwrap();
+    commit_index(repo, message)
+}
+
+fn commit_index(repo: &Repository, message: &str) -> Oid {
+    let mut index = repo.index().unwrap();
     let tree_oid = index.write_tree().unwrap();
     let tree = repo.find_tree(tree_oid).unwrap();
     let sig = Signature::now("Test User", "test@example.com").unwrap();
     let parent = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
     let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
     repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents).unwrap()
+}
+
+fn init_repo_at(path: &Path) -> Repository {
+    fs::create_dir_all(path).unwrap();
+    let repo = Repository::init(path).unwrap();
+    {
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Test User").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
+    }
+    write(path, "file.txt", "hello\n");
+    commit(&repo, "file.txt", "initial");
+    repo
+}
+
+fn parent_with_submodule(dir: &TestDir) -> Repository {
+    let child_path = dir.path.join("child");
+    let parent_path = dir.path.join("parent");
+    let child = init_repo_at(&child_path);
+    drop(child);
+    let parent = init_repo_at(&parent_path);
+    let mut submodule = parent.submodule(child_path.to_str().unwrap(), Path::new("deps/child"), true).unwrap();
+    submodule.clone(None).unwrap();
+    submodule.add_finalize().unwrap();
+    commit_index(&parent, "add submodule");
+    drop(submodule);
+    parent
+}
+
+fn assert_no_file_status_rows(changes: &UncommittedChanges) {
+    assert!(changes.staged.modified.is_empty());
+    assert!(changes.staged.added.is_empty());
+    assert!(changes.staged.deleted.is_empty());
+    assert!(changes.unstaged.modified.is_empty());
+    assert!(changes.unstaged.added.is_empty());
+    assert!(changes.unstaged.deleted.is_empty());
+    assert!(changes.conflicts.is_empty());
+    assert!(changes.is_clean);
 }
 
 fn checkout_new_branch(repo: &Repository, name: &str) {
@@ -78,4 +141,72 @@ fn workdir_diff_marks_conflicted_paths() {
     assert!(conflict.workdir.iter().any(|line| line.starts_with(">>>>>>>")));
 
     let _ = fs::remove_dir_all(path);
+}
+
+#[test]
+fn workdir_diff_ignores_clean_initialized_submodule() {
+    let dir = TestDir::new("submodule-clean");
+    let parent = parent_with_submodule(&dir);
+
+    let changes = get_filenames_diff_at_workdir(&parent).unwrap();
+
+    assert_no_file_status_rows(&changes);
+}
+
+#[test]
+fn workdir_diff_ignores_dirty_tracked_submodule_content() {
+    let dir = TestDir::new("submodule-dirty");
+    let parent = parent_with_submodule(&dir);
+    fs::write(parent.workdir().unwrap().join("deps/child/file.txt"), "dirty\n").unwrap();
+
+    let changes = get_filenames_diff_at_workdir(&parent).unwrap();
+
+    assert_no_file_status_rows(&changes);
+}
+
+#[test]
+fn workdir_diff_ignores_untracked_submodule_content() {
+    let dir = TestDir::new("submodule-untracked");
+    let parent = parent_with_submodule(&dir);
+    fs::write(parent.workdir().unwrap().join("deps/child/extra.txt"), "extra\n").unwrap();
+
+    let changes = get_filenames_diff_at_workdir(&parent).unwrap();
+
+    assert_no_file_status_rows(&changes);
+}
+
+#[test]
+fn workdir_diff_ignores_uninitialized_submodule() {
+    let dir = TestDir::new("submodule-uninitialized");
+    let parent = parent_with_submodule(&dir);
+    let clone_path = dir.path.join("clone");
+    let clone = Repository::clone(parent.workdir().unwrap().to_str().unwrap(), &clone_path).unwrap();
+
+    let changes = get_filenames_diff_at_workdir(&clone).unwrap();
+
+    assert_no_file_status_rows(&changes);
+}
+
+#[test]
+fn workdir_diff_ignores_changed_submodule_pointer() {
+    let dir = TestDir::new("submodule-pointer");
+    let parent = parent_with_submodule(&dir);
+    let sub_repo = Repository::open(parent.workdir().unwrap().join("deps/child")).unwrap();
+    write(sub_repo.workdir().unwrap(), "file.txt", "advanced\n");
+    commit(&sub_repo, "file.txt", "advance child");
+
+    let changes = get_filenames_diff_at_workdir(&parent).unwrap();
+
+    assert_no_file_status_rows(&changes);
+}
+
+#[test]
+fn submodule_status_path_guard_matches_exact_paths_and_children() {
+    let submodule_paths = vec![PathBuf::from("deps/child")];
+
+    assert!(is_submodule_status_path("deps/child", &submodule_paths));
+    assert!(is_submodule_status_path("deps/child/", &submodule_paths));
+    assert!(is_submodule_status_path("deps/child/file.txt", &submodule_paths));
+    assert!(!is_submodule_status_path("deps/childish", &submodule_paths));
+    assert!(!is_submodule_status_path("deps", &submodule_paths));
 }

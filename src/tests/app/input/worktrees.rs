@@ -1,5 +1,8 @@
 use super::*;
-use crate::core::worktrees::{WorktreeEntry, WorktreeKind, Worktrees};
+use crate::core::{
+    submodules::SubmoduleStackEntry,
+    worktrees::{WorktreeEntry, WorktreeKind, Worktrees},
+};
 use git2::Oid;
 
 fn test_oid(byte: u8) -> Oid {
@@ -44,6 +47,22 @@ fn graph_worktree_target_resolution_handles_zero_one_and_multiple_rows() {
 
     let multiple = app_with_graph_worktrees(vec![worktree_entry("feature", head), worktree_entry("review", head)]);
     assert_eq!(multiple.graph_worktree_indices(), vec![0, 1]);
+}
+
+#[test]
+fn opening_worktree_clears_submodule_stack() {
+    let head = test_oid(7);
+    let mut app = App {
+        focus: Focus::Worktrees,
+        submodule_stack: vec![SubmoduleStackEntry::new(PathBuf::from("/repo"), PathBuf::from("deps/child"), "deps/child".into())],
+        recent_save_path: Some(PathBuf::from("/tmp/guitar-worktree-stack-recent.json")),
+        ..app_with_graph_worktrees(vec![worktree_entry("feature", head)])
+    };
+
+    app.open_selected_worktree();
+
+    assert!(app.submodule_stack.is_empty());
+    assert_eq!(app.focus, Focus::Viewport);
 }
 
 #[test]

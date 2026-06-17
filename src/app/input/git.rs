@@ -13,6 +13,7 @@ use crate::{
             reverting::{RevertOutcome, abort_revert, continue_revert, is_revert_in_progress},
             staging::{stage_all, stage_file, unstage_all, unstage_file},
             stashing::{pop, stash},
+            submodules::{stage_submodule_head, unstage_submodule},
             tagging::untag,
         },
         auth::{AuthRequired, AuthSecret, NetworkResult},
@@ -437,7 +438,17 @@ impl App {
 
         if !matches!(
             self.focus,
-            Focus::Viewport | Focus::Inspector | Focus::StatusTop | Focus::StatusBottom | Focus::Search | Focus::Branches | Focus::Tags | Focus::Stashes | Focus::Reflogs | Focus::Worktrees
+            Focus::Viewport
+                | Focus::Inspector
+                | Focus::StatusTop
+                | Focus::StatusBottom
+                | Focus::Search
+                | Focus::Branches
+                | Focus::Tags
+                | Focus::Stashes
+                | Focus::Reflogs
+                | Focus::Worktrees
+                | Focus::Submodules
         ) {
             return;
         }
@@ -620,6 +631,18 @@ impl App {
                             Err(error) => self.show_error(format!("Unstage file failed: {error}")),
                         }
                     },
+                    Focus::Submodules => {
+                        let Some(name) = self.selected_submodule_name() else {
+                            return;
+                        };
+                        match unstage_submodule(repo, &name) {
+                            Ok(_) => {
+                                self.focus = Focus::Submodules;
+                                self.reload(None);
+                            },
+                            Err(error) => self.show_error(format!("Unstage submodule failed: {error}")),
+                        }
+                    },
                     _ => {},
                 },
             }
@@ -650,6 +673,18 @@ impl App {
                         match stage_file(repo, Path::new(&file)) {
                             Ok(_) => self.reload(None),
                             Err(error) => self.show_error(format!("Stage file failed: {error}")),
+                        }
+                    },
+                    Focus::Submodules => {
+                        let Some(name) = self.selected_submodule_name() else {
+                            return;
+                        };
+                        match stage_submodule_head(repo, &name) {
+                            Ok(_) => {
+                                self.focus = Focus::Submodules;
+                                self.reload(None);
+                            },
+                            Err(error) => self.show_error(format!("Stage submodule failed: {error}")),
                         }
                     },
                     _ => {},

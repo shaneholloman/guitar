@@ -28,6 +28,7 @@ const SETTINGS_LAYOUT_COMMANDS: &[(char, Command, &str)] = &[
     ('4', Command::ToggleStatus, "status"),
     ('5', Command::ToggleInspector, "inspector"),
     ('6', Command::ToggleWorktrees, "worktrees"),
+    ('\\', Command::ToggleSubmodules, "submodules"),
     ('7', Command::ToggleReflogs, "reflog"),
     ('`', Command::ToggleSearch, "search"),
     ('8', Command::ToggleShas, "SHAs"),
@@ -86,6 +87,13 @@ impl App {
             },
             Command::ToggleWorktrees => {
                 if self.layout_config.is_worktrees {
+                    "[*]"
+                } else {
+                    "[ ]"
+                }
+            },
+            Command::ToggleSubmodules => {
+                if self.layout_config.is_submodules {
                     "[*]"
                 } else {
                     "[ ]"

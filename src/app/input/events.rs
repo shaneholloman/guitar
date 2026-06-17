@@ -39,6 +39,7 @@ enum StackPane {
     Stashes,
     Reflogs,
     Worktrees,
+    Submodules,
     Search,
     Inspector,
     Status,
@@ -213,6 +214,7 @@ impl App {
                 | MouseSelectionTarget::Stashes(_)
                 | MouseSelectionTarget::Reflogs(_)
                 | MouseSelectionTarget::Worktrees(_)
+                | MouseSelectionTarget::Submodules(_)
                 | MouseSelectionTarget::Search(_)
                 | MouseSelectionTarget::StatusTop(_)
                 | MouseSelectionTarget::StatusBottom(_)
@@ -251,6 +253,10 @@ impl App {
             MouseSelectionTarget::Worktrees(index) => {
                 self.focus = Focus::Worktrees;
                 self.worktrees_selected = index;
+            },
+            MouseSelectionTarget::Submodules(index) => {
+                self.focus = Focus::Submodules;
+                self.submodules_selected = index;
             },
             MouseSelectionTarget::Search(index) => {
                 self.focus = Focus::Search;
@@ -386,8 +392,25 @@ impl App {
             }
         }
 
-        if self.layout_config.is_search {
+        if self.layout_config.is_submodules {
             let has_previous = self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs || self.layout_config.is_worktrees;
+            let visible_height = if self.layout_config.is_zen {
+                self.layout.submodules.height.saturating_sub(2) as usize
+            } else {
+                self.layout.submodules.height.saturating_sub(if has_previous { 1 } else { 2 }) as usize
+            };
+            if let Some(index) = self.scrolled_row_index(self.layout.submodules, column, row, visible_height, self.layout_config.is_zen, self.submodules_scroll.get(), self.submodules.entries.len()) {
+                return Some(MouseSelectionTarget::Submodules(index));
+            }
+        }
+
+        if self.layout_config.is_search {
+            let has_previous = self.layout_config.is_branches
+                || self.layout_config.is_tags
+                || self.layout_config.is_stashes
+                || self.layout_config.is_reflogs
+                || self.layout_config.is_worktrees
+                || self.layout_config.is_submodules;
             let visible_height =
                 if self.layout_config.is_zen { self.layout.search.height.saturating_sub(2) as usize } else { self.layout.search.height.saturating_sub(if has_previous { 1 } else { 2 }) as usize };
             if let Some(index) = self.scrolled_row_index(self.layout.search, column, row, visible_height, self.layout_config.is_zen, self.search_scroll.get(), self.search_clickable_count()) {
@@ -572,12 +595,13 @@ impl App {
             return None;
         }
 
-        const TARGETS: [ScrollbarTarget; 12] = [
+        const TARGETS: [ScrollbarTarget; 13] = [
             ScrollbarTarget::Branches,
             ScrollbarTarget::Tags,
             ScrollbarTarget::Stashes,
             ScrollbarTarget::Reflogs,
             ScrollbarTarget::Worktrees,
+            ScrollbarTarget::Submodules,
             ScrollbarTarget::Search,
             ScrollbarTarget::Inspector,
             ScrollbarTarget::StatusTop,
@@ -625,6 +649,7 @@ impl App {
             ScrollbarTarget::Stashes if is_main_view && self.layout_config.is_stashes => self.layout.stashes_scrollbar,
             ScrollbarTarget::Reflogs if is_main_view && self.layout_config.is_reflogs => self.layout.reflogs_scrollbar,
             ScrollbarTarget::Worktrees if is_main_view && self.layout_config.is_worktrees => self.layout.worktrees_scrollbar,
+            ScrollbarTarget::Submodules if is_main_view && self.layout_config.is_submodules => self.layout.submodules_scrollbar,
             ScrollbarTarget::Search if is_main_view && self.layout_config.is_search => self.layout.search_scrollbar,
             ScrollbarTarget::Inspector if is_main_view && self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts) => self.layout.inspector_scrollbar,
             ScrollbarTarget::StatusTop if is_main_view && self.layout_config.is_status => self.layout.status_top_scrollbar,
@@ -645,6 +670,7 @@ impl App {
             ScrollbarTarget::Stashes => (self.stash_clickable_count(), self.stashes_visible_height(), self.stashes_scroll.get()),
             ScrollbarTarget::Reflogs => (self.reflog_clickable_count(), self.reflogs_visible_height(), self.reflogs_scroll.get()),
             ScrollbarTarget::Worktrees => (self.worktrees.entries.len(), self.worktrees_visible_height(), self.worktrees_scroll.get()),
+            ScrollbarTarget::Submodules => (self.submodules.entries.len(), self.submodules_visible_height(), self.submodules_scroll.get()),
             ScrollbarTarget::Search => (self.search_clickable_count(), self.search_visible_height(), self.search_scroll.get()),
             ScrollbarTarget::Inspector => (self.inspector_line_count_for_scrollbar(), self.inspector_visible_height(), self.inspector_scroll.get()),
             ScrollbarTarget::StatusTop => (self.status_top_clickable_count(), self.status_top_visible_height(), self.status_top_scroll.get()),
@@ -745,6 +771,7 @@ impl App {
             ScrollbarTarget::Stashes => self.focus = Focus::Stashes,
             ScrollbarTarget::Reflogs => self.focus = Focus::Reflogs,
             ScrollbarTarget::Worktrees => self.focus = Focus::Worktrees,
+            ScrollbarTarget::Submodules => self.focus = Focus::Submodules,
             ScrollbarTarget::Search => self.focus = Focus::Search,
             ScrollbarTarget::Inspector => self.focus = Focus::Inspector,
             ScrollbarTarget::StatusTop => self.focus = Focus::StatusTop,
@@ -762,6 +789,7 @@ impl App {
             ScrollbarTarget::Stashes => self.stashes_scroll.set(scroll),
             ScrollbarTarget::Reflogs => self.reflogs_scroll.set(scroll),
             ScrollbarTarget::Worktrees => self.worktrees_scroll.set(scroll),
+            ScrollbarTarget::Submodules => self.submodules_scroll.set(scroll),
             ScrollbarTarget::Search => self.search_scroll.set(scroll),
             ScrollbarTarget::Inspector => self.inspector_scroll.set(scroll),
             ScrollbarTarget::StatusTop => self.status_top_scroll.set(scroll),
@@ -820,6 +848,7 @@ impl App {
             ScrollbarTarget::Stashes => self.stashes_selected,
             ScrollbarTarget::Reflogs => self.reflogs_selected,
             ScrollbarTarget::Worktrees => self.worktrees_selected,
+            ScrollbarTarget::Submodules => self.submodules_selected,
             ScrollbarTarget::Search => self.search_selected,
             ScrollbarTarget::Inspector => self.inspector_selected,
             ScrollbarTarget::StatusTop => self.status_top_selected,
@@ -837,6 +866,7 @@ impl App {
             ScrollbarTarget::Stashes => self.stashes_selected = selection,
             ScrollbarTarget::Reflogs => self.reflogs_selected = selection,
             ScrollbarTarget::Worktrees => self.worktrees_selected = selection,
+            ScrollbarTarget::Submodules => self.submodules_selected = selection,
             ScrollbarTarget::Search => self.search_selected = selection,
             ScrollbarTarget::Inspector => self.inspector_selected = selection,
             ScrollbarTarget::StatusTop => self.status_top_selected = selection,
@@ -878,8 +908,18 @@ impl App {
         if self.layout_config.is_zen { self.layout.worktrees.height.saturating_sub(2) as usize } else { self.layout.worktrees.height.saturating_sub(if has_previous { 1 } else { 2 }) as usize }
     }
 
-    fn search_visible_height(&self) -> usize {
+    fn submodules_visible_height(&self) -> usize {
         let has_previous = self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs || self.layout_config.is_worktrees;
+        if self.layout_config.is_zen { self.layout.submodules.height.saturating_sub(2) as usize } else { self.layout.submodules.height.saturating_sub(if has_previous { 1 } else { 2 }) as usize }
+    }
+
+    fn search_visible_height(&self) -> usize {
+        let has_previous = self.layout_config.is_branches
+            || self.layout_config.is_tags
+            || self.layout_config.is_stashes
+            || self.layout_config.is_reflogs
+            || self.layout_config.is_worktrees
+            || self.layout_config.is_submodules;
         if self.layout_config.is_zen { self.layout.search.height.saturating_sub(2) as usize } else { self.layout.search.height.saturating_sub(if has_previous { 1 } else { 2 }) as usize }
     }
 
@@ -992,6 +1032,9 @@ impl App {
         if self.layout_config.is_worktrees && Self::rect_contains(self.layout.pane_worktrees, column, row) {
             return Some(Focus::Worktrees);
         }
+        if self.layout_config.is_submodules && Self::rect_contains(self.layout.pane_submodules, column, row) {
+            return Some(Focus::Submodules);
+        }
         if self.layout_config.is_search && Self::rect_contains(self.layout.pane_search, column, row) {
             return Some(Focus::Search);
         }
@@ -1037,6 +1080,9 @@ impl App {
         if Self::rect_contains(self.layout.divider_branches_worktrees, column, row) {
             return Some(LayoutDrag::BranchesWorktrees);
         }
+        if Self::rect_contains(self.layout.divider_branches_submodules, column, row) {
+            return Some(LayoutDrag::BranchesSubmodules);
+        }
         if Self::rect_contains(self.layout.divider_branches_search, column, row) {
             return Some(LayoutDrag::BranchesSearch);
         }
@@ -1049,6 +1095,9 @@ impl App {
         if Self::rect_contains(self.layout.divider_tags_worktrees, column, row) {
             return Some(LayoutDrag::TagsWorktrees);
         }
+        if Self::rect_contains(self.layout.divider_tags_submodules, column, row) {
+            return Some(LayoutDrag::TagsSubmodules);
+        }
         if Self::rect_contains(self.layout.divider_tags_search, column, row) {
             return Some(LayoutDrag::TagsSearch);
         }
@@ -1058,17 +1107,29 @@ impl App {
         if Self::rect_contains(self.layout.divider_stashes_worktrees, column, row) {
             return Some(LayoutDrag::StashesWorktrees);
         }
+        if Self::rect_contains(self.layout.divider_stashes_submodules, column, row) {
+            return Some(LayoutDrag::StashesSubmodules);
+        }
         if Self::rect_contains(self.layout.divider_stashes_search, column, row) {
             return Some(LayoutDrag::StashesSearch);
         }
         if Self::rect_contains(self.layout.divider_reflogs_worktrees, column, row) {
             return Some(LayoutDrag::ReflogsWorktrees);
         }
+        if Self::rect_contains(self.layout.divider_reflogs_submodules, column, row) {
+            return Some(LayoutDrag::ReflogsSubmodules);
+        }
+        if Self::rect_contains(self.layout.divider_worktrees_submodules, column, row) {
+            return Some(LayoutDrag::WorktreesSubmodules);
+        }
         if Self::rect_contains(self.layout.divider_reflogs_search, column, row) {
             return Some(LayoutDrag::ReflogsSearch);
         }
         if Self::rect_contains(self.layout.divider_worktrees_search, column, row) {
             return Some(LayoutDrag::WorktreesSearch);
+        }
+        if Self::rect_contains(self.layout.divider_submodules_search, column, row) {
+            return Some(LayoutDrag::SubmodulesSearch);
         }
         if Self::rect_contains(self.layout.divider_inspector_status, column, row) {
             return Some(LayoutDrag::InspectorStatus);
@@ -1080,7 +1141,7 @@ impl App {
         None
     }
 
-    fn is_modal_focus(&self) -> bool {
+    pub(crate) fn is_modal_focus(&self) -> bool {
         matches!(
             self.focus,
             Focus::ModalCheckout
@@ -1145,7 +1206,7 @@ impl App {
                     false
                 } else {
                     match self.focus {
-                        Focus::Branches | Focus::Tags | Focus::Stashes | Focus::Reflogs | Focus::Worktrees | Focus::Search | Focus::Viewport => self.resize_left_column_by(-1),
+                        Focus::Branches | Focus::Tags | Focus::Stashes | Focus::Reflogs | Focus::Worktrees | Focus::Submodules | Focus::Search | Focus::Viewport => self.resize_left_column_by(-1),
                         Focus::Inspector | Focus::StatusTop | Focus::StatusBottom => self.resize_right_column_by(1),
                         _ => false,
                     }
@@ -1156,7 +1217,7 @@ impl App {
                     false
                 } else {
                     match self.focus {
-                        Focus::Branches | Focus::Tags | Focus::Stashes | Focus::Reflogs | Focus::Worktrees | Focus::Search => self.resize_left_column_by(1),
+                        Focus::Branches | Focus::Tags | Focus::Stashes | Focus::Reflogs | Focus::Worktrees | Focus::Submodules | Focus::Search => self.resize_left_column_by(1),
                         Focus::Viewport | Focus::Inspector | Focus::StatusTop | Focus::StatusBottom => self.resize_right_column_by(-1),
                         _ => false,
                     }
@@ -1226,7 +1287,7 @@ impl App {
         let Some(focused) = self.focus_stack_pane() else {
             return false;
         };
-        if !matches!(focused, StackPane::Branches | StackPane::Tags | StackPane::Stashes | StackPane::Reflogs | StackPane::Worktrees | StackPane::Search) {
+        if !matches!(focused, StackPane::Branches | StackPane::Tags | StackPane::Stashes | StackPane::Reflogs | StackPane::Worktrees | StackPane::Submodules | StackPane::Search) {
             return self.resize_right_stack_pane(focused, direction);
         }
 
@@ -1294,6 +1355,9 @@ impl App {
         if self.layout_config.is_worktrees {
             stack.push(StackPane::Worktrees);
         }
+        if self.layout_config.is_submodules {
+            stack.push(StackPane::Submodules);
+        }
         if self.layout_config.is_search {
             stack.push(StackPane::Search);
         }
@@ -1307,6 +1371,7 @@ impl App {
             Focus::Stashes => Some(StackPane::Stashes),
             Focus::Reflogs => Some(StackPane::Reflogs),
             Focus::Worktrees => Some(StackPane::Worktrees),
+            Focus::Submodules => Some(StackPane::Submodules),
             Focus::Search => Some(StackPane::Search),
             Focus::Inspector => Some(StackPane::Inspector),
             Focus::StatusTop => Some(StackPane::StatusTop),
@@ -1322,6 +1387,7 @@ impl App {
             StackPane::Stashes => self.layout.pane_stashes,
             StackPane::Reflogs => self.layout.pane_reflogs,
             StackPane::Worktrees => self.layout.pane_worktrees,
+            StackPane::Submodules => self.layout.pane_submodules,
             StackPane::Search => self.layout.pane_search,
             StackPane::Inspector => self.layout.pane_inspector,
             StackPane::Status => self.layout.pane_status,
@@ -1337,6 +1403,7 @@ impl App {
             StackPane::Stashes => self.layout_config.weight_stashes,
             StackPane::Reflogs => self.layout_config.weight_reflogs,
             StackPane::Worktrees => self.layout_config.weight_worktrees,
+            StackPane::Submodules => self.layout_config.weight_submodules,
             StackPane::Search => self.layout_config.weight_search,
             StackPane::Inspector => self.layout_config.weight_inspector,
             StackPane::Status => self.layout_config.weight_status,
@@ -1352,6 +1419,7 @@ impl App {
             StackPane::Stashes => self.layout_config.weight_stashes = weight,
             StackPane::Reflogs => self.layout_config.weight_reflogs = weight,
             StackPane::Worktrees => self.layout_config.weight_worktrees = weight,
+            StackPane::Submodules => self.layout_config.weight_submodules = weight,
             StackPane::Search => self.layout_config.weight_search = weight,
             StackPane::Inspector => self.layout_config.weight_inspector = weight,
             StackPane::Status => self.layout_config.weight_status = weight,
@@ -1398,6 +1466,14 @@ impl App {
                     self.layout_config.weight_worktrees = worktrees;
                 }
             },
+            LayoutDrag::BranchesSubmodules => {
+                if let Some((branches, submodules)) =
+                    Self::resized_pair_weights(row, self.layout.pane_branches, self.layout.pane_submodules, self.layout_config.weight_branches, self.layout_config.weight_submodules)
+                {
+                    self.layout_config.weight_branches = branches;
+                    self.layout_config.weight_submodules = submodules;
+                }
+            },
             LayoutDrag::BranchesSearch => {
                 if let Some((branches, search)) =
                     Self::resized_pair_weights(row, self.layout.pane_branches, self.layout.pane_search, self.layout_config.weight_branches, self.layout_config.weight_search)
@@ -1425,6 +1501,14 @@ impl App {
                     self.layout_config.weight_worktrees = worktrees;
                 }
             },
+            LayoutDrag::TagsSubmodules => {
+                if let Some((tags, submodules)) =
+                    Self::resized_pair_weights(row, self.layout.pane_tags, self.layout.pane_submodules, self.layout_config.weight_tags, self.layout_config.weight_submodules)
+                {
+                    self.layout_config.weight_tags = tags;
+                    self.layout_config.weight_submodules = submodules;
+                }
+            },
             LayoutDrag::TagsSearch => {
                 if let Some((tags, search)) = Self::resized_pair_weights(row, self.layout.pane_tags, self.layout.pane_search, self.layout_config.weight_tags, self.layout_config.weight_search) {
                     self.layout_config.weight_tags = tags;
@@ -1437,6 +1521,14 @@ impl App {
                 {
                     self.layout_config.weight_stashes = stashes;
                     self.layout_config.weight_worktrees = worktrees;
+                }
+            },
+            LayoutDrag::StashesSubmodules => {
+                if let Some((stashes, submodules)) =
+                    Self::resized_pair_weights(row, self.layout.pane_stashes, self.layout.pane_submodules, self.layout_config.weight_stashes, self.layout_config.weight_submodules)
+                {
+                    self.layout_config.weight_stashes = stashes;
+                    self.layout_config.weight_submodules = submodules;
                 }
             },
             LayoutDrag::StashesReflogs => {
@@ -1462,6 +1554,22 @@ impl App {
                     self.layout_config.weight_worktrees = worktrees;
                 }
             },
+            LayoutDrag::ReflogsSubmodules => {
+                if let Some((reflogs, submodules)) =
+                    Self::resized_pair_weights(row, self.layout.pane_reflogs, self.layout.pane_submodules, self.layout_config.weight_reflogs, self.layout_config.weight_submodules)
+                {
+                    self.layout_config.weight_reflogs = reflogs;
+                    self.layout_config.weight_submodules = submodules;
+                }
+            },
+            LayoutDrag::WorktreesSubmodules => {
+                if let Some((worktrees, submodules)) =
+                    Self::resized_pair_weights(row, self.layout.pane_worktrees, self.layout.pane_submodules, self.layout_config.weight_worktrees, self.layout_config.weight_submodules)
+                {
+                    self.layout_config.weight_worktrees = worktrees;
+                    self.layout_config.weight_submodules = submodules;
+                }
+            },
             LayoutDrag::ReflogsSearch => {
                 if let Some((reflogs, search)) = Self::resized_pair_weights(row, self.layout.pane_reflogs, self.layout.pane_search, self.layout_config.weight_reflogs, self.layout_config.weight_search)
                 {
@@ -1474,6 +1582,14 @@ impl App {
                     Self::resized_pair_weights(row, self.layout.pane_worktrees, self.layout.pane_search, self.layout_config.weight_worktrees, self.layout_config.weight_search)
                 {
                     self.layout_config.weight_worktrees = worktrees;
+                    self.layout_config.weight_search = search;
+                }
+            },
+            LayoutDrag::SubmodulesSearch => {
+                if let Some((submodules, search)) =
+                    Self::resized_pair_weights(row, self.layout.pane_submodules, self.layout.pane_search, self.layout_config.weight_submodules, self.layout_config.weight_search)
+                {
+                    self.layout_config.weight_submodules = submodules;
                     self.layout_config.weight_search = search;
                 }
             },

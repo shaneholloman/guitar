@@ -3,7 +3,7 @@ use crate::helpers::keymap::InputMode;
 use crate::helpers::layout::load_layout_config;
 use crate::{
     app::input::TextInput,
-    core::{reflogs::HeadReflogs, stashes::Stashes, worktrees::Worktrees},
+    core::{reflogs::HeadReflogs, stashes::Stashes, submodules::Submodules, worktrees::Worktrees},
 };
 use crate::{
     app::{
@@ -72,6 +72,8 @@ impl Default for App {
             stashes: Stashes::default(),
             reflogs: HeadReflogs::default(),
             worktrees: Worktrees::default(),
+            submodules: Submodules::default(),
+            submodule_stack: Vec::new(),
             uncommitted: UncommittedChanges::default(),
 
             // Cache
@@ -117,6 +119,10 @@ impl Default for App {
             // Worktrees
             worktrees_selected: 0,
             worktrees_scroll: 0.into(),
+
+            // Submodules
+            submodules_selected: 0,
+            submodules_scroll: 0.into(),
 
             // Search
             search_path: None,

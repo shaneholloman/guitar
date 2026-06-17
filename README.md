@@ -56,7 +56,7 @@ while looking really good
 
 ## Status And Warning
 
-This is a hobby project with sharp Git tools. It can stage, unstage, commit, force checkout, force push, delete branches, reset, stash, pop, drop, rebase, merge, cherry-pick, revert, prune worktrees, and discard file changes.
+This is a hobby project with sharp Git tools. It can stage, unstage, commit, force checkout, force push, delete branches, reset, stash, pop, drop, rebase, merge, cherry-pick, revert, prune worktrees, update submodules, sync submodule URLs, and discard file changes.
 
 Use it carefully on important repositories. Keep backups, understand what the selected row and focused pane mean before using action mode, and report issues when behavior is surprising.
 
@@ -211,6 +211,22 @@ Rows include:
 
 Valid worktrees can be opened from the pane. Linked worktrees can be locked, unlocked, removed, or pruned through the worktree actions.
 
+### Submodules
+
+The submodule pane lists immediate Git submodules for the current repository.
+
+Rows include:
+
+- Submodule path.
+- Current branch, detached HEAD short SHA, or not-initialized state.
+- Staged pointer marker.
+- New-commits marker.
+- Modified-content marker.
+- Untracked-content marker.
+- Not-open marker.
+
+Initialized submodules can be opened from the pane, which reloads `guitar` at the submodule repository path. Opened submodules are tracked in a session-only stack, rendered in the left status bar as a `▣` breadcrumb before the current branch or HEAD. Uninitialized submodules can be updated and initialized through the submodule action.
+
 ### Status
 
 The status area is on the right.
@@ -279,7 +295,7 @@ The settings/help view is opened with `?`. It shows version and the commit heatm
 - In the viewer, `h` returns to status.
 - In status, `h` moves outward to inspector or graph.
 - In the graph, `h` opens/focuses the branch pane.
-- In branch, tag, stash, reflog, and worktree panes, `l` jumps into the selected item.
+- In branch, tag, stash, reflog, worktree, and submodule panes, `l` jumps into the selected item.
 - In settings, `h` returns to the graph.
 - In the splash screen, `l` opens the selected recent repository.
 
@@ -292,7 +308,7 @@ The settings/help view is opened with `?`. It shows version and the commit heatm
 Focusable panes are ordered:
 
 ```text
-graph/viewer, inspector, staged/commit status, unstaged status, worktrees, reflogs, stashes, tags, branches
+graph/viewer, inspector, staged/commit status, unstaged status, search, submodules, worktrees, reflogs, stashes, tags, branches
 ```
 
 Hidden panes are skipped. The unstaged status pane is focusable only on the uncommitted row.
@@ -310,6 +326,7 @@ Hidden panes are skipped. The unstaged status pane is focusable only on the unco
 - Graph: open a worktree badge if the selected commit has valid worktree candidates.
 - Branch/tag/stash/reflog panes: jump to the corresponding graph row and center it when possible.
 - Worktree pane: open the selected valid worktree.
+- Submodule pane: open the selected initialized submodule as the current repository.
 - Status panes: open the selected file in the viewer.
 - Choice modals: confirm the selected row.
 
@@ -369,11 +386,11 @@ Mouse capture is enabled while the app runs.
 - Mouse wheel scrolls the pane under the cursor and focuses it.
 - Click or drag a visible scrollbar track to jump or scrub the pane it belongs to.
 - A single click selects the row under the cursor and focuses that pane.
-- Double-click branch, tag, stash, reflog, worktree, status, theme, or keybinding rows to perform the same action as `Enter`.
+- Double-click branch, tag, stash, reflog, worktree, submodule, status, theme, or keybinding rows to perform the same action as `Enter`.
 - Single-click settings layout rows to toggle them immediately.
 - Graph, viewer, and splash rows are selected by mouse clicks but not activated by double-click.
 - Drag the left and right vertical dividers to resize side panes.
-- Drag stacked pane dividers to resize branch/tag/stash/reflog/worktree, inspector/status, and staged/unstaged splits.
+- Drag stacked pane dividers to resize branch/tag/stash/reflog/worktree/submodule, inspector/status, and staged/unstaged splits.
 - Layout changes from dragging are saved when the mouse button is released.
 
 ## File Search
@@ -486,8 +503,10 @@ Defaults are written to `keymap.json` on first run. User-edited keymaps can diff
 | Toggle Reflogs | `7` |
 | Toggle SHAs | `8` |
 | Toggle Graph Reflogs | `9` |
+| Toggle Submodules | `\` |
 | Toggle Search | `` ` `` |
 | Toggle Help / Settings | `?` |
+| Return To Parent Repository | `Backspace` |
 | Action Mode | `Ctrl+a` |
 | Minimize | `.` |
 | Reload | `r` |
@@ -524,6 +543,8 @@ Press `Ctrl+a`, then one of these keys.
 | Rename Branch | `Shift+B` |
 | Remove Worktree | `Shift+W` |
 | Toggle Worktree Lock | `Shift+L` |
+| Update Submodule | `i` |
+| Sync Submodule | `Shift+I` |
 | Delete Tag | `Shift+U` |
 | Cherry-pick | `y` |
 | Revert | `Shift+R` |
@@ -542,6 +563,7 @@ Normal key: `s`.
 
 - Graph focus on the uncommitted row stages all unstaged changes, including untracked files and deletes.
 - Status bottom focus stages the selected unstaged file.
+- Submodule pane focus stages the selected submodule's checked-out `HEAD` as the superproject gitlink pointer.
 - Conflict rows cannot be staged from the UI. Resolve conflicts externally, then continue the active operation.
 
 Ignored files are not staged.
@@ -552,6 +574,7 @@ Normal key: `u`.
 
 - Graph focus on the uncommitted row unstages all staged files with a mixed reset to `HEAD`.
 - Status top focus unstages the selected staged file.
+- Submodule pane focus unstages the selected submodule gitlink pointer in the superproject index.
 - In a repository without `HEAD`, unstaging a file removes it from the initial index.
 - Conflict rows cannot be unstaged from the UI.
 
@@ -823,9 +846,35 @@ Locking rules:
 
 Opening a worktree reloads the app at the selected worktree path.
 
+### Submodules
+
+Toggle the submodule pane: normal key `\`.
+
+Update or initialize selected submodule: action key `Ctrl+a`, then `i`.
+
+Sync selected submodule URL: action key `Ctrl+a`, then `Shift+I`.
+
+Open submodule: focus an initialized submodule row and press `Enter`.
+
+Return to parent repository: normal key `Backspace`.
+
+Stage selected submodule pointer: focus a submodule row and press `s`.
+
+Unstage selected submodule pointer: focus a submodule row and press `u`.
+
+Submodule support is intentionally bounded:
+
+- Only immediate submodules of the currently opened repository are listed.
+- Opening a submodule reloads `guitar` at that submodule path and pushes the parent onto a session-only return stack.
+- The stack is not persisted and is not inferred when launching directly inside a submodule.
+- Update/init uses the same background network worker and auth prompts as fetch/push operations.
+- Sync mirrors Git's submodule URL sync behavior for the selected submodule.
+- Add, remove, edit-url, and recursive update flows are not implemented.
+- Commit and status file diffs stay file-oriented and do not recurse into submodule commit graphs.
+
 ## Authentication
 
-Network auth is used for fetch, selected-remote fetch from settings, push current branch, push tags, and remote branch deletion.
+Network auth is used for fetch, selected-remote fetch from settings, push current branch, push tags, remote branch deletion, and submodule update/init.
 
 ### SSH
 
@@ -1030,9 +1079,9 @@ Command
 Meta
 ```
 
-Supported commands are the command names listed in the keymap tables, without spaces, for example `ToggleSplitDiffMode`, `FocusPaneRight`, `ResizePaneRight`, `RemoveRecentRepository`, `CreateWorktree`, `Revert`, `ContinueOperation`, and `AbortOperation`.
+Supported commands are the command names listed in the keymap tables, without spaces, for example `ToggleSplitDiffMode`, `FocusPaneRight`, `ResizePaneRight`, `RemoveRecentRepository`, `CreateWorktree`, `ToggleSubmodules`, `ReturnToParentRepository`, `UpdateSubmodule`, `SyncSubmodule`, `Revert`, `ContinueOperation`, and `AbortOperation`.
 
-Existing `keymap.json` files are loaded as-is. `guitar` does not migrate older keymaps or add new default bindings automatically; reset saved config or edit the keymap if an existing config should use a new default.
+Existing `keymap.json` files are preserved. When a new default command is missing and its default key is unbound, `guitar` may add that binding automatically; otherwise, edit the keymap or reset saved config to adopt changed defaults.
 
 ### layout.json
 
@@ -1048,6 +1097,7 @@ Default layout:
   "is_reflogs": false,
   "is_graph_reflogs": false,
   "is_worktrees": false,
+  "is_submodules": false,
   "is_status": true,
   "is_inspector": true,
   "is_zen": false,
@@ -1058,6 +1108,7 @@ Default layout:
   "weight_stashes": 100,
   "weight_reflogs": 100,
   "weight_worktrees": 100,
+  "weight_submodules": 100,
   "weight_inspector": 100,
   "weight_status": 100,
   "weight_status_top": 100,
@@ -1157,11 +1208,11 @@ Important source areas:
 
 - `src/main.rs`: CLI flags and app startup.
 - `src/app/app.rs`: main app state, event loop, draw orchestration, reload, graph worker sync.
-- `src/app/input/`: keyboard, mouse, modal, navigation, Git, and worktree input handlers.
+- `src/app/input/`: keyboard, mouse, modal, navigation, Git, worktree, and submodule input handlers.
 - `src/app/draw/`: TUI drawing for graph, panes, viewer, settings, status, and modals.
 - `src/core/`: graph worker, walker, topology buffer, pane data, render helpers.
 - `src/git/actions/`: mutating Git operations.
-- `src/git/queries/`: repository reads, diffs, commits, reflogs, worktrees.
+- `src/git/queries/`: repository reads, diffs, commits, reflogs, worktrees, submodules.
 - `src/git/auth.rs`: network credential classification, prompting, and session cache.
 - `src/helpers/`: keymaps, layout persistence, themes, recent repos, symbols, text, colors.
 
@@ -1173,7 +1224,7 @@ Important source areas:
 - No pull UI.
 - Conflict resolution editing is external.
 - Worktree move/repair and custom separate worktree branch names are not implemented.
-- Submodules are ignored in commit diffs.
+- Submodule support covers immediate submodules only; commit and status file diffs do not recurse into submodule commit graphs.
 - Merge commit file lists and file diffs compare against the first parent only.
 - The graph renderer models ordinary two-parent merges; octopus merges are not a first-class display target.
 - Tag creation is lightweight only.

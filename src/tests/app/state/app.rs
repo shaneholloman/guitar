@@ -6,10 +6,30 @@ use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Color};
 use std::{
     fs,
     path::{Path, PathBuf},
+    process,
     rc::Rc,
     sync::atomic::Ordering,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+struct TestDir {
+    path: PathBuf,
+}
+
+impl TestDir {
+    fn new(name: &str) -> Self {
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("guitar-app-state-{name}-{}-{suffix}", process::id()));
+        fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+}
+
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
 
 fn temp_repo(name: &str) -> (PathBuf, Repository) {
     let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
@@ -31,12 +51,43 @@ fn commit_file(repo: &Repository, file: &str, message: &str) -> git2::Oid {
     let mut index = repo.index().unwrap();
     index.add_path(Path::new(file)).unwrap();
     index.write().unwrap();
+    commit_index(repo, message)
+}
+
+fn commit_index(repo: &Repository, message: &str) -> git2::Oid {
+    let mut index = repo.index().unwrap();
     let tree_oid = index.write_tree().unwrap();
     let tree = repo.find_tree(tree_oid).unwrap();
     let sig = Signature::now("Test User", "test@example.com").unwrap();
     let parent = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
     let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
     repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents).unwrap()
+}
+
+fn init_repo_at(path: &Path) -> Repository {
+    fs::create_dir_all(path).unwrap();
+    let repo = Repository::init(path).unwrap();
+    {
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Test User").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
+    }
+    commit_file(&repo, "file.txt", "initial");
+    repo
+}
+
+fn parent_with_submodule(dir: &TestDir) -> Repository {
+    let child_path = dir.path.join("child");
+    let parent_path = dir.path.join("parent");
+    let child = init_repo_at(&child_path);
+    drop(child);
+    let parent = init_repo_at(&parent_path);
+    let mut submodule = parent.submodule(child_path.to_str().unwrap(), Path::new("deps/child"), true).unwrap();
+    submodule.clone(None).unwrap();
+    submodule.add_finalize().unwrap();
+    commit_index(&parent, "add submodule");
+    drop(submodule);
+    parent
 }
 
 fn graph_row(index: usize, alias: u32, oid: git2::Oid) -> GraphRow {
@@ -145,6 +196,25 @@ fn pending_restore_requests_oid_lookup_on_progress() {
     let (pending_id, pending_action) = app.graph.pending_lookup.unwrap();
     assert_eq!(pending_id, 1);
     assert!(matches!(pending_action, PendingGraphLookup::RestoreSelection));
+}
+
+#[test]
+fn first_graph_progress_with_dirty_submodule_status_stays_in_graph_view() {
+    let dir = TestDir::new("dirty-submodule-progress");
+    let parent = parent_with_submodule(&dir);
+    fs::write(parent.workdir().unwrap().join("deps/child/file.txt"), "dirty\n").unwrap();
+    let repo = Rc::new(parent);
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let mut app = App { repo: Some(repo.clone()), graph_rx: Some(event_rx), viewport: Viewport::Splash, focus: Focus::Viewport, ..Default::default() };
+    app.graph.generation = 9;
+
+    event_tx.send(GraphEvent::Progress { generation: 9, version: 1, total: 1, is_first: true, is_complete: false }).unwrap();
+    app.sync(&repo);
+
+    assert_eq!(app.viewport, Viewport::Graph);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert!(app.is_uncommitted_loaded);
+    assert!(app.uncommitted.is_clean);
 }
 
 #[test]

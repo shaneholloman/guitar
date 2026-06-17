@@ -80,6 +80,7 @@ impl App {
         }
 
         self.clear_worktree_modal_state();
+        self.submodule_stack.clear();
         self.reload(Some(entry.path.display().to_string()));
         self.viewport = Viewport::Graph;
         self.focus = Focus::Viewport;

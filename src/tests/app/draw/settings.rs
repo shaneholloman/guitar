@@ -214,6 +214,7 @@ fn settings_renders_layout_visibility_rows_with_states() {
     assert!(rendered.contains("layout visibility:"));
     assert!(rendered.contains("1 branches:"));
     assert!(rendered.contains("8 SHAs:"));
+    assert!(rendered.contains("\\ submodules:"));
     assert!(rendered.contains("0 reset layout:"));
     assert!(rendered.contains("[*]"));
     assert!(rendered.contains("[ ]"));

@@ -9,6 +9,7 @@ fn defaults_include_recent_repository_bindings() {
         assert_eq!(mode_map.get(&KeyBinding::new(Char('d'), KeyModifiers::NONE)), Some(&Command::RemoveRecentRepository));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('K'), KeyModifiers::SHIFT)), Some(&Command::MoveRecentRepositoryUp));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('J'), KeyModifiers::SHIFT)), Some(&Command::MoveRecentRepositoryDown));
+        assert_eq!(mode_map.get(&KeyBinding::new(Backspace, KeyModifiers::NONE)), Some(&Command::ReturnToParentRepository));
     }
 }
 
@@ -30,6 +31,7 @@ fn defaults_include_numeric_ui_toggles() {
         assert_eq!(mode_map.get(&KeyBinding::new(Char('8'), KeyModifiers::NONE)), Some(&Command::ToggleShas));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('9'), KeyModifiers::NONE)), Some(&Command::ToggleGraphReflogs));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('\\'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
     }
 }
 
@@ -68,8 +70,12 @@ fn existing_keymaps_gain_search_toggle_when_available() {
     assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
     assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FindFile));
     assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FindFile));
+    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('\\'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
+    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('\\'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
     assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('R'), KeyModifiers::SHIFT)), Some(&Command::ReloadAllBranches));
+    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Backspace, KeyModifiers::NONE)), Some(&Command::ReturnToParentRepository));
     assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('R'), KeyModifiers::SHIFT)), None);
+    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Backspace, KeyModifiers::NONE)), None);
 }
 
 #[test]
@@ -80,13 +86,21 @@ fn existing_keymaps_do_not_override_search_conflicts() {
     normal.insert(KeyBinding::new(Char('s'), KeyModifiers::CONTROL), Command::ToggleSearch);
     normal.insert(KeyBinding::new(Char('F'), KeyModifiers::SHIFT), Command::FetchAll);
     normal.insert(KeyBinding::new(Char('f'), KeyModifiers::CONTROL), Command::FindFile);
+    normal.insert(KeyBinding::new(Char('\\'), KeyModifiers::NONE), Command::Reload);
+    normal.insert(KeyBinding::new(Char('x'), KeyModifiers::CONTROL), Command::ToggleSubmodules);
     normal.insert(KeyBinding::new(Char('R'), KeyModifiers::SHIFT), Command::Revert);
+    normal.insert(KeyBinding::new(Backspace, KeyModifiers::NONE), Command::Reload);
+    normal.insert(KeyBinding::new(Char('p'), KeyModifiers::CONTROL), Command::ReturnToParentRepository);
     let mut action = IndexMap::new();
     action.insert(KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::Reload);
     action.insert(KeyBinding::new(Char('s'), KeyModifiers::CONTROL), Command::ToggleSearch);
     action.insert(KeyBinding::new(Char('F'), KeyModifiers::SHIFT), Command::FetchAll);
     action.insert(KeyBinding::new(Char('f'), KeyModifiers::CONTROL), Command::FindFile);
+    action.insert(KeyBinding::new(Char('\\'), KeyModifiers::NONE), Command::Reload);
+    action.insert(KeyBinding::new(Char('x'), KeyModifiers::CONTROL), Command::ToggleSubmodules);
     action.insert(KeyBinding::new(Char('B'), KeyModifiers::SHIFT), Command::RenameBranch);
+    action.insert(KeyBinding::new(Char('i'), KeyModifiers::NONE), Command::Reload);
+    action.insert(KeyBinding::new(Char('I'), KeyModifiers::SHIFT), Command::ReloadAllBranches);
     maps.insert(InputMode::Normal, normal);
     maps.insert(InputMode::Action, action);
 
@@ -96,6 +110,10 @@ fn existing_keymaps_do_not_override_search_conflicts() {
     assert_eq!(normal.get(&KeyBinding::new(Char('s'), KeyModifiers::CONTROL)), Some(&Command::ToggleSearch));
     assert_eq!(normal.get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FetchAll));
     assert_eq!(normal.get(&KeyBinding::new(Char('f'), KeyModifiers::CONTROL)), Some(&Command::FindFile));
+    assert_eq!(normal.get(&KeyBinding::new(Char('\\'), KeyModifiers::NONE)), Some(&Command::Reload));
+    assert_eq!(normal.get(&KeyBinding::new(Char('x'), KeyModifiers::CONTROL)), Some(&Command::ToggleSubmodules));
+    assert_eq!(normal.get(&KeyBinding::new(Backspace, KeyModifiers::NONE)), Some(&Command::Reload));
+    assert_eq!(normal.get(&KeyBinding::new(Char('p'), KeyModifiers::CONTROL)), Some(&Command::ReturnToParentRepository));
 }
 
 #[test]
@@ -139,6 +157,8 @@ fn defaults_include_operation_bindings() {
     assert_eq!(action.get(&KeyBinding::new(Char('m'), KeyModifiers::NONE)), Some(&Command::Merge));
     assert_eq!(action.get(&KeyBinding::new(Char('C'), KeyModifiers::SHIFT)), Some(&Command::ContinueOperation));
     assert_eq!(action.get(&KeyBinding::new(Char('A'), KeyModifiers::SHIFT)), Some(&Command::AbortOperation));
+    assert_eq!(action.get(&KeyBinding::new(Char('i'), KeyModifiers::NONE)), Some(&Command::UpdateSubmodule));
+    assert_eq!(action.get(&KeyBinding::new(Char('I'), KeyModifiers::SHIFT)), Some(&Command::SyncSubmodule));
 }
 
 #[test]

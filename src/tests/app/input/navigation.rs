@@ -172,14 +172,20 @@ fn directional_focus_moves_up_and_down_inside_left_stack() {
 }
 
 #[test]
-fn directional_focus_reaches_search_at_bottom_of_left_stack() {
+fn directional_focus_reaches_submodules_then_search_at_bottom_of_left_stack() {
     let mut app = directional_focus_app();
     app.layout_config.is_worktrees = true;
+    app.layout_config.is_submodules = true;
     app.layout_config.is_search = true;
     app.focus = Focus::Worktrees;
     app.layout.pane_worktrees = Rect::new(0, 0, 20, 5);
-    app.layout.pane_search = Rect::new(0, 5, 20, 5);
-    app.layout.graph = Rect::new(20, 0, 40, 10);
+    app.layout.pane_submodules = Rect::new(0, 5, 20, 5);
+    app.layout.pane_search = Rect::new(0, 10, 20, 5);
+    app.layout.graph = Rect::new(20, 0, 40, 15);
+
+    app.on_focus_pane_down();
+
+    assert_eq!(app.focus, Focus::Submodules);
 
     app.on_focus_pane_down();
 
@@ -1030,6 +1036,27 @@ fn settings_layout_command_toggles_and_stays_in_settings() {
 }
 
 #[test]
+fn settings_submodule_layout_command_toggles_and_stays_in_settings() {
+    let mut app = App {
+        viewport: Viewport::Settings,
+        focus: Focus::Viewport,
+        settings_selected: 12,
+        settings_selections: vec![SettingsSelection { line: 12, kind: SettingsSelectionKind::LayoutCommand(Command::ToggleSubmodules) }],
+        ..Default::default()
+    };
+    app.layout_config.is_submodules = false;
+    app.settings_scroll.set(4);
+
+    app.on_select();
+
+    assert!(app.layout_config.is_submodules);
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.settings_selected, 12);
+    assert_eq!(app.settings_scroll.get(), 4);
+}
+
+#[test]
 fn settings_reset_layout_command_resets_and_stays_in_settings() {
     let mut app = App {
         viewport: Viewport::Settings,
@@ -1077,6 +1104,22 @@ fn toggle_search_shortcut_opens_and_closes_search_pane() {
 
     app.handle_key_event(KeyEvent::new(KeyCode::Char('`'), KeyModifiers::NONE));
     assert!(!app.layout_config.is_search);
+    assert_eq!(app.focus, Focus::Viewport);
+}
+
+#[test]
+fn toggle_submodules_shortcut_opens_and_closes_submodule_pane() {
+    let mut keymaps = minimal_keymaps();
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('\\'), KeyModifiers::NONE), Command::ToggleSubmodules);
+    let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, keymaps, ..Default::default() };
+    app.layout_config.is_submodules = false;
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::NONE));
+    assert!(app.layout_config.is_submodules);
+    assert_eq!(app.focus, Focus::Submodules);
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::NONE));
+    assert!(!app.layout_config.is_submodules);
     assert_eq!(app.focus, Focus::Viewport);
 }
 

@@ -18,6 +18,7 @@ pub enum DrawSurface {
     Settings,
     Splash,
     Stashes,
+    Submodules,
     Status,
     Statusbar,
     Tags,

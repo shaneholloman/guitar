@@ -4,7 +4,11 @@ use crate::{
         draw::buffered::DrawTarget,
     },
     git::queries::commits::get_current_branch,
-    helpers::{branch_visibility::current_branch_names, keymap::InputMode, symbols::SYM_WORKTREE},
+    helpers::{
+        branch_visibility::current_branch_names,
+        keymap::InputMode,
+        symbols::{SYM_SUBMODULE, SYM_WORKTREE},
+    },
 };
 use ratatui::{
     style::Style,
@@ -13,11 +17,22 @@ use ratatui::{
 };
 
 impl App {
+    fn submodule_stack_status_label(&self) -> Option<String> {
+        let first = self.submodule_stack.first()?;
+        let root = first.parent_path.file_name().and_then(|value| value.to_str()).map(str::to_string).unwrap_or_else(|| first.parent_path.display().to_string());
+        let mut parts = vec![root];
+        parts.extend(self.submodule_stack.iter().map(|entry| entry.submodule_path.display().to_string()));
+        Some(format!("{SYM_SUBMODULE} {} ", parts.join(" › ")))
+    }
+
     pub fn draw_statusbar(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
         let mut left_spans: Vec<Span> = match self.worktrees.current_name() {
             Some(name) => vec![Span::styled(format!("  {SYM_WORKTREE} {name} "), Style::default().fg(self.theme.COLOR_GRASS))],
             None => vec![Span::raw("  ")],
         };
+        if let Some(label) = self.submodule_stack_status_label() {
+            left_spans.push(Span::styled(label, Style::default().fg(self.theme.COLOR_TEAL)));
+        }
         match get_current_branch(repo) {
             Some(branch) => left_spans.push(Span::styled(format!("● {}", branch), Style::default().fg(self.theme.COLOR_GRASS))),
             None => match repo.head().ok().and_then(|h| h.target()) {
@@ -50,6 +65,7 @@ impl App {
             Focus::Stashes => self.graph.stashes_window.as_ref().map(|window| window.total).unwrap_or(self.oids.stashes.len()),
             Focus::Reflogs => self.graph.reflogs_window.as_ref().map(|window| window.total).unwrap_or(self.reflogs.entries.len()),
             Focus::Worktrees => self.worktrees.entries.len(),
+            Focus::Submodules => self.submodules.entries.len(),
             Focus::Search => self.search_rows.len(),
             _ => 0,
         };
@@ -74,6 +90,7 @@ impl App {
                 Focus::Stashes => self.stashes_selected + 1,
                 Focus::Reflogs => self.reflogs_selected + 1,
                 Focus::Worktrees => self.worktrees_selected + 1,
+                Focus::Submodules => self.submodules_selected + 1,
                 Focus::Search => self.search_selected + 1,
                 _ => 0,
             }
@@ -98,3 +115,7 @@ impl App {
         frame.render_widget(title_paragraph, self.layout.statusbar_right);
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/app/draw/statusbar.rs"]
+mod tests;

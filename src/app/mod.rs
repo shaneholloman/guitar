@@ -30,6 +30,7 @@ pub mod draw {
     pub mod stashes;
     pub mod status;
     pub mod statusbar;
+    pub mod submodules;
     pub mod tags;
     pub mod title;
     pub mod viewer;
@@ -43,6 +44,7 @@ pub mod input {
     pub mod modals;
     pub mod navigation;
     pub mod remotes;
+    pub mod submodules;
     pub mod text;
     pub mod worktrees;
 

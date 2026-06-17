@@ -39,6 +39,7 @@ pub enum Command {
     ToggleReflogs,
     ToggleGraphReflogs,
     ToggleWorktrees,
+    ToggleSubmodules,
     ToggleSearch,
     ToggleStatus,
     ToggleInspector,
@@ -49,6 +50,7 @@ pub enum Command {
     RemoveRecentRepository,
     MoveRecentRepositoryUp,
     MoveRecentRepositoryDown,
+    ReturnToParentRepository,
 
     // Lists
     ScrollPageUp,
@@ -103,6 +105,8 @@ pub enum Command {
     CreateWorktree,
     RemoveWorktree,
     ToggleWorktreeLock,
+    UpdateSubmodule,
+    SyncSubmodule,
     Reload,
     ReloadAllBranches,
 }
@@ -377,6 +381,7 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     map.insert(KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleReflogs);
     map.insert(KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleShas);
     map.insert(KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleGraphReflogs);
+    map.insert(KeyBinding::new(Char('\\'), KeyModifiers::NONE), Command::ToggleSubmodules);
     map.insert(KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::ToggleSearch);
 
     // Help and settings
@@ -439,6 +444,9 @@ fn default_normal_keymap() -> IndexMap<KeyBinding, Command> {
     // Shift+K/J reorder the selected recent repository without stealing normal list navigation.
     map.insert(KeyBinding::new(Char('K'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryUp);
     map.insert(KeyBinding::new(Char('J'), KeyModifiers::SHIFT), Command::MoveRecentRepositoryDown);
+
+    // Backspace returns from a submodule to its parent repository when there is a session stack.
+    map.insert(KeyBinding::new(Backspace, KeyModifiers::NONE), Command::ReturnToParentRepository);
 
     map
 }
@@ -507,6 +515,12 @@ fn default_action_keymap() -> IndexMap<KeyBinding, Command> {
     // 'L' toggles a selected linked worktree lock.
     map.insert(KeyBinding::new(Char('L'), KeyModifiers::SHIFT), Command::ToggleWorktreeLock);
 
+    // 'i' updates/initializes the selected submodule.
+    map.insert(KeyBinding::new(Char('i'), KeyModifiers::NONE), Command::UpdateSubmodule);
+
+    // 'I' syncs the selected submodule URL into its local config.
+    map.insert(KeyBinding::new(Char('I'), KeyModifiers::SHIFT), Command::SyncSubmodule);
+
     map
 }
 
@@ -521,7 +535,11 @@ fn default_keymaps() -> Keymaps {
 
 fn ensure_default_keymap_bindings(maps: &mut Keymaps) -> bool {
     let mut changed = false;
-    let shared_defaults = [(KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::ToggleSearch), (KeyBinding::new(Char('F'), KeyModifiers::SHIFT), Command::FindFile)];
+    let shared_defaults = [
+        (KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::ToggleSearch),
+        (KeyBinding::new(Char('F'), KeyModifiers::SHIFT), Command::FindFile),
+        (KeyBinding::new(Char('\\'), KeyModifiers::NONE), Command::ToggleSubmodules),
+    ];
     for mode in [InputMode::Normal, InputMode::Action] {
         let mode_map = maps.entry(mode).or_default();
         for (key, command) in shared_defaults.iter() {
@@ -537,10 +555,25 @@ fn ensure_default_keymap_bindings(maps: &mut Keymaps) -> bool {
         normal_map.insert(reload_all_key, Command::ReloadAllBranches);
         changed = true;
     }
+    let return_parent_key = KeyBinding::new(Backspace, KeyModifiers::NONE);
+    if !normal_map.values().any(|existing| existing == &Command::ReturnToParentRepository) && !normal_map.contains_key(&return_parent_key) {
+        normal_map.insert(return_parent_key, Command::ReturnToParentRepository);
+        changed = true;
+    }
     let action_map = maps.entry(InputMode::Action).or_default();
     let rename_branch_key = KeyBinding::new(Char('B'), KeyModifiers::SHIFT);
     if !action_map.values().any(|existing| existing == &Command::RenameBranch) && !action_map.contains_key(&rename_branch_key) {
         action_map.insert(rename_branch_key, Command::RenameBranch);
+        changed = true;
+    }
+    let update_submodule_key = KeyBinding::new(Char('i'), KeyModifiers::NONE);
+    if !action_map.values().any(|existing| existing == &Command::UpdateSubmodule) && !action_map.contains_key(&update_submodule_key) {
+        action_map.insert(update_submodule_key, Command::UpdateSubmodule);
+        changed = true;
+    }
+    let sync_submodule_key = KeyBinding::new(Char('I'), KeyModifiers::SHIFT);
+    if !action_map.values().any(|existing| existing == &Command::SyncSubmodule) && !action_map.contains_key(&sync_submodule_key) {
+        action_map.insert(sync_submodule_key, Command::SyncSubmodule);
         changed = true;
     }
     changed
