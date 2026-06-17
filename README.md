@@ -265,7 +265,7 @@ For merge commits, file lists and file diffs compare against the first parent.
 
 ### Settings
 
-The settings/help view is opened with `?`. It shows version, commit heatmap, config paths, recent repositories, Git identity, auth notes, theme choices, layout visibility, and active keymaps. Recent repository rows, theme rows, layout rows, and keybinding rows are selectable.
+The settings/help view is opened with `?`. It shows version, commit heatmap, config paths, recent repositories, remotes, Git identity, auth notes, theme choices, layout visibility, and active keymaps. Recent repository rows, remote rows, theme rows, layout rows, and keybinding rows are selectable.
 
 ## Navigation
 
@@ -303,6 +303,8 @@ Hidden panes are skipped. The unstaged status pane is focusable only on the unco
 
 - Splash: open selected recent repository.
 - Settings theme: activate and save theme.
+- Settings remote: open the remote action chooser.
+- Settings add remote: open the add-remote prompts.
 - Settings keybinding: open key capture.
 - Settings layout row: toggle that layout option or reset layout.
 - Graph: open a worktree badge if the selected commit has valid worktree candidates.
@@ -572,6 +574,24 @@ It fetches:
 
 Pruning is enabled.
 
+### Remotes
+
+Remote management lives in settings. Open settings with `?`, select a remote row, and press `Enter`.
+
+Remote rows can:
+
+- Fetch the selected remote with the same background auth/progress flow as normal fetch.
+- Rename the remote.
+- Edit the fetch URL.
+- Edit the push URL.
+- Delete the local remote configuration.
+
+The `+ add remote` row opens prompts for a remote name and fetch URL. Remote names are validated with Git's remote-name rules.
+
+Editing a push URL to an empty value clears the dedicated push URL, so Git falls back to the fetch URL. Deleting a remote removes local remote configuration and prunes matching hidden-branch visibility entries; it does not delete anything on the server.
+
+Normal-key `f`, force-push current branch, and push-tags still target `origin`.
+
 ### Checkout
 
 Action key: `Ctrl+a`, then `o`.
@@ -805,7 +825,7 @@ Opening a worktree reloads the app at the selected worktree path.
 
 ## Authentication
 
-Network auth is used for fetch, push current branch, push tags, and remote branch deletion.
+Network auth is used for fetch, selected-remote fetch from settings, push current branch, push tags, and remote branch deletion.
 
 ### SSH
 
@@ -858,6 +878,7 @@ The settings view includes:
 - Config file paths.
 - Recent repositories.
 - Git `user.name` and `user.email`.
+- Remotes and remote URLs.
 - Auth behavior notes.
 - Theme list.
 - Layout visibility toggles.
@@ -867,6 +888,8 @@ The settings view includes:
 Selectable rows:
 
 - Recent repository rows: `d` removes, `Shift+K` moves up, and `Shift+J` moves down.
+- Remote rows: `Enter` opens fetch, rename, URL edit, push URL edit, and delete actions.
+- Add remote row: `Enter` opens name and URL prompts.
 - Theme rows: `Enter` activates and saves the selected theme.
 - Layout visibility rows: `Enter` toggles the row or resets layout.
 - Keybinding rows: `Enter` opens key capture.
@@ -1151,7 +1174,7 @@ Important source areas:
 ## Known Limitations
 
 - No filesystem watcher. Use reload when repository state changes outside the app.
-- Network operations are remote-name limited and mostly assume `origin`.
+- Push operations still assume `origin`; settings can fetch a selected remote.
 - Current branch push is force push only.
 - No pull UI.
 - Conflict resolution editing is external.
@@ -1162,7 +1185,7 @@ Important source areas:
 - Tag creation is lightweight only.
 - No annotated-tag message flow.
 - No remote tag deletion flow.
-- Remote management and branch upstream editing are not implemented.
+- Branch upstream editing is not implemented.
 - Search matches loaded commit SHA prefixes only.
 - Search does not match commit messages, authors, branches, tags, filenames, or unloaded history.
 - Recent repositories are append-only from inside the app.

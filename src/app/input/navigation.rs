@@ -528,6 +528,12 @@ impl App {
                         Some(SettingsSelectionKind::LayoutCommand(command)) => {
                             self.activate_settings_layout_command(command);
                         },
+                        Some(SettingsSelectionKind::RemoteAdd) => {
+                            self.begin_add_remote();
+                        },
+                        Some(SettingsSelectionKind::Remote(remote_name)) => {
+                            self.begin_remote_action(remote_name);
+                        },
                         _ => {},
                     }
                 },
@@ -562,6 +568,12 @@ impl App {
             },
             Focus::ModalWorktreeChooser => {
                 self.confirm_worktree_chooser();
+            },
+            Focus::ModalRemoteAction => {
+                self.confirm_remote_action();
+            },
+            Focus::ModalRemoteDelete => {
+                self.confirm_delete_remote();
             },
             Focus::StatusTop | Focus::StatusBottom => {
                 if let Some(repo) = &self.repo.clone() {
@@ -1135,6 +1147,9 @@ impl App {
             Focus::ModalWorktreeChooser => {
                 Self::wrap_modal_selection(&mut self.modal_worktree_selected, self.modal_worktree_candidates.len(), Direction::Up);
             },
+            Focus::ModalRemoteAction => {
+                self.move_remote_action_selection(Direction::Up);
+            },
             _ => {},
         }
     }
@@ -1218,6 +1233,9 @@ impl App {
             },
             Focus::ModalWorktreeChooser => {
                 Self::wrap_modal_selection(&mut self.modal_worktree_selected, self.modal_worktree_candidates.len(), Direction::Down);
+            },
+            Focus::ModalRemoteAction => {
+                self.move_remote_action_selection(Direction::Down);
             },
             _ => {},
         }
@@ -1888,6 +1906,9 @@ impl App {
                 self.modal_input.clear();
                 self.focus = Focus::Worktrees;
             },
+            Focus::ModalRemoteAction | Focus::ModalRemoteDelete | Focus::ModalRemoteName | Focus::ModalRemoteUrl => {
+                self.close_remote_modal();
+            },
             Focus::ModalFileSearch => {
                 self.modal_input.clear();
                 self.modal_file_search_results.clear();
@@ -1985,6 +2006,8 @@ impl App {
             | Focus::ModalCreateWorktreeName
             | Focus::ModalCreateWorktreePath
             | Focus::ModalLockWorktree
+            | Focus::ModalRemoteName
+            | Focus::ModalRemoteUrl
             | Focus::ModalFileSearch => {
                 self.modal_input.clear();
                 self.modal_file_search_results.clear();
@@ -1993,6 +2016,9 @@ impl App {
                 self.clear_pending_branch_target();
                 self.modal_rename_branch_source = None;
                 self.focus = Focus::Viewport;
+            },
+            Focus::ModalRemoteAction | Focus::ModalRemoteDelete => {
+                self.close_remote_modal();
             },
             Focus::ModalAuth | Focus::ModalNetworkProgress => {
                 self.pending_auth_prompt = None;

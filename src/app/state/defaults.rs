@@ -7,7 +7,7 @@ use crate::{
 };
 use crate::{
     app::{
-        app::{App, AuthInputField, BranchModalAction, Focus, OperationKind, Viewport, WorktreeModalAction},
+        app::{App, AuthInputField, BranchModalAction, Focus, OperationKind, RemoteInputAction, Viewport, WorktreeModalAction},
         draw::buffered::SurfaceBuffers,
         state::layout::Layout,
     },
@@ -179,6 +179,10 @@ impl Default for App {
             modal_worktree_target: None,
             modal_worktree_action: WorktreeModalAction::Open,
             modal_worktree_return_focus: Focus::Viewport,
+            modal_remote_selected: 0,
+            modal_remote_target: None,
+            modal_remote_input_action: RemoteInputAction::AddName,
+            modal_remote_name: String::new(),
             modal_file_search_results: Vec::new(),
             modal_file_search_selected: 0,
             modal_file_search_scroll: 0.into(),

@@ -1086,6 +1086,10 @@ impl App {
                 | Focus::ModalWorktreeChooser
                 | Focus::ModalRemoveWorktree
                 | Focus::ModalLockWorktree
+                | Focus::ModalRemoteAction
+                | Focus::ModalRemoteDelete
+                | Focus::ModalRemoteName
+                | Focus::ModalRemoteUrl
                 | Focus::ModalGrep
                 | Focus::ModalFileSearch
                 | Focus::ModalTag

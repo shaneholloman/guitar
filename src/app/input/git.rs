@@ -26,7 +26,7 @@ use std::path::Path;
 impl App {
     const MAX_AUTH_ATTEMPTS: usize = 3;
 
-    fn start_network_request(&mut self, request: NetworkRequest) {
+    pub(crate) fn start_network_request(&mut self, request: NetworkRequest) {
         if self.network_handle.is_some() {
             self.show_error("Git network operation failed: another network operation is already running");
             return;

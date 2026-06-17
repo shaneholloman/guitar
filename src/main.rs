@@ -29,6 +29,7 @@ pub mod git {
         pub mod network;
         pub mod pushing;
         pub mod rebasing;
+        pub mod remotes;
         pub mod resetting;
         pub mod reverting;
         pub mod staging;
@@ -46,6 +47,7 @@ pub mod git {
         pub mod files;
         pub mod helpers;
         pub mod reflogs;
+        pub mod remotes;
         pub mod worktrees;
     }
 }

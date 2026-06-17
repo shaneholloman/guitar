@@ -532,6 +532,34 @@ impl App {
                 }
                 true
             },
+            Focus::ModalRemoteName => {
+                match key_event.code {
+                    KeyCode::Esc => {
+                        self.close_remote_modal();
+                    },
+                    KeyCode::Enter => {
+                        self.confirm_remote_name_input();
+                    },
+                    _ => {
+                        self.modal_input.on_key(key_event);
+                    },
+                }
+                true
+            },
+            Focus::ModalRemoteUrl => {
+                match key_event.code {
+                    KeyCode::Esc => {
+                        self.close_remote_modal();
+                    },
+                    KeyCode::Enter => {
+                        self.confirm_remote_url_input();
+                    },
+                    _ => {
+                        self.modal_input.on_key(key_event);
+                    },
+                }
+                true
+            },
             Focus::ModalGrep => {
                 match key_event.code {
                     KeyCode::Esc => {

@@ -141,7 +141,7 @@ fn old_label_only_theme_config_falls_back_to_default_and_rewrites_full_json() {
     let config = facet_json::from_str::<ThemeConfig>(&contents).unwrap();
     assert_eq!(config.label, "classic");
     assert_eq!(config.colors.grey_950.unwrap(), "#1e1e1e");
-    assert_eq!(config.colors.highlighted.unwrap(), "#e0e0e0");
+    assert_eq!(config.colors.highlighted.unwrap(), color_to_string(Theme::classic().COLOR_HIGHLIGHTED));
 }
 
 #[test]

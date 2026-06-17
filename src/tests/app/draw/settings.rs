@@ -162,7 +162,7 @@ fn settings_section_names_use_highlight_color() {
     terminal.draw(|frame| app.draw_settings(frame, &repo)).unwrap();
     let buffer = terminal.backend().buffer();
 
-    for label in ["paths:", "recent repositories:", "credentials:", "themes:", "layout visibility:", "shortcuts / normal mode:", "shortcuts / action mode:"] {
+    for label in ["paths:", "recent repositories:", "remotes:", "credentials:", "themes:", "layout visibility:", "shortcuts / normal mode:", "shortcuts / action mode:"] {
         let row = (0..buffer.area.height)
             .find(|&y| {
                 let line = (0..buffer.area.width).map(|x| buffer[(x, y)].symbol()).collect::<String>();
@@ -218,4 +218,53 @@ fn settings_empty_recent_repositories_row_is_not_selectable() {
 
     assert!(rendered.contains("no recent repositories"));
     assert!(!app.settings_selections.iter().any(|selection| matches!(selection.kind, SettingsSelectionKind::RecentRepository(_))));
+}
+
+#[test]
+fn settings_renders_remotes_section_with_add_and_empty_state() {
+    let (_path, repo) = temp_repo("empty-remotes-section");
+    let mut app = settings_app();
+    app.layout.graph = Rect::new(0, 0, 140, 120);
+    app.layout.app = Rect::new(0, 0, 140, 120);
+
+    let rendered = rendered_settings(&mut app, &repo, 140, 120);
+
+    assert!(rendered.contains("remotes:"));
+    assert!(rendered.contains("+ add remote"));
+    assert!(rendered.contains("no remotes"));
+    assert!(app.settings_selections.iter().any(|selection| selection.kind == SettingsSelectionKind::RemoteAdd));
+    assert!(!app.settings_selections.iter().any(|selection| matches!(selection.kind, SettingsSelectionKind::Remote(_))));
+}
+
+#[test]
+fn settings_renders_remote_rows_with_fetch_and_push_urls() {
+    let (_path, repo) = temp_repo("remote-rows");
+    repo.remote("origin", "https://example.com/repo.git").unwrap();
+    repo.remote_set_pushurl("origin", Some("ssh://example.com/repo.git")).unwrap();
+    let mut app = settings_app();
+    app.layout.graph = Rect::new(0, 0, 180, 140);
+    app.layout.app = Rect::new(0, 0, 180, 140);
+
+    let rendered = rendered_settings(&mut app, &repo, 180, 140);
+
+    assert!(rendered.contains("origin:"));
+    assert!(rendered.contains("fetch: https://example.com/repo.git"));
+    assert!(rendered.contains("push: ssh://example.com/repo.git"));
+    assert!(app.settings_selections.iter().any(|selection| selection.kind == SettingsSelectionKind::Remote("origin".to_string())));
+}
+
+#[test]
+fn settings_truncates_long_remote_urls() {
+    let (_path, repo) = temp_repo("remote-truncate");
+    let long_url = "https://example.com/this/is/a/very/long/path/that/should/not/overflow/the/settings/row/repository.git";
+    repo.remote("origin", long_url).unwrap();
+    let mut app = settings_app();
+    app.layout.graph = Rect::new(0, 0, 80, 120);
+    app.layout.app = Rect::new(0, 0, 80, 120);
+
+    let rendered = rendered_settings(&mut app, &repo, 80, 120);
+
+    assert!(rendered.contains("origin:"));
+    assert!(rendered.contains("..."));
+    assert!(!rendered.contains(long_url));
 }

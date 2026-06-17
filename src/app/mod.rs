@@ -16,6 +16,7 @@ pub mod draw {
         pub mod input;
         pub mod key_capture;
         pub mod rebase;
+        pub mod remotes;
         pub mod remove_worktree;
         pub(crate) mod shared;
         pub mod solo;
@@ -41,6 +42,7 @@ pub mod input {
     pub mod handler;
     pub mod modals;
     pub mod navigation;
+    pub mod remotes;
     pub mod text;
     pub mod worktrees;
 

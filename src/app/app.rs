@@ -103,6 +103,10 @@ pub enum Focus {
     ModalWorktreeChooser,
     ModalRemoveWorktree,
     ModalLockWorktree,
+    ModalRemoteAction,
+    ModalRemoteDelete,
+    ModalRemoteName,
+    ModalRemoteUrl,
     ModalGrep,
     ModalFileSearch,
     ModalTag,
@@ -166,6 +170,15 @@ pub enum BranchModalAction {
     Solo,
     Toggle,
     Rename,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum RemoteInputAction {
+    AddName,
+    AddUrl,
+    Rename,
+    EditUrl,
+    EditPushUrl,
 }
 
 #[derive(Default)]
@@ -241,6 +254,8 @@ pub enum Direction {
 pub enum SettingsSelectionKind {
     Info,
     RecentRepository(usize),
+    RemoteAdd,
+    Remote(String),
     Theme(usize),
     KeyBinding(KeymapSelection),
     LayoutCommand(Command),
@@ -468,6 +483,10 @@ pub struct App {
     pub modal_worktree_target: Option<usize>,
     pub modal_worktree_action: WorktreeModalAction,
     pub modal_worktree_return_focus: Focus,
+    pub modal_remote_selected: i32,
+    pub modal_remote_target: Option<String>,
+    pub modal_remote_input_action: RemoteInputAction,
+    pub modal_remote_name: String,
     pub modal_file_search_results: Vec<FileSearchResult>,
     pub modal_file_search_selected: i32,
     pub modal_file_search_scroll: Cell<usize>,
@@ -657,6 +676,12 @@ impl App {
                 Focus::ModalRemoveWorktree => {
                     self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_remove_worktree(surface));
                 },
+                Focus::ModalRemoteAction => {
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_remote_action(surface));
+                },
+                Focus::ModalRemoteDelete => {
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_delete_remote(surface));
+                },
                 Focus::ModalDeleteTag => {
                     self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_delete_tag(surface));
                 },
@@ -689,6 +714,9 @@ impl App {
                 },
                 Focus::ModalLockWorktree => {
                     self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_LOCK_WORKTREE));
+                },
+                Focus::ModalRemoteName | Focus::ModalRemoteUrl => {
+                    self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, app.remote_input_title()));
                 },
                 Focus::ModalGrep => {
                     self.draw_surface(frame, DrawSurface::Modal, |app, surface| app.draw_modal_input(surface, STR_FIND_SHA));

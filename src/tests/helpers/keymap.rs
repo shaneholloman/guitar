@@ -142,6 +142,18 @@ fn defaults_include_operation_bindings() {
 }
 
 #[test]
+fn remote_management_does_not_change_existing_default_keymaps() {
+    let maps = default_keymaps();
+    let normal = maps.get(&InputMode::Normal).unwrap();
+    let action = maps.get(&InputMode::Action).unwrap();
+
+    assert_eq!(normal.get(&KeyBinding::new(Char('f'), KeyModifiers::NONE)), Some(&Command::FetchAll));
+    assert_eq!(action.get(&KeyBinding::new(Char('f'), KeyModifiers::NONE)), Some(&Command::FetchAll));
+    assert_eq!(normal.get(&KeyBinding::new(Char('a'), KeyModifiers::CONTROL)), Some(&Command::ActionMode));
+    assert_eq!(action.get(&KeyBinding::new(Char('D'), KeyModifiers::SHIFT)), Some(&Command::DeleteBranch));
+}
+
+#[test]
 fn existing_keymaps_gain_rename_branch_when_available() {
     let mut maps = IndexMap::new();
     maps.insert(InputMode::Normal, IndexMap::new());

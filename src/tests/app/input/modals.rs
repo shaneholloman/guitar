@@ -1,6 +1,7 @@
 use super::*;
-use crate::app::app::Viewport;
+use crate::app::app::{RemoteInputAction, SettingsSelection, SettingsSelectionKind, Viewport};
 use crate::core::graph_service::GraphCommand;
+use crate::git::actions::network::NetworkRequest;
 use git2::{Repository, Signature};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::{
@@ -212,4 +213,176 @@ fn rename_branch_esc_closes_and_clears_modal_state() {
     assert_eq!(app.focus, Focus::Viewport);
     assert!(app.modal_input.value().is_empty());
     assert_eq!(app.modal_rename_branch_source, None);
+}
+
+fn remote_app(name: &str) -> (PathBuf, App) {
+    let (path, repo) = temp_repo(name);
+    commit_files(&repo, &["file.txt"], "initial");
+    let path_string = path.display().to_string();
+    let app = App { path: Some(path_string.clone()), recent: vec![path_string], repo: Some(Rc::new(repo)), viewport: Viewport::Settings, focus: Focus::Viewport, ..Default::default() };
+    (path, app)
+}
+
+#[test]
+fn settings_remote_add_row_opens_add_name_prompt() {
+    let (_path, mut app) = remote_app("settings-add");
+    app.settings_selected = 10;
+    app.settings_selections = vec![SettingsSelection { line: 10, kind: SettingsSelectionKind::RemoteAdd }];
+
+    app.on_select();
+
+    assert_eq!(app.focus, Focus::ModalRemoteName);
+    assert_eq!(app.modal_remote_input_action, RemoteInputAction::AddName);
+    assert!(app.modal_input.value().is_empty());
+}
+
+#[test]
+fn settings_remote_row_opens_remote_action_modal() {
+    let (_path, mut app) = remote_app("settings-remote");
+    app.settings_selected = 10;
+    app.settings_selections = vec![SettingsSelection { line: 10, kind: SettingsSelectionKind::Remote("origin".to_string()) }];
+
+    app.on_select();
+
+    assert_eq!(app.focus, Focus::ModalRemoteAction);
+    assert_eq!(app.modal_remote_target.as_deref(), Some("origin"));
+    assert_eq!(app.modal_remote_selected, 0);
+}
+
+#[test]
+fn add_remote_flow_creates_remote_and_returns_to_settings() {
+    let (path, mut app) = remote_app("add-remote");
+    app.begin_add_remote();
+
+    app.modal_input.set_value("origin");
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.focus, Focus::ModalRemoteUrl);
+    assert_eq!(app.modal_remote_input_action, RemoteInputAction::AddUrl);
+    assert_eq!(app.modal_remote_name, "origin");
+
+    app.modal_input.set_value("https://example.com/repo.git");
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert!(app.modal_input.value().is_empty());
+    assert_eq!(Repository::open(path).unwrap().find_remote("origin").unwrap().url(), Some("https://example.com/repo.git"));
+}
+
+#[test]
+fn add_remote_invalid_name_returns_to_name_prompt_with_text_preserved() {
+    let (_path, mut app) = remote_app("add-invalid-name");
+    app.begin_add_remote();
+    app.modal_input.set_value("bad\nname");
+
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.focus, Focus::ModalError);
+    assert_eq!(app.modal_error_return_focus, Focus::ModalRemoteName);
+    assert_eq!(app.modal_input.value(), "bad\nname");
+}
+
+#[test]
+fn rename_remote_flow_rewrites_hidden_remote_branch_names() {
+    let (path, mut app) = remote_app("rename-remote");
+    app.repo.as_ref().unwrap().remote("origin", "https://example.com/repo.git").unwrap();
+    let oid = app.repo.as_ref().unwrap().head().unwrap().target().unwrap();
+    app.repo.as_ref().unwrap().reference("refs/remotes/origin/topic", oid, true, "test").unwrap();
+    app.repo.as_ref().unwrap().reference("refs/remotes/other/topic", oid, true, "test").unwrap();
+    app.branches.hidden_branch_names.insert("origin/topic".to_string());
+    app.branches.hidden_branch_names.insert("other/topic".to_string());
+    app.modal_remote_target = Some("origin".to_string());
+    app.modal_remote_input_action = RemoteInputAction::Rename;
+    app.focus = Focus::ModalRemoteName;
+    app.modal_input.set_value("upstream");
+
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+
+    let repo = Repository::open(path).unwrap();
+    assert!(repo.find_remote("origin").is_err());
+    assert!(repo.find_remote("upstream").is_ok());
+    assert!(app.branches.hidden_branch_names.contains("upstream/topic"));
+    assert!(app.branches.hidden_branch_names.contains("other/topic"));
+    assert!(!app.branches.hidden_branch_names.contains("origin/topic"));
+}
+
+#[test]
+fn edit_remote_fetch_url_flow_updates_url() {
+    let (path, mut app) = remote_app("edit-fetch-url");
+    app.repo.as_ref().unwrap().remote("origin", "https://example.com/repo.git").unwrap();
+    app.modal_remote_target = Some("origin".to_string());
+    app.modal_remote_input_action = RemoteInputAction::EditUrl;
+    app.focus = Focus::ModalRemoteUrl;
+    app.modal_input.set_value("https://example.com/renamed.git");
+
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(Repository::open(path).unwrap().find_remote("origin").unwrap().url(), Some("https://example.com/renamed.git"));
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.viewport, Viewport::Settings);
+}
+
+#[test]
+fn edit_remote_empty_push_url_clears_push_url() {
+    let (path, mut app) = remote_app("edit-push-url");
+    app.repo.as_ref().unwrap().remote("origin", "https://example.com/repo.git").unwrap();
+    app.repo.as_ref().unwrap().remote_set_pushurl("origin", Some("ssh://example.com/repo.git")).unwrap();
+    app.modal_remote_target = Some("origin".to_string());
+    app.modal_remote_input_action = RemoteInputAction::EditPushUrl;
+    app.focus = Focus::ModalRemoteUrl;
+    app.modal_input.set_value("");
+
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(Repository::open(path).unwrap().find_remote("origin").unwrap().pushurl(), None);
+}
+
+#[test]
+fn delete_remote_confirmation_deletes_remote_and_prunes_hidden_remote_branches() {
+    let (path, mut app) = remote_app("delete-remote");
+    app.repo.as_ref().unwrap().remote("origin", "https://example.com/repo.git").unwrap();
+    let oid = app.repo.as_ref().unwrap().head().unwrap().target().unwrap();
+    app.repo.as_ref().unwrap().reference("refs/remotes/other/topic", oid, true, "test").unwrap();
+    app.branches.hidden_branch_names.insert("origin/topic".to_string());
+    app.branches.hidden_branch_names.insert("other/topic".to_string());
+    app.modal_remote_target = Some("origin".to_string());
+    app.focus = Focus::ModalRemoteDelete;
+
+    app.on_select();
+
+    assert!(Repository::open(path).unwrap().find_remote("origin").is_err());
+    assert!(!app.branches.hidden_branch_names.contains("origin/topic"));
+    assert!(app.branches.hidden_branch_names.contains("other/topic"));
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.viewport, Viewport::Settings);
+}
+
+#[test]
+fn remote_modal_cancel_clears_pending_state_and_returns_to_settings() {
+    let (_path, mut app) = remote_app("cancel");
+    app.modal_remote_target = Some("origin".to_string());
+    app.modal_remote_name = "origin".to_string();
+    app.modal_input.set_value("value");
+    app.focus = Focus::ModalRemoteUrl;
+
+    app.handle_modal_key_event(key(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.modal_remote_target, None);
+    assert!(app.modal_remote_name.is_empty());
+    assert!(app.modal_input.value().is_empty());
+}
+
+#[test]
+fn selected_remote_fetch_uses_selected_remote_name() {
+    let (_path, mut app) = remote_app("fetch-selected");
+    app.modal_remote_target = Some("upstream".to_string());
+    app.modal_remote_selected = 0;
+    app.focus = Focus::ModalRemoteAction;
+
+    app.on_select();
+
+    assert_eq!(app.pending_network_request, Some(NetworkRequest::Fetch { repo_path: app.path.clone().unwrap(), remote_name: "upstream".to_string() }));
+    assert_eq!(app.focus, Focus::ModalNetworkProgress);
 }

@@ -1,3 +1,4 @@
+use crate::git::queries::remotes::list_remotes;
 use crate::helpers::heatmap::heat_cell;
 use crate::helpers::keymap::{Command, InputMode, KeymapSelection, action_keymap_visible_entries, keybinding_to_visual_string};
 use crate::helpers::layout::scrollbar_content_length;
@@ -220,6 +221,47 @@ impl App {
                 lines.push(Line::from(Span::styled(fill_width(format!(" {}", path).as_str(), "", heatmap_width), style)).centered());
                 self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::RecentRepository(idx) });
             });
+        }
+
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" remotes:", heatmap_width));
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(fill_width(" actions:", "select remote to manage | + add remote to create ", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+        lines.push(Line::default());
+
+        lines.push(
+            Line::from(Span::styled(
+                fill_width(" + add remote", "(enter) ", heatmap_width),
+                Style::default().fg(self.theme.COLOR_GRASS).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
+            ))
+            .centered(),
+        );
+        self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::RemoteAdd });
+
+        match list_remotes(repo) {
+            Ok(remotes) if remotes.is_empty() => {
+                lines.push(Line::from(Span::styled(fill_width(" no remotes", "", heatmap_width), Style::default().fg(self.theme.COLOR_TEXT))).centered());
+            },
+            Ok(remotes) => {
+                for (idx, remote) in remotes.iter().enumerate() {
+                    let mut details = format!("fetch: {}", remote.url);
+                    if let Some(push_url) = &remote.push_url
+                        && !push_url.is_empty()
+                    {
+                        details.push_str(format!(" | push: {push_url}").as_str());
+                    }
+
+                    let mut style = Style::default().fg(self.theme.COLOR_TEXT);
+                    if (idx + 1).is_multiple_of(2) {
+                        style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+                    }
+                    lines.push(Line::from(Span::styled(fill_width(format!(" {}:", remote.name).as_str(), format!(" {details} ").as_str(), heatmap_width), style)).centered());
+                    self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind: SettingsSelectionKind::Remote(remote.name.clone()) });
+                }
+            },
+            Err(error) => {
+                lines.push(Line::from(Span::styled(fill_width(" remote error:", format!(" {error} ").as_str(), heatmap_width), Style::default().fg(self.theme.COLOR_ORANGE))).centered());
+            },
         }
 
         // Credential rows are selectable because they are important setup information.

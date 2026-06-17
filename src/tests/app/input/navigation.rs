@@ -882,6 +882,7 @@ fn pane_row_jump_centers_selected_graph_row() {
     let mut app = App { viewport: Viewport::Graph, focus: Focus::Branches, ..Default::default() };
     app.graph.total = 100;
     app.layout.graph.height = 10;
+    app.layout_config.is_zen = false;
 
     assert!(app.open_graph_pane_row(GraphPaneRow::Branch { alias: 99, name: "feature".to_string(), is_local: true, lane: None, graph_index: Some(40) }));
 
@@ -894,6 +895,7 @@ fn pane_row_jump_centering_clamps_near_graph_edges() {
     let mut app = App { viewport: Viewport::Graph, focus: Focus::Branches, ..Default::default() };
     app.graph.total = 100;
     app.layout.graph.height = 10;
+    app.layout_config.is_zen = false;
 
     assert!(app.open_graph_pane_row(GraphPaneRow::Tag { alias: 99, name: "v1".to_string(), lane: None, graph_index: Some(2) }));
     assert_eq!(app.graph_scroll.get(), 0);
@@ -926,6 +928,7 @@ fn pane_alias_fallback_jump_centers_selected_graph_row() {
     app.branches.sorted = vec![(alias, "feature".to_string())];
     app.graph.total = 100;
     app.layout.graph.height = 10;
+    app.layout_config.is_zen = false;
 
     app.on_narrow_scope();
 
