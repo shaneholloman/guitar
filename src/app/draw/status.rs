@@ -4,7 +4,7 @@ use crate::{
         draw::buffered::DrawTarget,
     },
     git::queries::helpers::FileStatus,
-    helpers::text::*,
+    helpers::{layout::scrollbar_content_length, text::*},
 };
 use ratatui::{
     style::Style,
@@ -184,7 +184,7 @@ impl App {
 
                 frame.render_widget(list, self.layout.status_top);
 
-                let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.status_top_scroll.get());
+                let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.status_top_scroll.get());
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(Some("╮"))
                     .end_symbol(Some("╯"))
@@ -204,7 +204,7 @@ impl App {
 
                 frame.render_widget(list, self.layout.status_top);
 
-                let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.status_top_scroll.get());
+                let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.status_top_scroll.get());
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(if self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts) { Some("│") } else { Some("╮") })
                     .end_symbol(if self.graph_selected == 0 { Some("┤") } else { Some("╯") })
@@ -253,7 +253,7 @@ impl App {
 
                     frame.render_widget(list, self.layout.status_bottom);
 
-                    let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.status_bottom_scroll.get());
+                    let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.status_bottom_scroll.get());
                     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                         .begin_symbol(Some("╮"))
                         .end_symbol(Some("╯"))
@@ -271,7 +271,7 @@ impl App {
 
                 frame.render_widget(list, self.layout.status_bottom);
 
-                let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.status_bottom_scroll.get());
+                let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.status_bottom_scroll.get());
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(Some("│"))
                     .end_symbol(Some("╯"))

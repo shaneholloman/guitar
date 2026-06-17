@@ -3,6 +3,7 @@ use crate::app::{
     draw::buffered::{DrawTarget, SurfaceRender},
 };
 use crate::core::renderers::{render_graph_projection, render_message_projection, render_sha_projection};
+use crate::helpers::layout::scrollbar_content_length;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
@@ -129,7 +130,7 @@ impl App {
             frame.render_widget(table, self.layout.graph);
 
             if total_lines > visible_height {
-                let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.graph_scroll.get());
+                let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.graph_scroll.get());
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(Some("╮"))
                     .end_symbol(Some("╯"))
@@ -151,7 +152,7 @@ impl App {
         frame.render_widget(table, self.layout.graph);
 
         if total_lines > visible_height {
-            let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.graph_scroll.get());
+            let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.graph_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(if (self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts)) || self.layout_config.is_status { Some("─") } else { Some("╮") })
                 .end_symbol(if (self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts)) || self.layout_config.is_status { Some("─") } else { Some("╯") })

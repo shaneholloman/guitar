@@ -36,6 +36,10 @@ pub fn shrink_width(mut r: Rect, n: u16) -> Rect {
     r
 }
 
+pub fn scrollbar_content_length(total_lines: usize, visible_height: usize) -> usize {
+    if total_lines > visible_height { total_lines.saturating_sub(visible_height).saturating_add(1) } else { 0 }
+}
+
 fn layout_path() -> PathBuf {
     let mut path = dirs::config_dir().unwrap();
     path.push("guitar");

@@ -5,6 +5,7 @@ use crate::{
     },
     helpers::{
         colors::ColorPicker,
+        layout::scrollbar_content_length,
         text::{center_line, empty_state_top_padding, sanitize, truncate_with_ellipsis, wrap_words},
         time::timestamp_to_utc,
     },
@@ -168,7 +169,7 @@ impl App {
 
             frame.render_widget(list, self.layout.inspector);
 
-            let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.inspector_scroll.get());
+            let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.inspector_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("╮"))
                 .end_symbol(Some("╯"))
@@ -186,7 +187,7 @@ impl App {
 
         frame.render_widget(list, self.layout.inspector);
 
-        let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.inspector_scroll.get());
+        let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.inspector_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("╮"))
             .end_symbol(if self.layout_config.is_status { Some("│") } else { Some("╯") })

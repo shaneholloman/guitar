@@ -1,5 +1,6 @@
 use crate::helpers::heatmap::heat_cell;
 use crate::helpers::keymap::{Command, InputMode, KeymapSelection, action_keymap_visible_entries, keybinding_to_visual_string};
+use crate::helpers::layout::scrollbar_content_length;
 use crate::helpers::palette::*;
 use crate::helpers::symbols::WEEKDAY_LABELS;
 use crate::helpers::version::VERSION;
@@ -122,17 +123,14 @@ impl App {
         }
     }
 
-    pub fn draw_settings(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
-        // Settings owns the center viewport and uses centered rows throughout.
-        let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
-
+    pub(crate) fn settings_lines(&mut self, repo: &git2::Repository) -> Vec<Line<'static>> {
         let available_width = self.layout.graph.width.saturating_sub(1) as usize;
 
         // Credentials are read live so the settings view reflects git config changes.
         let (name, email) = get_git_user_info(repo).unwrap();
 
         // settings_selections maps selectable line indices to their settings action.
-        let mut lines: Vec<Line> = Vec::new();
+        let mut lines: Vec<Line<'static>> = Vec::new();
         self.settings_selections = Vec::new();
         lines.push(Line::default());
 
@@ -170,7 +168,10 @@ impl App {
         for (day_idx, &label) in WEEKDAY_LABELS.iter().enumerate() {
             let mut spans = Vec::new();
             spans.push(Span::styled(format!(" {}  ", label), Style::default().fg(self.theme.COLOR_TEXT)));
-            spans.extend(self.heatmap[day_idx][week_start..].iter().map(|&count| heat_cell(count, &self.theme)));
+            spans.extend(self.heatmap[day_idx][week_start..].iter().map(|&count| {
+                let span = heat_cell(count, &self.theme);
+                Span::styled(span.content.to_string(), span.style)
+            }));
             lines.push(Line::from(spans).centered());
         }
 
@@ -351,6 +352,15 @@ impl App {
             });
         }
 
+        lines
+    }
+
+    pub fn draw_settings(&mut self, frame: &mut impl DrawTarget, repo: &git2::Repository) {
+        // Settings owns the center viewport and uses centered rows throughout.
+        let padding = ratatui::widgets::Padding { left: 1, right: 1, top: 0, bottom: 0 };
+
+        let lines = self.settings_lines(repo);
+
         // Settings follows the same bounded scrolling behavior as graph-like lists.
         let total_lines = lines.len();
         let visible_height = if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(2) as usize } else { self.layout.graph.height as usize };
@@ -418,7 +428,7 @@ impl App {
 
             frame.render_widget(list, self.layout.graph);
 
-            let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(start);
+            let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(start);
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("╮"))
                 .end_symbol(Some("╯"))
@@ -436,7 +446,7 @@ impl App {
 
         frame.render_widget(list, self.layout.graph);
 
-        let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(start);
+        let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(start);
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("╮"))
             .end_symbol(Some("╯"))

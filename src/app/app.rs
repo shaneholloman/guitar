@@ -274,6 +274,43 @@ pub enum LayoutDrag {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrollbarTarget {
+    Graph,
+    Viewer,
+    Settings,
+    Branches,
+    Tags,
+    Stashes,
+    Reflogs,
+    Worktrees,
+    Search,
+    Inspector,
+    StatusTop,
+    StatusBottom,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScrollbarDrag {
+    pub target: ScrollbarTarget,
+    pub grab_offset: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SharedMouseDrag {
+    pub layout: LayoutDrag,
+    pub scrollbar: ScrollbarDrag,
+    pub start_column: u16,
+    pub start_row: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseDrag {
+    Layout(LayoutDrag),
+    Scrollbar(ScrollbarDrag),
+    Shared(SharedMouseDrag),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MouseSelectionTarget {
     Graph(usize),
     Viewer(usize),
@@ -343,7 +380,7 @@ pub struct App {
 
     // Persistent layout switches and current interaction target.
     pub layout_config: LayoutConfig,
-    pub layout_drag: Option<LayoutDrag>,
+    pub mouse_drag: Option<MouseDrag>,
     pub last_mouse_click: Option<(MouseSelectionTarget, Instant)>,
     pub viewport: Viewport,
     pub focus: Focus,

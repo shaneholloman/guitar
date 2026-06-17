@@ -49,6 +49,10 @@ fn left_drag(column: u16, row: u16) -> MouseEvent {
     MouseEvent { kind: MouseEventKind::Drag(MouseButton::Left), column, row, modifiers: KeyModifiers::NONE }
 }
 
+fn left_up(column: u16, row: u16) -> MouseEvent {
+    MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column, row, modifiers: KeyModifiers::NONE }
+}
+
 fn graph_app() -> App {
     let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, layout_config: LayoutConfig::default(), layout: Layout::default(), ..Default::default() };
     app.layout.graph = Rect::new(0, 0, 30, 8);
@@ -100,6 +104,140 @@ fn mouse_click_selects_graph_row() {
 
     assert_eq!(app.focus, Focus::Viewport);
     assert_eq!(app.graph_selected, 5);
+}
+
+#[test]
+fn mouse_click_on_graph_scrollbar_track_jumps_and_focuses() {
+    let mut app = graph_app();
+    app.layout.graph_scrollbar = Rect::new(29, 0, 1, 8);
+    app.graph.total = 100;
+
+    app.handle_mouse_event(left_down(29, 4));
+    app.handle_mouse_event(left_up(29, 4));
+
+    let max_scroll = app.graph_commit_count().saturating_sub(app.layout.graph.height as usize);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.viewport, Viewport::Graph);
+    assert!(app.graph_scroll.get() > 0);
+    assert!(app.graph_scroll.get() < max_scroll);
+    assert!(app.graph_selected >= app.graph_scroll.get());
+    assert!(app.graph_selected < app.graph_scroll.get() + app.layout.graph.height as usize);
+}
+
+#[test]
+fn mouse_drag_on_graph_scrollbar_clamps_to_top_and_bottom() {
+    let mut app = graph_app();
+    app.layout.graph_scrollbar = Rect::new(29, 0, 1, 8);
+    app.graph.total = 100;
+    let max_scroll = app.graph_commit_count().saturating_sub(app.layout.graph.height as usize);
+
+    app.handle_mouse_event(left_down(29, 1));
+    app.handle_mouse_event(left_drag(29, 99));
+    assert_eq!(app.graph_scroll.get(), max_scroll);
+    assert!(app.graph_selected >= app.graph_scroll.get());
+
+    app.handle_mouse_event(left_drag(29, 0));
+    app.handle_mouse_event(left_up(29, 0));
+    assert_eq!(app.graph_scroll.get(), 0);
+    assert!(app.graph_selected < app.layout.graph.height as usize);
+}
+
+#[test]
+fn mouse_drag_on_left_pane_scrollbar_scrolls_and_focuses_pane() {
+    let mut app = graph_app();
+    app.layout_config.is_branches = true;
+    app.layout.branches = Rect::new(0, 0, 20, 8);
+    app.layout.branches_scrollbar = Rect::new(0, 0, 20, 8);
+    app.branches.sorted = (0..80).map(|idx| (idx, format!("branch-{idx}"))).collect();
+
+    app.handle_mouse_event(left_down(19, 5));
+    app.handle_mouse_event(left_up(19, 5));
+
+    assert_eq!(app.focus, Focus::Branches);
+    assert!(app.branches_scroll.get() > 0);
+    assert!(app.branches_selected >= app.branches_scroll.get());
+}
+
+#[test]
+fn mouse_scrollbars_work_for_inspector_and_status_panes() {
+    let mut inspector = graph_app();
+    inspector.layout_config.is_inspector = true;
+    inspector.uncommitted.has_conflicts = true;
+    inspector.layout.inspector = Rect::new(0, 0, 40, 5);
+    inspector.layout.inspector_scrollbar = Rect::new(0, 0, 40, 5);
+
+    inspector.handle_mouse_event(left_down(39, 3));
+    inspector.handle_mouse_event(left_up(39, 3));
+
+    assert_eq!(inspector.focus, Focus::Inspector);
+    assert!(inspector.inspector_scroll.get() > 0);
+
+    let mut status = graph_app();
+    status.layout_config.is_status = true;
+    status.layout.status_top = Rect::new(0, 0, 40, 5);
+    status.layout.status_top_scrollbar = Rect::new(0, 0, 40, 5);
+    status.is_uncommitted_loaded = true;
+    status.uncommitted.is_staged = true;
+    status.uncommitted.staged.modified = (0..20).map(|idx| format!("file-{idx}.rs")).collect();
+
+    status.handle_mouse_event(left_down(39, 3));
+    status.handle_mouse_event(left_up(39, 3));
+
+    assert_eq!(status.focus, Focus::StatusTop);
+    assert!(status.status_top_scroll.get() > 0);
+
+    let mut bottom_status = graph_app();
+    bottom_status.layout_config.is_status = true;
+    bottom_status.layout.status_top = Rect::new(0, 0, 40, 3);
+    bottom_status.layout.status_top_scrollbar = Rect::new(0, 0, 40, 3);
+    bottom_status.layout.status_bottom = Rect::new(0, 2, 40, 5);
+    bottom_status.layout.status_bottom_scrollbar = Rect::new(0, 2, 40, 5);
+    bottom_status.is_uncommitted_loaded = true;
+    bottom_status.uncommitted.is_unstaged = true;
+    bottom_status.uncommitted.unstaged.modified = (0..20).map(|idx| format!("file-{idx}.rs")).collect();
+
+    bottom_status.handle_mouse_event(left_down(39, 5));
+    bottom_status.handle_mouse_event(left_up(39, 5));
+
+    assert_eq!(bottom_status.focus, Focus::StatusBottom);
+    assert!(bottom_status.status_bottom_scroll.get() > 0);
+}
+
+#[test]
+fn mouse_click_on_settings_scrollbar_scrolls_settings() {
+    let (_path, repo) = temp_repo("settings-scrollbar");
+    let mut app = App { viewport: Viewport::Settings, focus: Focus::Viewport, repo: Some(Rc::new(repo)), layout_config: LayoutConfig::default(), layout: Layout::default(), ..Default::default() };
+    app.layout.app = Rect::new(0, 0, 90, 10);
+    app.layout.graph = Rect::new(0, 0, 90, 10);
+
+    app.handle_mouse_event(left_down(89, 8));
+    app.handle_mouse_event(left_up(89, 8));
+
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert!(app.settings_scroll.get() > 0);
+    assert!(app.settings_selections.iter().any(|selection| selection.line == app.settings_selected));
+}
+
+#[test]
+fn non_scrollable_or_too_short_scrollbars_fall_back_to_row_clicks() {
+    let mut non_scrollable = graph_app();
+    non_scrollable.layout.graph_scrollbar = Rect::new(29, 0, 1, 8);
+    non_scrollable.graph.total = 5;
+
+    non_scrollable.handle_mouse_event(left_down(29, 3));
+
+    assert_eq!(non_scrollable.graph_scroll.get(), 0);
+    assert_eq!(non_scrollable.graph_selected, 3);
+
+    let mut too_short = graph_app();
+    too_short.layout.graph_scrollbar = Rect::new(29, 0, 1, 2);
+    too_short.graph.total = 100;
+
+    too_short.handle_mouse_event(left_down(29, 1));
+
+    assert_eq!(too_short.graph_scroll.get(), 0);
+    assert_eq!(too_short.graph_selected, 1);
 }
 
 #[test]
@@ -479,6 +617,52 @@ fn resizable_columns_app() -> App {
     app.layout_config.is_branches = true;
     app.layout_config.is_status = true;
     app
+}
+
+fn shared_graph_scrollbar_divider_app() -> App {
+    let mut app = resizable_columns_app();
+    app.layout.graph = Rect::new(30, 0, 40, 30);
+    app.layout.graph_scrollbar = Rect::new(30, 0, 40, 30);
+    app.layout.divider_right = Rect::new(69, 0, 1, 30);
+    app.graph.total = 100;
+    app.graph_selected = 0;
+    app.graph_scroll.set(0);
+    app
+}
+
+#[test]
+fn horizontal_drag_on_shared_scrollbar_divider_resizes_pane() {
+    let mut app = shared_graph_scrollbar_divider_app();
+
+    app.handle_mouse_event(left_down(69, 10));
+    app.handle_mouse_event(left_drag(60, 10));
+
+    assert_eq!(app.graph_scroll.get(), 0);
+    assert!(app.layout_config.width_right_pane > 30);
+}
+
+#[test]
+fn vertical_drag_on_shared_scrollbar_divider_scrolls_graph() {
+    let mut app = shared_graph_scrollbar_divider_app();
+
+    app.handle_mouse_event(left_down(69, 10));
+    app.handle_mouse_event(left_drag(69, 20));
+    app.handle_mouse_event(left_up(69, 20));
+
+    assert_eq!(app.layout_config.width_right_pane, 30);
+    assert!(app.graph_scroll.get() > 0);
+    assert_eq!(app.focus, Focus::Viewport);
+}
+
+#[test]
+fn click_on_shared_scrollbar_divider_scrolls_without_resizing() {
+    let mut app = shared_graph_scrollbar_divider_app();
+
+    app.handle_mouse_event(left_down(69, 20));
+    app.handle_mouse_event(left_up(69, 20));
+
+    assert_eq!(app.layout_config.width_right_pane, 30);
+    assert!(app.graph_scroll.get() > 0);
 }
 
 #[test]

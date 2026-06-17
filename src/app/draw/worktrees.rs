@@ -4,6 +4,7 @@ use crate::{
         draw::{buffered::DrawTarget, pane_window::zebra_list_items},
     },
     helpers::{
+        layout::scrollbar_content_length,
         symbols::{SYM_COMMIT_BRANCH, SYM_WORKTREE, SYM_WORKTREE_DIRTY, SYM_WORKTREE_EMPTY, SYM_WORKTREE_INVALID, SYM_WORKTREE_LOCKED, SYM_WORKTREE_OTHER},
         text::{center_line, empty_state_top_padding, truncate_with_ellipsis},
     },
@@ -87,7 +88,7 @@ impl App {
 
             frame.render_widget(list, self.layout.worktrees);
 
-            let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
+            let scroll_range = scrollbar_content_length(total_lines, visible_height);
             let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.worktrees_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("╮"))
@@ -110,7 +111,7 @@ impl App {
         let list = List::new(list_items).block(Block::default().padding(padding));
         frame.render_widget(list, self.layout.worktrees);
 
-        let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
+        let scroll_range = scrollbar_content_length(total_lines, visible_height);
         let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.worktrees_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some(if self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs { "│" } else { "─" }))

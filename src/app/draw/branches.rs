@@ -6,6 +6,7 @@ use crate::{
     },
     core::graph_service::{GraphPane, GraphPaneRow},
     helpers::colors::ColorPicker,
+    helpers::layout::scrollbar_content_length,
     helpers::text::{center_line, empty_state_top_padding, truncate_with_ellipsis},
 };
 use ratatui::{
@@ -107,7 +108,7 @@ impl App {
 
             frame.render_widget(list, self.layout.branches);
 
-            let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
+            let scroll_range = scrollbar_content_length(total_lines, visible_height);
             let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.branches_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("╮"))
@@ -127,7 +128,7 @@ impl App {
 
         frame.render_widget(list, self.layout.branches);
 
-        let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
+        let scroll_range = scrollbar_content_length(total_lines, visible_height);
         let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.branches_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("─"))

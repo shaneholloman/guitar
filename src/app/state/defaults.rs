@@ -93,7 +93,7 @@ impl Default for App {
 
             // Focus
             layout_config: load_layout_config(),
-            layout_drag: None,
+            mouse_drag: None,
             last_mouse_click: None,
             viewport: Viewport::Splash,
             focus: Focus::Viewport,

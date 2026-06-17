@@ -8,7 +8,7 @@ use crate::{
         diffs::{get_conflict_file, get_file_at_oid, get_file_at_workdir, get_file_diff_at_oid, get_file_diff_at_workdir},
         helpers::{ConflictFile, FileChanges, Hunk},
     },
-    helpers::text::wrap_words,
+    helpers::{layout::scrollbar_content_length, text::wrap_words},
 };
 use git2::Oid;
 use ratatui::{
@@ -130,7 +130,7 @@ impl App {
 
             frame.render_widget(list, self.layout.graph);
 
-            let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.viewer_scroll.get());
+            let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.viewer_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("╮"))
                 .end_symbol(Some("╯"))
@@ -150,7 +150,7 @@ impl App {
 
         frame.render_widget(list, self.layout.graph);
 
-        let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.viewer_scroll.get());
+        let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.viewer_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(if self.layout_config.is_inspector || self.layout_config.is_status { Some("─") } else { Some("╮") })
             .end_symbol(if self.layout_config.is_inspector || self.layout_config.is_status { Some("─") } else { Some("╯") })
@@ -209,7 +209,7 @@ impl App {
         frame.render_widget(right_list, self.layout.viewer_split_right);
         self.draw_split_divider(frame);
 
-        let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(self.viewer_scroll.get());
+        let mut scrollbar_state = ScrollbarState::new(scrollbar_content_length(total_lines, visible_height)).position(self.viewer_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(if !self.layout_config.is_zen && (self.layout_config.is_inspector || self.layout_config.is_status) { Some("─") } else { Some("╮") })
             .end_symbol(if !self.layout_config.is_zen && (self.layout_config.is_inspector || self.layout_config.is_status) { Some("─") } else { Some("╯") })

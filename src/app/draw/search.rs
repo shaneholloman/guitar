@@ -4,7 +4,10 @@ use crate::{
         draw::{buffered::DrawTarget, pane_window::zebra_list_items},
     },
     git::queries::helpers::FileStatus,
-    helpers::text::{center_line, empty_state_top_padding, truncate_with_ellipsis},
+    helpers::{
+        layout::scrollbar_content_length,
+        text::{center_line, empty_state_top_padding, truncate_with_ellipsis},
+    },
 };
 use ratatui::{
     layout::Rect,
@@ -92,7 +95,7 @@ impl App {
             let list = List::new(list_items).block(Block::default().borders(Borders::ALL).padding(padding).border_type(ratatui::widgets::BorderType::Rounded));
             frame.render_widget(list, self.layout.search);
 
-            let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
+            let scroll_range = scrollbar_content_length(total_lines, visible_height);
             let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.search_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("╮"))
@@ -114,7 +117,7 @@ impl App {
         let list = List::new(list_items).block(Block::default().padding(padding));
         frame.render_widget(list, self.layout.search);
 
-        let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
+        let scroll_range = scrollbar_content_length(total_lines, visible_height);
         let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.search_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some(if has_previous { "│" } else { "─" }))

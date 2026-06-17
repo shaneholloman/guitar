@@ -1,3 +1,4 @@
+use crate::helpers::layout::scrollbar_content_length;
 use crate::helpers::symbols::SYM_TAG;
 use crate::helpers::text::{center_line, empty_state_top_padding};
 use crate::{
@@ -99,7 +100,7 @@ impl App {
 
             frame.render_widget(list, self.layout.tags);
 
-            let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
+            let scroll_range = scrollbar_content_length(total_lines, visible_height);
             let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.tags_scroll.get());
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("╮"))
@@ -123,7 +124,7 @@ impl App {
 
         frame.render_widget(list, self.layout.tags);
 
-        let scroll_range = (total_lines.saturating_sub(visible_height)).max(1);
+        let scroll_range = scrollbar_content_length(total_lines, visible_height);
         let mut scrollbar_state = ScrollbarState::new(scroll_range).position(self.tags_scroll.get());
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some(if self.layout_config.is_branches { "│" } else { "─" }))

@@ -1,6 +1,9 @@
 use crate::{
-    app::app::{App, Direction, Focus, LayoutDrag, MouseSelectionTarget, SettingsSelectionKind, Viewport},
-    helpers::layout::{LAYOUT_HEIGHT_MIN_STACKED_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_MIN_SIDE_PANE},
+    app::app::{App, Direction, Focus, LayoutDrag, MouseDrag, MouseSelectionTarget, ScrollbarDrag, ScrollbarTarget, SettingsSelectionKind, SharedMouseDrag, Viewport},
+    helpers::{
+        layout::{LAYOUT_HEIGHT_MIN_STACKED_PANE, LAYOUT_WIDTH_MIN_CENTER, LAYOUT_WIDTH_MIN_SIDE_PANE, scrollbar_content_length},
+        text::{empty_state_top_padding, sanitize, wrap_words},
+    },
 };
 use ratatui::{
     crossterm::event::{self, Event, KeyEventKind, MouseButton, MouseEvent, MouseEventKind},
@@ -43,6 +46,25 @@ enum StackPane {
     StatusBottom,
 }
 
+#[derive(Clone, Copy)]
+struct ScrollbarInfo {
+    target: ScrollbarTarget,
+    rect: Rect,
+    total_lines: usize,
+    visible_height: usize,
+    scroll: usize,
+    max_scroll: usize,
+}
+
+#[derive(Clone, Copy)]
+struct ScrollbarMetrics {
+    track_top: u16,
+    track_len: usize,
+    thumb_start: usize,
+    thumb_len: usize,
+    max_viewport_position: usize,
+}
+
 impl App {
     pub fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
@@ -63,15 +85,10 @@ impl App {
                 self.handle_mouse_down(mouse_event.column, mouse_event.row);
             },
             MouseEventKind::Drag(MouseButton::Left) => {
-                if let Some(drag) = self.layout_drag {
-                    self.apply_layout_drag(drag, mouse_event.column, mouse_event.row);
-                }
+                self.handle_mouse_drag(mouse_event.column, mouse_event.row);
             },
             MouseEventKind::Up(MouseButton::Left) => {
-                if self.layout_drag.take().is_some() {
-                    self.save_layout();
-                    self.mark_viewer_layout_dirty();
-                }
+                self.finish_mouse_drag();
             },
             MouseEventKind::ScrollUp => {
                 self.handle_mouse_scroll(mouse_event.column, mouse_event.row, Direction::Up);
@@ -84,13 +101,30 @@ impl App {
     }
 
     fn handle_mouse_down(&mut self, column: u16, row: u16) {
-        if let Some(drag) = self.layout_drag_at(column, row) {
-            self.layout_drag = Some(drag);
-            self.last_mouse_click = None;
-            return;
+        let scrollbar_drag = self.scrollbar_drag_at(column, row);
+        let layout_drag = self.layout_drag_at(column, row);
+
+        match (scrollbar_drag, layout_drag) {
+            (Some(scrollbar), Some(layout)) => {
+                self.mouse_drag = Some(MouseDrag::Shared(SharedMouseDrag { layout, scrollbar, start_column: column, start_row: row }));
+                self.last_mouse_click = None;
+                return;
+            },
+            (Some(scrollbar), None) => {
+                self.apply_scrollbar_drag(scrollbar, row);
+                self.mouse_drag = Some(MouseDrag::Scrollbar(scrollbar));
+                self.last_mouse_click = None;
+                return;
+            },
+            (None, Some(layout)) => {
+                self.mouse_drag = Some(MouseDrag::Layout(layout));
+                self.last_mouse_click = None;
+                return;
+            },
+            (None, None) => {},
         }
 
-        self.layout_drag = None;
+        self.mouse_drag = None;
 
         let Some(target) = self.mouse_selection_target_at(column, row) else {
             self.last_mouse_click = None;
@@ -117,6 +151,50 @@ impl App {
             }
         } else {
             self.last_mouse_click = Some((target, now));
+        }
+    }
+
+    fn handle_mouse_drag(&mut self, column: u16, row: u16) {
+        match self.mouse_drag {
+            Some(MouseDrag::Layout(drag)) => {
+                self.apply_layout_drag(drag, column, row);
+            },
+            Some(MouseDrag::Scrollbar(drag)) => {
+                self.apply_scrollbar_drag(drag, row);
+            },
+            Some(MouseDrag::Shared(drag)) => {
+                let dx = column.abs_diff(drag.start_column);
+                let dy = row.abs_diff(drag.start_row);
+                if dx == 0 && dy == 0 {
+                    return;
+                }
+
+                if dx > dy {
+                    self.mouse_drag = Some(MouseDrag::Layout(drag.layout));
+                    self.apply_layout_drag(drag.layout, column, row);
+                } else {
+                    self.mouse_drag = Some(MouseDrag::Scrollbar(drag.scrollbar));
+                    self.apply_scrollbar_drag(drag.scrollbar, row);
+                }
+            },
+            None => {},
+        }
+    }
+
+    fn finish_mouse_drag(&mut self) {
+        let Some(drag) = self.mouse_drag.take() else {
+            return;
+        };
+
+        match drag {
+            MouseDrag::Layout(_) => {
+                self.save_layout();
+                self.mark_viewer_layout_dirty();
+            },
+            MouseDrag::Scrollbar(_) => {},
+            MouseDrag::Shared(shared) => {
+                self.apply_scrollbar_drag(shared.scrollbar, shared.start_row);
+            },
         }
     }
 
@@ -462,8 +540,404 @@ impl App {
         self.uncommitted.conflicts.len() + self.uncommitted.unstaged.modified.len() + self.uncommitted.unstaged.added.len() + self.uncommitted.unstaged.deleted.len()
     }
 
+    fn scrollbar_drag_at(&mut self, column: u16, row: u16) -> Option<ScrollbarDrag> {
+        let info = self.scrollbar_info_at(column, row)?;
+        let metrics = Self::scrollbar_metrics(info)?;
+        if row < metrics.track_top {
+            return None;
+        }
+        let track_offset = row.saturating_sub(metrics.track_top) as usize;
+        if track_offset >= metrics.track_len {
+            return None;
+        }
+
+        let thumb_end = metrics.thumb_start.saturating_add(metrics.thumb_len);
+        let grab_offset = if track_offset >= metrics.thumb_start && track_offset < thumb_end { track_offset.saturating_sub(metrics.thumb_start) } else { metrics.thumb_len / 2 };
+
+        Some(ScrollbarDrag { target: info.target, grab_offset })
+    }
+
+    fn scrollbar_info_at(&mut self, column: u16, row: u16) -> Option<ScrollbarInfo> {
+        if self.is_modal_focus() || self.viewport == Viewport::Splash {
+            return None;
+        }
+
+        const TARGETS: [ScrollbarTarget; 12] = [
+            ScrollbarTarget::Branches,
+            ScrollbarTarget::Tags,
+            ScrollbarTarget::Stashes,
+            ScrollbarTarget::Reflogs,
+            ScrollbarTarget::Worktrees,
+            ScrollbarTarget::Search,
+            ScrollbarTarget::Inspector,
+            ScrollbarTarget::StatusTop,
+            ScrollbarTarget::StatusBottom,
+            ScrollbarTarget::Graph,
+            ScrollbarTarget::Viewer,
+            ScrollbarTarget::Settings,
+        ];
+
+        for target in TARGETS {
+            let Some(rect) = self.scrollbar_rect_for_target(target) else {
+                continue;
+            };
+            if !Self::scrollbar_column_contains(rect, column, row) {
+                continue;
+            }
+            let Some(info) = self.scrollbar_info_for_target(target, rect) else {
+                continue;
+            };
+            let Some(metrics) = Self::scrollbar_metrics(info) else {
+                continue;
+            };
+            if row >= metrics.track_top && (row.saturating_sub(metrics.track_top) as usize) < metrics.track_len {
+                return Some(info);
+            }
+        }
+
+        None
+    }
+
+    fn scrollbar_rect_for_target(&self, target: ScrollbarTarget) -> Option<Rect> {
+        if self.viewport == Viewport::Splash {
+            return None;
+        }
+
+        let is_settings = self.viewport == Viewport::Settings;
+        let is_main_view = matches!(self.viewport, Viewport::Graph | Viewport::Viewer);
+
+        let rect = match target {
+            ScrollbarTarget::Graph if self.viewport == Viewport::Graph => self.layout.graph_scrollbar,
+            ScrollbarTarget::Viewer if self.viewport == Viewport::Viewer => self.layout.graph_scrollbar,
+            ScrollbarTarget::Settings if is_settings => self.layout.app,
+            ScrollbarTarget::Branches if is_main_view && self.layout_config.is_branches => self.layout.branches_scrollbar,
+            ScrollbarTarget::Tags if is_main_view && self.layout_config.is_tags => self.layout.tags_scrollbar,
+            ScrollbarTarget::Stashes if is_main_view && self.layout_config.is_stashes => self.layout.stashes_scrollbar,
+            ScrollbarTarget::Reflogs if is_main_view && self.layout_config.is_reflogs => self.layout.reflogs_scrollbar,
+            ScrollbarTarget::Worktrees if is_main_view && self.layout_config.is_worktrees => self.layout.worktrees_scrollbar,
+            ScrollbarTarget::Search if is_main_view && self.layout_config.is_search => self.layout.search_scrollbar,
+            ScrollbarTarget::Inspector if is_main_view && self.layout_config.is_inspector && (self.graph_selected != 0 || self.uncommitted.has_conflicts) => self.layout.inspector_scrollbar,
+            ScrollbarTarget::StatusTop if is_main_view && self.layout_config.is_status => self.layout.status_top_scrollbar,
+            ScrollbarTarget::StatusBottom if is_main_view && self.layout_config.is_status && self.graph_selected == 0 => self.layout.status_bottom_scrollbar,
+            _ => return None,
+        };
+
+        (rect.width > 0 && rect.height > 0).then_some(rect)
+    }
+
+    fn scrollbar_info_for_target(&mut self, target: ScrollbarTarget, rect: Rect) -> Option<ScrollbarInfo> {
+        let (total_lines, visible_height, scroll) = match target {
+            ScrollbarTarget::Graph => (self.graph_commit_count(), self.viewport_visible_height(), self.graph_scroll.get()),
+            ScrollbarTarget::Viewer => (self.viewer_row_count(), self.viewport_visible_height(), self.viewer_scroll.get()),
+            ScrollbarTarget::Settings => (self.settings_scroll_line_count(), self.settings_visible_height(), self.settings_scroll.get()),
+            ScrollbarTarget::Branches => (self.branch_clickable_count(), self.branches_visible_height(), self.branches_scroll.get()),
+            ScrollbarTarget::Tags => (self.tag_clickable_count(), self.tags_visible_height(), self.tags_scroll.get()),
+            ScrollbarTarget::Stashes => (self.stash_clickable_count(), self.stashes_visible_height(), self.stashes_scroll.get()),
+            ScrollbarTarget::Reflogs => (self.reflog_clickable_count(), self.reflogs_visible_height(), self.reflogs_scroll.get()),
+            ScrollbarTarget::Worktrees => (self.worktrees.entries.len(), self.worktrees_visible_height(), self.worktrees_scroll.get()),
+            ScrollbarTarget::Search => (self.search_clickable_count(), self.search_visible_height(), self.search_scroll.get()),
+            ScrollbarTarget::Inspector => (self.inspector_line_count_for_scrollbar(), self.inspector_visible_height(), self.inspector_scroll.get()),
+            ScrollbarTarget::StatusTop => (self.status_top_clickable_count(), self.status_top_visible_height(), self.status_top_scroll.get()),
+            ScrollbarTarget::StatusBottom => (self.status_bottom_clickable_count(), self.status_bottom_visible_height(), self.status_bottom_scroll.get()),
+        };
+
+        if visible_height == 0 {
+            return None;
+        }
+
+        let max_scroll = total_lines.saturating_sub(visible_height);
+        if max_scroll == 0 {
+            return None;
+        }
+
+        Some(ScrollbarInfo { target, rect, total_lines, visible_height, scroll: scroll.min(max_scroll), max_scroll })
+    }
+
+    fn scrollbar_column_contains(rect: Rect, column: u16, row: u16) -> bool {
+        if rect.width == 0 || rect.height == 0 {
+            return false;
+        }
+        let right = rect.x.saturating_add(rect.width.saturating_sub(1));
+        column == right && row >= rect.y && row < rect.y.saturating_add(rect.height)
+    }
+
+    fn scrollbar_metrics(info: ScrollbarInfo) -> Option<ScrollbarMetrics> {
+        let track_len = info.rect.height.saturating_sub(2) as usize;
+        if track_len == 0 {
+            return None;
+        }
+
+        let viewport_len = info.rect.height as usize;
+        let content_len = scrollbar_content_length(info.total_lines, info.visible_height);
+        let max_position = content_len.saturating_sub(1);
+        let max_viewport_position = max_position.saturating_add(viewport_len);
+        if max_viewport_position == 0 {
+            return None;
+        }
+
+        let thumb_len = Self::rounding_divide(viewport_len.saturating_mul(track_len), max_viewport_position).clamp(1, track_len);
+        let thumb_start = Self::rounding_divide(info.scroll.min(max_position).saturating_mul(track_len), max_viewport_position).clamp(0, track_len.saturating_sub(1));
+
+        Some(ScrollbarMetrics { track_top: info.rect.y.saturating_add(1), track_len, thumb_start, thumb_len, max_viewport_position })
+    }
+
+    fn rounding_divide(numerator: usize, denominator: usize) -> usize {
+        if denominator == 0 { 0 } else { numerator.saturating_add(denominator / 2) / denominator }
+    }
+
+    fn apply_scrollbar_drag(&mut self, drag: ScrollbarDrag, row: u16) {
+        let Some(rect) = self.scrollbar_rect_for_target(drag.target) else {
+            return;
+        };
+        let Some(info) = self.scrollbar_info_for_target(drag.target, rect) else {
+            return;
+        };
+        let Some(metrics) = Self::scrollbar_metrics(info) else {
+            return;
+        };
+
+        let track_offset = if row <= metrics.track_top { 0 } else { row.saturating_sub(metrics.track_top) as usize }.min(metrics.track_len.saturating_sub(1));
+        let max_thumb_start = metrics.track_len.saturating_sub(metrics.thumb_len);
+        let desired_thumb_start = track_offset.saturating_sub(drag.grab_offset).min(max_thumb_start);
+        let next_scroll = if max_thumb_start > 0 && desired_thumb_start == max_thumb_start {
+            info.max_scroll
+        } else {
+            Self::rounding_divide(desired_thumb_start.saturating_mul(metrics.max_viewport_position), metrics.track_len).min(info.max_scroll)
+        };
+
+        self.set_scrollbar_scroll(info, next_scroll);
+    }
+
+    fn set_scrollbar_scroll(&mut self, info: ScrollbarInfo, scroll: usize) {
+        let scroll = scroll.min(info.max_scroll);
+        self.focus_scrollbar_target(info.target);
+        self.set_target_scroll(info.target, scroll);
+        self.clamp_target_selection_to_scroll(info.target, scroll, info.total_lines, info.visible_height);
+    }
+
+    fn focus_scrollbar_target(&mut self, target: ScrollbarTarget) {
+        match target {
+            ScrollbarTarget::Graph => {
+                self.focus = Focus::Viewport;
+                self.viewport = Viewport::Graph;
+            },
+            ScrollbarTarget::Viewer => {
+                self.focus = Focus::Viewport;
+                self.viewport = Viewport::Viewer;
+            },
+            ScrollbarTarget::Settings => {
+                self.focus = Focus::Viewport;
+                self.viewport = Viewport::Settings;
+                self.last_input_direction = None;
+            },
+            ScrollbarTarget::Branches => self.focus = Focus::Branches,
+            ScrollbarTarget::Tags => self.focus = Focus::Tags,
+            ScrollbarTarget::Stashes => self.focus = Focus::Stashes,
+            ScrollbarTarget::Reflogs => self.focus = Focus::Reflogs,
+            ScrollbarTarget::Worktrees => self.focus = Focus::Worktrees,
+            ScrollbarTarget::Search => self.focus = Focus::Search,
+            ScrollbarTarget::Inspector => self.focus = Focus::Inspector,
+            ScrollbarTarget::StatusTop => self.focus = Focus::StatusTop,
+            ScrollbarTarget::StatusBottom => self.focus = Focus::StatusBottom,
+        }
+    }
+
+    fn set_target_scroll(&self, target: ScrollbarTarget, scroll: usize) {
+        match target {
+            ScrollbarTarget::Graph => self.graph_scroll.set(scroll),
+            ScrollbarTarget::Viewer => self.viewer_scroll.set(scroll),
+            ScrollbarTarget::Settings => self.settings_scroll.set(scroll),
+            ScrollbarTarget::Branches => self.branches_scroll.set(scroll),
+            ScrollbarTarget::Tags => self.tags_scroll.set(scroll),
+            ScrollbarTarget::Stashes => self.stashes_scroll.set(scroll),
+            ScrollbarTarget::Reflogs => self.reflogs_scroll.set(scroll),
+            ScrollbarTarget::Worktrees => self.worktrees_scroll.set(scroll),
+            ScrollbarTarget::Search => self.search_scroll.set(scroll),
+            ScrollbarTarget::Inspector => self.inspector_scroll.set(scroll),
+            ScrollbarTarget::StatusTop => self.status_top_scroll.set(scroll),
+            ScrollbarTarget::StatusBottom => self.status_bottom_scroll.set(scroll),
+        }
+    }
+
+    fn clamp_target_selection_to_scroll(&mut self, target: ScrollbarTarget, scroll: usize, total_lines: usize, visible_height: usize) {
+        if visible_height == 0 || total_lines == 0 {
+            self.set_target_selection(target, 0);
+            return;
+        }
+
+        if target == ScrollbarTarget::Settings {
+            self.clamp_settings_selection_to_scroll(scroll, total_lines, visible_height);
+            return;
+        }
+
+        let first = scroll.min(total_lines.saturating_sub(1));
+        let last = scroll.saturating_add(visible_height).saturating_sub(1).min(total_lines.saturating_sub(1));
+        let current = self.target_selection(target).min(total_lines.saturating_sub(1));
+        let selection = if current < first {
+            first
+        } else if current > last {
+            last
+        } else {
+            current
+        };
+        self.set_target_selection(target, selection);
+    }
+
+    fn clamp_settings_selection_to_scroll(&mut self, scroll: usize, total_lines: usize, visible_height: usize) {
+        if total_lines == 0 {
+            self.settings_selected = 0;
+            return;
+        }
+
+        let first = scroll.min(total_lines.saturating_sub(1));
+        let end = scroll.saturating_add(visible_height).min(total_lines);
+        if self.settings_selections.iter().any(|selection| selection.line == self.settings_selected && selection.line >= first && selection.line < end) {
+            return;
+        }
+
+        let visible = self.settings_selections.iter().map(|selection| selection.line).find(|&line| line >= first && line < end);
+        let nearest = visible.or_else(|| self.settings_selections.iter().map(|selection| selection.line).min_by_key(|&line| line.abs_diff(first)));
+        self.settings_selected = nearest.unwrap_or(first);
+    }
+
+    fn target_selection(&self, target: ScrollbarTarget) -> usize {
+        match target {
+            ScrollbarTarget::Graph => self.graph_selected,
+            ScrollbarTarget::Viewer => self.viewer_selected,
+            ScrollbarTarget::Settings => self.settings_selected,
+            ScrollbarTarget::Branches => self.branches_selected,
+            ScrollbarTarget::Tags => self.tags_selected,
+            ScrollbarTarget::Stashes => self.stashes_selected,
+            ScrollbarTarget::Reflogs => self.reflogs_selected,
+            ScrollbarTarget::Worktrees => self.worktrees_selected,
+            ScrollbarTarget::Search => self.search_selected,
+            ScrollbarTarget::Inspector => self.inspector_selected,
+            ScrollbarTarget::StatusTop => self.status_top_selected,
+            ScrollbarTarget::StatusBottom => self.status_bottom_selected,
+        }
+    }
+
+    fn set_target_selection(&mut self, target: ScrollbarTarget, selection: usize) {
+        match target {
+            ScrollbarTarget::Graph => self.select_graph_index(selection),
+            ScrollbarTarget::Viewer => self.viewer_selected = selection,
+            ScrollbarTarget::Settings => self.settings_selected = selection,
+            ScrollbarTarget::Branches => self.branches_selected = selection,
+            ScrollbarTarget::Tags => self.tags_selected = selection,
+            ScrollbarTarget::Stashes => self.stashes_selected = selection,
+            ScrollbarTarget::Reflogs => self.reflogs_selected = selection,
+            ScrollbarTarget::Worktrees => self.worktrees_selected = selection,
+            ScrollbarTarget::Search => self.search_selected = selection,
+            ScrollbarTarget::Inspector => self.inspector_selected = selection,
+            ScrollbarTarget::StatusTop => self.status_top_selected = selection,
+            ScrollbarTarget::StatusBottom => self.status_bottom_selected = selection,
+        }
+    }
+
+    fn viewport_visible_height(&self) -> usize {
+        if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(2) as usize } else { self.layout.graph.height as usize }
+    }
+
+    fn settings_visible_height(&self) -> usize {
+        if self.layout_config.is_zen { self.layout.graph.height.saturating_sub(2) as usize } else { self.layout.graph.height as usize }
+    }
+
+    fn branches_visible_height(&self) -> usize {
+        self.layout.branches.height.saturating_sub(2) as usize
+    }
+
+    fn tags_visible_height(&self) -> usize {
+        if self.layout_config.is_zen { self.layout.tags.height.saturating_sub(2) as usize } else { self.layout.tags.height.saturating_sub(if self.layout_config.is_branches { 1 } else { 2 }) as usize }
+    }
+
+    fn stashes_visible_height(&self) -> usize {
+        if self.layout_config.is_zen {
+            self.layout.stashes.height.saturating_sub(2) as usize
+        } else {
+            self.layout.stashes.height.saturating_sub(if self.layout_config.is_branches || self.layout_config.is_tags { 1 } else { 2 }) as usize
+        }
+    }
+
+    fn reflogs_visible_height(&self) -> usize {
+        let has_previous = self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes;
+        if self.layout_config.is_zen { self.layout.reflogs.height.saturating_sub(2) as usize } else { self.layout.reflogs.height.saturating_sub(if has_previous { 1 } else { 2 }) as usize }
+    }
+
+    fn worktrees_visible_height(&self) -> usize {
+        let has_previous = self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs;
+        if self.layout_config.is_zen { self.layout.worktrees.height.saturating_sub(2) as usize } else { self.layout.worktrees.height.saturating_sub(if has_previous { 1 } else { 2 }) as usize }
+    }
+
+    fn search_visible_height(&self) -> usize {
+        let has_previous = self.layout_config.is_branches || self.layout_config.is_tags || self.layout_config.is_stashes || self.layout_config.is_reflogs || self.layout_config.is_worktrees;
+        if self.layout_config.is_zen { self.layout.search.height.saturating_sub(2) as usize } else { self.layout.search.height.saturating_sub(if has_previous { 1 } else { 2 }) as usize }
+    }
+
+    fn inspector_visible_height(&self) -> usize {
+        if self.layout_config.is_zen { self.layout.inspector.height.saturating_sub(2) as usize } else { self.layout.inspector.height.saturating_sub(1) as usize }
+    }
+
+    fn status_top_visible_height(&self) -> usize {
+        self.layout.status_top.height.saturating_sub(2) as usize
+    }
+
+    fn status_bottom_visible_height(&self) -> usize {
+        self.layout.status_bottom.height.saturating_sub(2) as usize
+    }
+
+    fn settings_scroll_line_count(&mut self) -> usize {
+        if let Some(repo) = self.repo.clone() {
+            self.settings_lines(&repo).len()
+        } else {
+            self.settings_selections.iter().map(|selection| selection.line).max().map(|line| line.saturating_add(1)).unwrap_or(0)
+        }
+    }
+
+    fn inspector_line_count_for_scrollbar(&self) -> usize {
+        if self.graph_selected == 0 {
+            return if self.uncommitted.has_conflicts { 8 } else { 0 };
+        }
+
+        let visible_height = self.inspector_visible_height();
+        let max_text_width = self.layout.inspector.width.saturating_sub(1) as usize;
+        let max_text_width = max_text_width.saturating_sub(2);
+        let Some(repo) = self.repo.as_ref() else {
+            return self.inspector_scroll.get().saturating_add(visible_height).saturating_add(1);
+        };
+        let Some(identity) = self.graph_identity_at(self.graph_selected) else {
+            return empty_state_top_padding(visible_height).saturating_add(1);
+        };
+        let Ok(commit) = repo.find_commit(identity.oid) else {
+            return empty_state_top_padding(visible_height).saturating_add(1);
+        };
+
+        let mut count = 4usize.saturating_add(commit.parent_count());
+        if let Some(row) = self.graph_row_at(self.graph_selected)
+            && !row.branches.is_empty()
+        {
+            count = count.saturating_add(2).saturating_add(row.branches.len());
+        } else if let Some(branches) = self.branches.all.get(&identity.alias)
+            && self.branches.colors.contains_key(&identity.alias)
+        {
+            let visible_branches = branches.iter().filter(|branch| !self.branches.hidden_branch_names.contains(*branch)).count();
+            count = count.saturating_add(2).saturating_add(visible_branches);
+        }
+
+        if let Some(row) = self.graph_row_at(self.graph_selected)
+            && let Some(entry) = &row.reflog
+        {
+            count = count.saturating_add(3).saturating_add(wrap_words(sanitize(entry.message.clone()), max_text_width).len());
+        } else if let Some(entry) = self.reflogs.latest_for_alias(identity.alias) {
+            count = count.saturating_add(4).saturating_add(wrap_words(sanitize(entry.message.clone()), max_text_width).len());
+        }
+
+        let summary = commit.summary().unwrap_or("⊘ no summary").to_string();
+        let body = commit.body().unwrap_or("⊘ no body").to_string();
+        count.saturating_add(10).saturating_add(wrap_words(sanitize(summary), max_text_width).len()).saturating_add(2).saturating_add(wrap_words(sanitize(body), max_text_width).len())
+    }
+
     fn handle_mouse_scroll(&mut self, column: u16, row: u16, direction: Direction) {
-        if self.layout_drag.is_some() {
+        if self.mouse_drag.is_some() {
             return;
         }
 

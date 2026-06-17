@@ -438,7 +438,7 @@ impl App {
                 let config = LayoutConfig::default();
                 let should_reload = self.repo.is_some() && self.layout_config.is_graph_reflogs != config.is_graph_reflogs;
                 self.layout_config = config;
-                self.layout_drag = None;
+                self.mouse_drag = None;
                 self.mark_viewer_layout_dirty();
                 self.file_name = None;
                 self.save_layout();
@@ -1970,7 +1970,7 @@ impl App {
         let config = LayoutConfig::default();
         let should_reload = self.repo.is_some() && self.layout_config.is_graph_reflogs != config.is_graph_reflogs;
         self.layout_config = config;
-        self.layout_drag = None;
+        self.mouse_drag = None;
         self.mark_viewer_layout_dirty();
         self.viewport = Viewport::Graph;
         self.focus = Focus::Viewport;

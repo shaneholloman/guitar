@@ -365,6 +365,7 @@ SHA lookup accepts non-empty prefixes up to 40 characters. It searches commits a
 Mouse capture is enabled while the app runs.
 
 - Mouse wheel scrolls the pane under the cursor and focuses it.
+- Click or drag a visible scrollbar track to jump or scrub the pane it belongs to.
 - A single click selects the row under the cursor and focuses that pane.
 - Double-click branch, tag, stash, reflog, worktree, status, theme, or keybinding rows to perform the same action as `Enter`.
 - Single-click settings layout rows to toggle them immediately.
