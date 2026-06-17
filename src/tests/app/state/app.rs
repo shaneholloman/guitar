@@ -91,7 +91,21 @@ fn parent_with_submodule(dir: &TestDir) -> Repository {
 }
 
 fn graph_row(index: usize, alias: u32, oid: git2::Oid) -> GraphRow {
-    GraphRow { index, alias, oid, summary: "commit".to_string(), has_any_branch: false, branches: Vec::new(), tags: Vec::new(), is_stash: false, stash_lane: None, worktrees: Vec::new(), reflog: None }
+    GraphRow {
+        index,
+        alias,
+        oid,
+        summary: "commit".to_string(),
+        committer_date: String::new(),
+        committer_name: String::new(),
+        has_any_branch: false,
+        branches: Vec::new(),
+        tags: Vec::new(),
+        is_stash: false,
+        stash_lane: None,
+        worktrees: Vec::new(),
+        reflog: None,
+    }
 }
 
 fn history_row(index: usize, oid: git2::Oid) -> GraphFileHistoryRow {

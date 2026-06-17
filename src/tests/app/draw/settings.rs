@@ -91,7 +91,7 @@ fn settings_default_tab_is_paths_and_only_paths_sections_render() {
     assert!(rendered.contains("shortcuts"));
     assert!(rendered.contains("paths:"));
     assert!(rendered.contains("recent repositories:"));
-    assert!(!rendered.contains("layout visibility:"));
+    assert!(!rendered.contains("pane visibility:"));
     assert!(!rendered.contains("credentials:"));
     assert!(!rendered.contains("remotes:"));
     assert!(!rendered.contains("shortcuts / normal mode:"));
@@ -106,7 +106,8 @@ fn settings_active_tabs_render_their_grouped_sections_only() {
 
     app.settings_tab = SettingsTab::Display;
     let display = rendered_settings(&mut app, &repo, 160, 160);
-    assert!(display.contains("layout visibility:"));
+    assert!(display.contains("pane visibility:"));
+    assert!(display.contains("graph metadata:"));
     assert!(display.contains("themes:"));
     assert!(!display.contains("recent repositories:"));
     assert!(!display.contains("remotes:"));
@@ -212,10 +213,12 @@ fn settings_renders_layout_visibility_rows_with_states() {
 
     let rendered = rendered_settings(&mut app, &repo, 120, 120);
 
-    assert!(rendered.contains("layout visibility:"));
+    assert!(rendered.contains("pane visibility:"));
+    assert!(rendered.contains("graph metadata:"));
     assert!(rendered.contains("1 branches:"));
-    assert!(rendered.contains("8 SHAs:"));
-    assert!(rendered.contains("\\ submodules:"));
+    assert!(rendered.contains("Ctrl + 1 SHAs:"));
+    assert!(rendered.contains("6 submodules:"));
+    assert!(rendered.contains("Ctrl + 4 refs:"));
     assert!(rendered.contains("0 reset layout:"));
     assert!(rendered.contains("🞕"));
     assert!(rendered.contains("🞎"));
@@ -286,7 +289,7 @@ fn settings_section_names_use_highlight_color() {
 
     for (tab, labels) in [
         (SettingsTab::Paths, vec!["paths:", "recent repositories:"]),
-        (SettingsTab::Display, vec!["layout visibility:", "themes:"]),
+        (SettingsTab::Display, vec!["pane visibility:", "graph metadata:", "themes:"]),
         (SettingsTab::Auth, vec!["credentials:"]),
         (SettingsTab::Repo, vec!["remotes:"]),
         (SettingsTab::Shortcuts, vec!["shortcuts / normal mode:", "shortcuts / action mode:"]),

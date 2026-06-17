@@ -24,14 +24,27 @@ fn defaults_include_numeric_ui_toggles() {
         assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::NONE)), Some(&Command::ToggleBranches));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('2'), KeyModifiers::NONE)), Some(&Command::ToggleTags));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('3'), KeyModifiers::NONE)), Some(&Command::ToggleStashes));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::NONE)), Some(&Command::ToggleStatus));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('5'), KeyModifiers::NONE)), Some(&Command::ToggleInspector));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleWorktrees));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleReflogs));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('8'), KeyModifiers::NONE)), Some(&Command::ToggleShas));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('9'), KeyModifiers::NONE)), Some(&Command::ToggleGraphReflogs));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
-        assert_eq!(mode_map.get(&KeyBinding::new(Char('\\'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::NONE)), Some(&Command::ToggleReflogs));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('5'), KeyModifiers::NONE)), Some(&Command::ToggleWorktrees));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('8'), KeyModifiers::NONE)), Some(&Command::ToggleInspector));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('9'), KeyModifiers::NONE)), Some(&Command::ToggleStatus));
+    }
+}
+
+#[test]
+fn defaults_include_ctrl_numeric_graph_metadata_toggles() {
+    let maps = default_keymaps();
+    let normal = maps.get(&InputMode::Normal).unwrap();
+    let action = maps.get(&InputMode::Action).unwrap();
+
+    for mode_map in [normal, action] {
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('0'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphReflogs));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::CONTROL)), Some(&Command::ToggleShas));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('2'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphDates));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('3'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphCommitters));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphRefs));
     }
 }
 
@@ -66,12 +79,14 @@ fn existing_keymaps_gain_search_toggle_when_available() {
     maps.insert(InputMode::Action, action);
 
     assert!(ensure_default_keymap_bindings(&mut maps));
-    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
-    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
+    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
+    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
     assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FindFile));
     assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('F'), KeyModifiers::SHIFT)), Some(&Command::FindFile));
-    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('\\'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
-    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('\\'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
+    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
+    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
+    assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('2'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphDates));
+    assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('4'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphRefs));
     assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Char('R'), KeyModifiers::SHIFT)), Some(&Command::ReloadAllBranches));
     assert_eq!(maps.get(&InputMode::Normal).unwrap().get(&KeyBinding::new(Backspace, KeyModifiers::NONE)), Some(&Command::ReturnToParentRepository));
     assert_eq!(maps.get(&InputMode::Action).unwrap().get(&KeyBinding::new(Char('R'), KeyModifiers::SHIFT)), None);
@@ -104,7 +119,7 @@ fn existing_keymaps_do_not_override_search_conflicts() {
     maps.insert(InputMode::Normal, normal);
     maps.insert(InputMode::Action, action);
 
-    assert!(!ensure_default_keymap_bindings(&mut maps));
+    assert!(ensure_default_keymap_bindings(&mut maps));
     let normal = maps.get(&InputMode::Normal).unwrap();
     assert_eq!(normal.get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), Some(&Command::Reload));
     assert_eq!(normal.get(&KeyBinding::new(Char('s'), KeyModifiers::CONTROL)), Some(&Command::ToggleSearch));
@@ -114,6 +129,34 @@ fn existing_keymaps_do_not_override_search_conflicts() {
     assert_eq!(normal.get(&KeyBinding::new(Char('x'), KeyModifiers::CONTROL)), Some(&Command::ToggleSubmodules));
     assert_eq!(normal.get(&KeyBinding::new(Backspace, KeyModifiers::NONE)), Some(&Command::Reload));
     assert_eq!(normal.get(&KeyBinding::new(Char('p'), KeyModifiers::CONTROL)), Some(&Command::ReturnToParentRepository));
+}
+
+#[test]
+fn existing_keymaps_rewrite_untouched_old_numeric_ui_defaults() {
+    let mut maps = IndexMap::new();
+    let mut normal = IndexMap::new();
+    normal.insert(KeyBinding::new(Char('j'), KeyModifiers::NONE), Command::ScrollDown);
+    for (key, command) in old_numeric_ui_defaults() {
+        normal.insert(key, command);
+    }
+    let action = normal.clone();
+    maps.insert(InputMode::Normal, normal);
+    maps.insert(InputMode::Action, action);
+
+    assert!(ensure_default_keymap_bindings(&mut maps));
+
+    for mode in [InputMode::Normal, InputMode::Action] {
+        let mode_map = maps.get(&mode).unwrap();
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::NONE)), Some(&Command::ToggleReflogs));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('6'), KeyModifiers::NONE)), Some(&Command::ToggleSubmodules));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('7'), KeyModifiers::NONE)), Some(&Command::ToggleSearch));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('8'), KeyModifiers::NONE)), Some(&Command::ToggleInspector));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('9'), KeyModifiers::NONE)), Some(&Command::ToggleStatus));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('1'), KeyModifiers::CONTROL)), Some(&Command::ToggleShas));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('4'), KeyModifiers::CONTROL)), Some(&Command::ToggleGraphRefs));
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('\\'), KeyModifiers::NONE)), None);
+        assert_eq!(mode_map.get(&KeyBinding::new(Char('`'), KeyModifiers::NONE)), None);
+    }
 }
 
 #[test]
@@ -128,6 +171,10 @@ fn defaults_include_keyboard_resize_bindings() {
         assert_eq!(mode_map.get(&KeyBinding::new(Char('j'), mods)), Some(&Command::ResizePaneDown));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('k'), mods)), Some(&Command::ResizePaneUp));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('l'), mods)), Some(&Command::ResizePaneRight));
+        assert_eq!(mode_map.get(&KeyBinding::new(Left, mods)), Some(&Command::ResizePaneLeft));
+        assert_eq!(mode_map.get(&KeyBinding::new(Down, mods)), Some(&Command::ResizePaneDown));
+        assert_eq!(mode_map.get(&KeyBinding::new(Up, mods)), Some(&Command::ResizePaneUp));
+        assert_eq!(mode_map.get(&KeyBinding::new(Right, mods)), Some(&Command::ResizePaneRight));
     }
 }
 
@@ -143,6 +190,10 @@ fn defaults_include_directional_focus_bindings() {
         assert_eq!(mode_map.get(&KeyBinding::new(Char('j'), mods)), Some(&Command::FocusPaneDown));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('k'), mods)), Some(&Command::FocusPaneUp));
         assert_eq!(mode_map.get(&KeyBinding::new(Char('l'), mods)), Some(&Command::FocusPaneRight));
+        assert_eq!(mode_map.get(&KeyBinding::new(Left, mods)), Some(&Command::FocusPaneLeft));
+        assert_eq!(mode_map.get(&KeyBinding::new(Down, mods)), Some(&Command::FocusPaneDown));
+        assert_eq!(mode_map.get(&KeyBinding::new(Up, mods)), Some(&Command::FocusPaneUp));
+        assert_eq!(mode_map.get(&KeyBinding::new(Right, mods)), Some(&Command::FocusPaneRight));
     }
 }
 

@@ -517,6 +517,18 @@ impl App {
                     self.reload(None);
                 }
             },
+            Command::ToggleGraphDates => {
+                self.layout_config.is_graph_dates = !self.layout_config.is_graph_dates;
+                self.save_layout();
+            },
+            Command::ToggleGraphCommitters => {
+                self.layout_config.is_graph_committers = !self.layout_config.is_graph_committers;
+                self.save_layout();
+            },
+            Command::ToggleGraphRefs => {
+                self.layout_config.is_graph_refs = !self.layout_config.is_graph_refs;
+                self.save_layout();
+            },
             _ => {},
         }
 
@@ -2204,6 +2216,27 @@ impl App {
             self.reload(None);
             self.focus = Focus::Viewport;
             self.viewport = Viewport::Graph;
+        }
+    }
+
+    pub fn on_toggle_graph_dates(&mut self) {
+        if self.viewport != Viewport::Splash {
+            self.layout_config.is_graph_dates = !self.layout_config.is_graph_dates;
+            self.save_layout();
+        }
+    }
+
+    pub fn on_toggle_graph_committers(&mut self) {
+        if self.viewport != Viewport::Splash {
+            self.layout_config.is_graph_committers = !self.layout_config.is_graph_committers;
+            self.save_layout();
+        }
+    }
+
+    pub fn on_toggle_graph_refs(&mut self) {
+        if self.viewport != Viewport::Splash {
+            self.layout_config.is_graph_refs = !self.layout_config.is_graph_refs;
+            self.save_layout();
         }
     }
 

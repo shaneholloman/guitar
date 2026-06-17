@@ -6,7 +6,10 @@ use crate::{
         worktrees::{WorktreeEntry, Worktrees},
     },
     git::queries::{file_history::changed_file_status_at_commit, helpers::FileStatus, reflogs::HeadReflogEntry},
-    helpers::heatmap::{DAYS, WEEKS, build_heatmap},
+    helpers::{
+        heatmap::{DAYS, WEEKS, build_heatmap},
+        time::timestamp_to_utc_date,
+    },
 };
 use git2::Oid;
 use im::{HashSet, Vector};
@@ -86,6 +89,8 @@ pub struct GraphRow {
     pub alias: u32,
     pub oid: Oid,
     pub summary: String,
+    pub committer_date: String,
+    pub committer_name: String,
     pub has_any_branch: bool,
     pub branches: Vec<GraphBranchLabel>,
     pub tags: Vec<GraphTagLabel>,
@@ -331,7 +336,17 @@ fn graph_rows(walk_ctx: &Walker, worktrees: &Worktrees, hidden_branch_names: &Ha
         let alias = walk_ctx.oids.get_sorted_aliases().get(index).copied().unwrap_or(NONE);
         let oid = *walk_ctx.oids.get_oid_by_alias(alias);
         let is_uncommitted = alias == NONE || walk_ctx.oids.is_zero(&oid);
-        let summary = if is_uncommitted { String::new() } else { repo.find_commit(oid).ok().and_then(|commit| commit.summary().map(str::to_string)).unwrap_or_else(|| "⊘ no message".to_string()) };
+        let (summary, committer_date, committer_name) = if is_uncommitted {
+            (String::new(), String::new(), String::new())
+        } else if let Ok(commit) = repo.find_commit(oid) {
+            let summary = commit.summary().map(str::to_string).unwrap_or_else(|| "⊘ no message".to_string());
+            let committer = commit.committer();
+            let committer_date = timestamp_to_utc_date(committer.when());
+            let committer_name = committer.name().unwrap_or("-").to_string();
+            (summary, committer_date, committer_name)
+        } else {
+            ("⊘ no message".to_string(), String::new(), String::new())
+        };
 
         let local = walk_ctx.branches_local.get(&alias).cloned().unwrap_or_default();
         let remote = walk_ctx.branches_remote.get(&alias).cloned().unwrap_or_default();
@@ -353,7 +368,7 @@ fn graph_rows(walk_ctx: &Walker, worktrees: &Worktrees, hidden_branch_names: &Ha
         let worktrees = worktrees_for_alias(worktrees, walk_ctx, alias);
         let reflog = latest_reflogs.get(&alias).map(|entry| GraphReflogLabel { selector: entry.selector.clone(), message: entry.message.clone(), lane: walk_ctx.reflogs_lanes.get(&alias).copied() });
 
-        rows.push(GraphRow { index, alias, oid, summary, has_any_branch, branches, tags, is_stash, stash_lane, worktrees, reflog });
+        rows.push(GraphRow { index, alias, oid, summary, committer_date, committer_name, has_any_branch, branches, tags, is_stash, stash_lane, worktrees, reflog });
     }
 
     rows

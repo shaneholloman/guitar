@@ -38,6 +38,9 @@ pub enum Command {
     ToggleStashes,
     ToggleReflogs,
     ToggleGraphReflogs,
+    ToggleGraphDates,
+    ToggleGraphCommitters,
+    ToggleGraphRefs,
     ToggleWorktrees,
     ToggleSubmodules,
     ToggleSearch,
@@ -276,12 +279,20 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     map.insert(KeyBinding::new(Char('j'), KeyModifiers::CONTROL), Command::FocusPaneDown);
     map.insert(KeyBinding::new(Char('k'), KeyModifiers::CONTROL), Command::FocusPaneUp);
     map.insert(KeyBinding::new(Char('l'), KeyModifiers::CONTROL), Command::FocusPaneRight);
+    map.insert(KeyBinding::new(Left, KeyModifiers::CONTROL), Command::FocusPaneLeft);
+    map.insert(KeyBinding::new(Down, KeyModifiers::CONTROL), Command::FocusPaneDown);
+    map.insert(KeyBinding::new(Up, KeyModifiers::CONTROL), Command::FocusPaneUp);
+    map.insert(KeyBinding::new(Right, KeyModifiers::CONTROL), Command::FocusPaneRight);
 
     // Pane resizing (Vim-style direction keys)
     map.insert(KeyBinding::new(Char('h'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneLeft);
     map.insert(KeyBinding::new(Char('j'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneDown);
     map.insert(KeyBinding::new(Char('k'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneUp);
     map.insert(KeyBinding::new(Char('l'), KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneRight);
+    map.insert(KeyBinding::new(Left, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneLeft);
+    map.insert(KeyBinding::new(Down, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneDown);
+    map.insert(KeyBinding::new(Up, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneUp);
+    map.insert(KeyBinding::new(Right, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneRight);
 
     // Vertical navigation (Vim-style)
 
@@ -375,14 +386,17 @@ fn default_navigation_keymap() -> IndexMap<KeyBinding, Command> {
     map.insert(KeyBinding::new(Char('1'), KeyModifiers::NONE), Command::ToggleBranches);
     map.insert(KeyBinding::new(Char('2'), KeyModifiers::NONE), Command::ToggleTags);
     map.insert(KeyBinding::new(Char('3'), KeyModifiers::NONE), Command::ToggleStashes);
-    map.insert(KeyBinding::new(Char('4'), KeyModifiers::NONE), Command::ToggleStatus);
-    map.insert(KeyBinding::new(Char('5'), KeyModifiers::NONE), Command::ToggleInspector);
-    map.insert(KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleWorktrees);
-    map.insert(KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleReflogs);
-    map.insert(KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleShas);
-    map.insert(KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleGraphReflogs);
-    map.insert(KeyBinding::new(Char('\\'), KeyModifiers::NONE), Command::ToggleSubmodules);
-    map.insert(KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::ToggleSearch);
+    map.insert(KeyBinding::new(Char('4'), KeyModifiers::NONE), Command::ToggleReflogs);
+    map.insert(KeyBinding::new(Char('5'), KeyModifiers::NONE), Command::ToggleWorktrees);
+    map.insert(KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleSubmodules);
+    map.insert(KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleSearch);
+    map.insert(KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleInspector);
+    map.insert(KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleStatus);
+    map.insert(KeyBinding::new(Char('0'), KeyModifiers::CONTROL), Command::ToggleGraphReflogs);
+    map.insert(KeyBinding::new(Char('1'), KeyModifiers::CONTROL), Command::ToggleShas);
+    map.insert(KeyBinding::new(Char('2'), KeyModifiers::CONTROL), Command::ToggleGraphDates);
+    map.insert(KeyBinding::new(Char('3'), KeyModifiers::CONTROL), Command::ToggleGraphCommitters);
+    map.insert(KeyBinding::new(Char('4'), KeyModifiers::CONTROL), Command::ToggleGraphRefs);
 
     // Help and settings
     map.insert(KeyBinding::new(Char('?'), KeyModifiers::NONE), Command::ToggleHelp);
@@ -533,18 +547,116 @@ fn default_keymaps() -> Keymaps {
     maps
 }
 
+fn old_numeric_ui_defaults() -> Vec<(KeyBinding, Command)> {
+    vec![
+        (KeyBinding::new(Char('0'), KeyModifiers::NONE), Command::ResetLayout),
+        (KeyBinding::new(Char('1'), KeyModifiers::NONE), Command::ToggleBranches),
+        (KeyBinding::new(Char('2'), KeyModifiers::NONE), Command::ToggleTags),
+        (KeyBinding::new(Char('3'), KeyModifiers::NONE), Command::ToggleStashes),
+        (KeyBinding::new(Char('4'), KeyModifiers::NONE), Command::ToggleStatus),
+        (KeyBinding::new(Char('5'), KeyModifiers::NONE), Command::ToggleInspector),
+        (KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleWorktrees),
+        (KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleReflogs),
+        (KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleShas),
+        (KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleGraphReflogs),
+        (KeyBinding::new(Char('\\'), KeyModifiers::NONE), Command::ToggleSubmodules),
+        (KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::ToggleSearch),
+    ]
+}
+
+fn new_numeric_ui_defaults() -> Vec<(KeyBinding, Command)> {
+    vec![
+        (KeyBinding::new(Char('0'), KeyModifiers::NONE), Command::ResetLayout),
+        (KeyBinding::new(Char('1'), KeyModifiers::NONE), Command::ToggleBranches),
+        (KeyBinding::new(Char('2'), KeyModifiers::NONE), Command::ToggleTags),
+        (KeyBinding::new(Char('3'), KeyModifiers::NONE), Command::ToggleStashes),
+        (KeyBinding::new(Char('4'), KeyModifiers::NONE), Command::ToggleReflogs),
+        (KeyBinding::new(Char('5'), KeyModifiers::NONE), Command::ToggleWorktrees),
+        (KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleSubmodules),
+        (KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleSearch),
+        (KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleInspector),
+        (KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleStatus),
+        (KeyBinding::new(Char('0'), KeyModifiers::CONTROL), Command::ToggleGraphReflogs),
+        (KeyBinding::new(Char('1'), KeyModifiers::CONTROL), Command::ToggleShas),
+        (KeyBinding::new(Char('2'), KeyModifiers::CONTROL), Command::ToggleGraphDates),
+        (KeyBinding::new(Char('3'), KeyModifiers::CONTROL), Command::ToggleGraphCommitters),
+        (KeyBinding::new(Char('4'), KeyModifiers::CONTROL), Command::ToggleGraphRefs),
+    ]
+}
+
+fn keymap_contains_old_numeric_ui_defaults(map: &ModeKeymap) -> bool {
+    old_numeric_ui_defaults().iter().all(|(key, command)| map.get(key) == Some(command))
+}
+
+fn rewrite_untouched_old_numeric_ui_defaults(map: &mut ModeKeymap) -> bool {
+    if !keymap_contains_old_numeric_ui_defaults(map) {
+        return false;
+    }
+
+    let old_defaults = old_numeric_ui_defaults();
+    let new_defaults = new_numeric_ui_defaults();
+    let mut updated = IndexMap::with_capacity(map.len().saturating_add(new_defaults.len()));
+    let mut inserted = false;
+
+    for (key, command) in map.iter() {
+        if old_defaults.iter().any(|(old_key, _)| old_key == key) {
+            if !inserted {
+                for (new_key, new_command) in &new_defaults {
+                    if old_defaults.iter().any(|(old_key, _)| old_key == new_key) || !map.contains_key(new_key) || map.get(new_key) == Some(new_command) {
+                        updated.insert(new_key.clone(), new_command.clone());
+                    }
+                }
+                inserted = true;
+            }
+        } else {
+            updated.insert(key.clone(), command.clone());
+        }
+    }
+
+    *map = updated;
+    true
+}
+
+fn insert_default_binding_if_available(map: &mut ModeKeymap, key: KeyBinding, command: Command) -> bool {
+    if map.values().any(|existing| existing == &command) || map.contains_key(&key) {
+        false
+    } else {
+        map.insert(key, command);
+        true
+    }
+}
+
 fn ensure_default_keymap_bindings(maps: &mut Keymaps) -> bool {
     let mut changed = false;
     let shared_defaults = [
-        (KeyBinding::new(Char('`'), KeyModifiers::NONE), Command::ToggleSearch),
         (KeyBinding::new(Char('F'), KeyModifiers::SHIFT), Command::FindFile),
-        (KeyBinding::new(Char('\\'), KeyModifiers::NONE), Command::ToggleSubmodules),
+        (KeyBinding::new(Char('4'), KeyModifiers::NONE), Command::ToggleReflogs),
+        (KeyBinding::new(Char('5'), KeyModifiers::NONE), Command::ToggleWorktrees),
+        (KeyBinding::new(Char('6'), KeyModifiers::NONE), Command::ToggleSubmodules),
+        (KeyBinding::new(Char('7'), KeyModifiers::NONE), Command::ToggleSearch),
+        (KeyBinding::new(Char('8'), KeyModifiers::NONE), Command::ToggleInspector),
+        (KeyBinding::new(Char('9'), KeyModifiers::NONE), Command::ToggleStatus),
+        (KeyBinding::new(Char('0'), KeyModifiers::CONTROL), Command::ToggleGraphReflogs),
+        (KeyBinding::new(Char('1'), KeyModifiers::CONTROL), Command::ToggleShas),
+        (KeyBinding::new(Char('2'), KeyModifiers::CONTROL), Command::ToggleGraphDates),
+        (KeyBinding::new(Char('3'), KeyModifiers::CONTROL), Command::ToggleGraphCommitters),
+        (KeyBinding::new(Char('4'), KeyModifiers::CONTROL), Command::ToggleGraphRefs),
+        (KeyBinding::new(Left, KeyModifiers::CONTROL), Command::FocusPaneLeft),
+        (KeyBinding::new(Down, KeyModifiers::CONTROL), Command::FocusPaneDown),
+        (KeyBinding::new(Up, KeyModifiers::CONTROL), Command::FocusPaneUp),
+        (KeyBinding::new(Right, KeyModifiers::CONTROL), Command::FocusPaneRight),
+        (KeyBinding::new(Left, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneLeft),
+        (KeyBinding::new(Down, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneDown),
+        (KeyBinding::new(Up, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneUp),
+        (KeyBinding::new(Right, KeyModifiers::CONTROL | KeyModifiers::ALT), Command::ResizePaneRight),
     ];
     for mode in [InputMode::Normal, InputMode::Action] {
         let mode_map = maps.entry(mode).or_default();
+        if rewrite_untouched_old_numeric_ui_defaults(mode_map) {
+            changed = true;
+        }
         for (key, command) in shared_defaults.iter() {
-            if !mode_map.values().any(|existing| existing == command) && !mode_map.contains_key(key) {
-                mode_map.insert(key.clone(), command.clone());
+            if insert_default_binding_if_available(mode_map, key.clone(), command.clone()) {
                 changed = true;
             }
         }

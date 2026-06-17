@@ -2,7 +2,7 @@ use crate::app::{
     app::{App, Focus},
     draw::buffered::{DrawTarget, SurfaceRender},
 };
-use crate::core::renderers::{render_graph_projection, render_message_projection, render_sha_projection};
+use crate::core::renderers::{GRAPH_COMMITTER_WIDTH, render_committer_projection, render_date_projection, render_graph_projection, render_message_projection, render_sha_projection};
 use crate::helpers::layout::scrollbar_content_length;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::text::Line;
@@ -68,21 +68,39 @@ impl App {
         }
 
         let visible_len = end.saturating_sub(start);
-        let (sha_range, graph_range, message_range) = if let Some(window) = self.graph.graph_window.as_ref().filter(|window| window.start < end && start < window.end) {
+        let (sha_range, graph_range, date_range, committer_range, message_range) = if let Some(window) = self.graph.graph_window.as_ref().filter(|window| window.start < end && start < window.end) {
             // SHA, graph, and message columns are rendered from the cached window, then reindexed
             // into the requested viewport so scrolling still looks like movement while loading.
             let render_uncommitted_row = graph_window_has_stable_visible_page(window, start, end);
             let source_sha = if self.layout_config.is_shas { Some(render_sha_projection(&self.theme, &window.rows, self.graph_selected)) } else { None };
+            let source_date = if self.layout_config.is_graph_dates { Some(render_date_projection(&self.theme, &window.rows, self.graph_selected)) } else { None };
+            let source_committer = if self.layout_config.is_graph_committers { Some(render_committer_projection(&self.theme, &window.rows, self.graph_selected)) } else { None };
             let source_graph = render_graph_projection(&self.theme, &window.rows, &window.history, window.head_alias, window.start, window.end, render_uncommitted_row);
-            let source_message = render_message_projection(&self.theme, &window.rows, self.layout_config.is_graph_reflogs, self.graph_selected, &self.uncommitted, render_uncommitted_row);
+            let source_message = render_message_projection(
+                &self.theme,
+                &window.rows,
+                self.layout_config.is_graph_reflogs,
+                self.layout_config.is_graph_refs,
+                self.graph_selected,
+                &self.uncommitted,
+                render_uncommitted_row,
+            );
 
             (
                 source_sha.as_ref().map(|lines| align_projection(lines, window.start, start, end)),
                 align_projection(&source_graph, window.start, start, end),
+                source_date.as_ref().map(|lines| align_projection(lines, window.start, start, end)),
+                source_committer.as_ref().map(|lines| align_projection(lines, window.start, start, end)),
                 align_projection(&source_message, window.start, start, end),
             )
         } else {
-            (self.layout_config.is_shas.then(|| blank_projection(visible_len)), blank_projection(visible_len), blank_projection(visible_len))
+            (
+                self.layout_config.is_shas.then(|| blank_projection(visible_len)),
+                blank_projection(visible_len),
+                self.layout_config.is_graph_dates.then(|| blank_projection(visible_len)),
+                self.layout_config.is_graph_committers.then(|| blank_projection(visible_len)),
+                blank_projection(visible_len),
+            )
         };
 
         // Build table rows and measure the graph column from rendered span widths.
@@ -91,12 +109,19 @@ impl App {
         let search_highlight_indices: HashSet<usize> =
             if self.layout_config.is_search && self.search_path.is_some() { self.search_rows.iter().map(|row| row.graph_index).filter(|&index| index != 0).collect() } else { HashSet::new() };
         for idx in 0..visible_height {
-            let mut cells = Vec::with_capacity(if self.layout_config.is_shas { 3 } else { 2 });
+            let optional_cell_count = usize::from(self.layout_config.is_shas) + usize::from(self.layout_config.is_graph_dates) + usize::from(self.layout_config.is_graph_committers);
+            let mut cells = Vec::with_capacity(2 + optional_cell_count);
 
             if let Some(sha) = &sha_range {
                 cells.push(WidgetCell::from(sha.get(idx).cloned().unwrap_or_default()));
             }
             cells.push(WidgetCell::from(graph_range.get(idx).cloned().unwrap_or_default()));
+            if let Some(date) = &date_range {
+                cells.push(WidgetCell::from(date.get(idx).cloned().unwrap_or_default()));
+            }
+            if let Some(committer) = &committer_range {
+                cells.push(WidgetCell::from(committer.get(idx).cloned().unwrap_or_default()));
+            }
             cells.push(WidgetCell::from(message_range.get(idx).cloned().unwrap_or_default()));
 
             let mut row = Row::new(cells);
@@ -115,11 +140,18 @@ impl App {
         }
 
         // The graph column is fixed to its measured width; message text gets the rest.
-        let constraints = if self.layout_config.is_shas {
-            vec![ratatui::layout::Constraint::Length(9), ratatui::layout::Constraint::Length(width + 5), ratatui::layout::Constraint::Min(0)]
-        } else {
-            vec![ratatui::layout::Constraint::Length(width + 5), ratatui::layout::Constraint::Min(0)]
-        };
+        let mut constraints = Vec::new();
+        if self.layout_config.is_shas {
+            constraints.push(ratatui::layout::Constraint::Length(9));
+        }
+        constraints.push(ratatui::layout::Constraint::Length(width + 5));
+        if self.layout_config.is_graph_dates {
+            constraints.push(ratatui::layout::Constraint::Length(10));
+        }
+        if self.layout_config.is_graph_committers {
+            constraints.push(ratatui::layout::Constraint::Length(GRAPH_COMMITTER_WIDTH as u16));
+        }
+        constraints.push(ratatui::layout::Constraint::Min(0));
 
         if self.layout_config.is_zen {
             // Zen mode owns the full rounded graph frame.

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{app::state::layout::Layout, core::submodules::SubmoduleStackEntry};
+use crate::{app::state::layout::Layout, core::submodules::SubmoduleStackEntry, helpers::symbols::SYM_SUBMODULE};
 use git2::{Repository, Signature};
 use ratatui::{Terminal, backend::TestBackend, layout::Rect};
 use std::{
@@ -38,20 +38,20 @@ fn rendered_symbols(terminal: &Terminal<TestBackend>) -> String {
 fn statusbar_renders_submodule_stack_before_branch() {
     let (path, repo) = temp_repo("submodule-stack");
     let mut app = App {
-        layout: Layout { statusbar_left: Rect::new(0, 0, 100, 1), statusbar_right: Rect::new(100, 0, 20, 1), ..Default::default() },
+        layout: Layout { statusbar_left: Rect::new(0, 0, 180, 1), statusbar_right: Rect::new(180, 0, 20, 1), ..Default::default() },
         submodule_stack: vec![
             SubmoduleStackEntry::new(path.clone(), PathBuf::from("deps/child"), "deps/child".into()),
             SubmoduleStackEntry::new(path.join("deps/child"), PathBuf::from("vendor/grandchild"), "vendor/grandchild".into()),
         ],
         ..Default::default()
     };
-    let backend = TestBackend::new(120, 1);
+    let backend = TestBackend::new(200, 1);
     let mut terminal = Terminal::new(backend).unwrap();
 
     terminal.draw(|frame| app.draw_statusbar(frame, &repo)).unwrap();
 
     let rendered = rendered_symbols(&terminal);
-    let breadcrumb = format!("▣ {}", path.file_name().unwrap().to_string_lossy());
+    let breadcrumb = format!("{SYM_SUBMODULE} {}", path.file_name().unwrap().to_string_lossy());
     assert!(rendered.contains(&breadcrumb));
     assert!(rendered.contains("deps/child"));
     assert!(rendered.contains("vendor/grandchild"));

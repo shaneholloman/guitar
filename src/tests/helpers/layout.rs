@@ -22,6 +22,9 @@ fn layout_config_reads_old_boolean_only_config() {
     assert_eq!(config.weight_submodules, LAYOUT_WEIGHT_DEFAULT);
     assert!(!config.is_search);
     assert_eq!(config.weight_search, LAYOUT_WEIGHT_DEFAULT);
+    assert!(!config.is_graph_dates);
+    assert!(!config.is_graph_committers);
+    assert!(config.is_graph_refs);
     assert_eq!(config.weight_viewer_split_left, LAYOUT_WEIGHT_DEFAULT);
     assert_eq!(config.weight_viewer_split_right, LAYOUT_WEIGHT_DEFAULT);
 }
@@ -38,6 +41,9 @@ fn default_layout_shows_primary_workflow_panes() {
     assert!(!config.is_stashes);
     assert!(!config.is_reflogs);
     assert!(!config.is_graph_reflogs);
+    assert!(!config.is_graph_dates);
+    assert!(!config.is_graph_committers);
+    assert!(config.is_graph_refs);
     assert!(!config.is_worktrees);
     assert!(!config.is_submodules);
     assert!(!config.is_search);

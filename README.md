@@ -194,7 +194,7 @@ The stash pane lists stash commits. Stashes are real commits and are rendered in
 
 ### Reflogs
 
-The reflog pane lists recent HEAD reflog entries. Reflog rows can jump to commits that are visible in the graph. If the reflog commit is hidden, enable graph reflogs with `9` so the walker includes HEAD reflog roots.
+The reflog pane lists recent HEAD reflog entries. Reflog rows can jump to commits that are visible in the graph. If the reflog commit is hidden, enable graph reflogs with `Ctrl+0` so the walker includes HEAD reflog roots.
 
 ### Worktrees
 
@@ -303,7 +303,7 @@ The settings/help view is opened with `?`. It shows version and the commit heatm
 
 `Tab` and `Ctrl+n` move to the next focusable pane. `Shift+Tab` and `Ctrl+p` move to the previous focusable pane.
 
-`Ctrl+h`, `Ctrl+j`, `Ctrl+k`, and `Ctrl+l` move focus to the nearest pane in that direction when one is visible.
+`Ctrl+h`, `Ctrl+j`, `Ctrl+k`, and `Ctrl+l` move focus to the nearest pane in that direction when one is visible. `Ctrl+Left`, `Ctrl+Down`, `Ctrl+Up`, and `Ctrl+Right` are equivalent arrow-key alternatives.
 
 Focusable panes are ordered:
 
@@ -359,7 +359,7 @@ In full viewer mode, `Ctrl+d` and `Ctrl+u` jump between diff hunk edges. In hunk
 
 ### Resizing
 
-`Ctrl+Alt+h`, `Ctrl+Alt+j`, `Ctrl+Alt+k`, and `Ctrl+Alt+l` resize the focused pane one cell or row at a time.
+`Ctrl+Alt+h`, `Ctrl+Alt+j`, `Ctrl+Alt+k`, and `Ctrl+Alt+l` resize the focused pane one cell or row at a time. `Ctrl+Alt+Left`, `Ctrl+Alt+Down`, `Ctrl+Alt+Up`, and `Ctrl+Alt+Right` are equivalent arrow-key alternatives.
 
 - Left panes: `Ctrl+Alt+l` widens the left column; `Ctrl+Alt+h` narrows it.
 - Right panes: `Ctrl+Alt+h` widens the right column; `Ctrl+Alt+l` narrows it.
@@ -403,7 +403,7 @@ Choosing a file opens the search pane and loads commits that changed that path. 
 
 While the search pane is open, matching commits are highlighted in the graph. If the searched path also appears in the staged, unstaged, or conflict status panes, that filepath row is highlighted there too.
 
-Use `` ` `` to show or hide the search pane.
+Use `7` to show or hide the search pane.
 
 ## Inputs And Keymaps
 
@@ -466,14 +466,14 @@ Defaults are written to `keymap.json` on first run. User-edited keymaps can diff
 | Back | `Esc` |
 | Focus Previous Pane | `Ctrl+p`, `Shift+BackTab` |
 | Focus Next Pane | `Ctrl+n`, `Tab` |
-| Focus Pane Left | `Ctrl+h` |
-| Focus Pane Down | `Ctrl+j` |
-| Focus Pane Up | `Ctrl+k` |
-| Focus Pane Right | `Ctrl+l` |
-| Resize Pane Left | `Ctrl+Alt+h` |
-| Resize Pane Down | `Ctrl+Alt+j` |
-| Resize Pane Up | `Ctrl+Alt+k` |
-| Resize Pane Right | `Ctrl+Alt+l` |
+| Focus Pane Left | `Ctrl+h`, `Ctrl+Left` |
+| Focus Pane Down | `Ctrl+j`, `Ctrl+Down` |
+| Focus Pane Up | `Ctrl+k`, `Ctrl+Up` |
+| Focus Pane Right | `Ctrl+l`, `Ctrl+Right` |
+| Resize Pane Left | `Ctrl+Alt+h`, `Ctrl+Alt+Left` |
+| Resize Pane Down | `Ctrl+Alt+j`, `Ctrl+Alt+Down` |
+| Resize Pane Up | `Ctrl+Alt+k`, `Ctrl+Alt+Up` |
+| Resize Pane Right | `Ctrl+Alt+l`, `Ctrl+Alt+Right` |
 | Scroll Down | `j`, `Down` |
 | Scroll Up | `k`, `Up` |
 | Scroll Down Half | `Ctrl+Alt+d` |
@@ -497,14 +497,17 @@ Defaults are written to `keymap.json` on first run. User-edited keymaps can diff
 | Toggle Branches | `1` |
 | Toggle Tags | `2` |
 | Toggle Stashes | `3` |
-| Toggle Status | `4` |
-| Toggle Inspector | `5` |
-| Toggle Worktrees | `6` |
-| Toggle Reflogs | `7` |
-| Toggle SHAs | `8` |
-| Toggle Graph Reflogs | `9` |
-| Toggle Submodules | `\` |
-| Toggle Search | `` ` `` |
+| Toggle Reflogs | `4` |
+| Toggle Worktrees | `5` |
+| Toggle Submodules | `6` |
+| Toggle Search | `7` |
+| Toggle Inspector | `8` |
+| Toggle Status | `9` |
+| Toggle Graph Reflogs | `Ctrl+0` |
+| Toggle SHAs | `Ctrl+1` |
+| Toggle Graph Dates | `Ctrl+2` |
+| Toggle Graph Committers | `Ctrl+3` |
+| Toggle Graph Refs | `Ctrl+4` |
 | Toggle Help / Settings | `?` |
 | Return To Parent Repository | `Backspace` |
 | Action Mode | `Ctrl+a` |
@@ -849,7 +852,7 @@ Opening a worktree reloads the app at the selected worktree path.
 
 ### Submodules
 
-Toggle the submodule pane: normal key `\`.
+Toggle the submodule pane: normal key `6`.
 
 Update or initialize selected submodule: action key `Ctrl+a`, then `i`.
 
@@ -924,7 +927,7 @@ Open settings with `?`.
 The settings view includes app version and commit heatmap above these tabs:
 
 - `paths`: config file paths and recent repositories.
-- `display`: layout visibility toggles and theme list.
+- `display`: pane visibility, graph metadata toggles, and theme list.
 - `auth`: Git `user.name`, `user.email`, and auth behavior notes.
 - `repo`: remotes and remote URLs.
 - `shortcuts`: normal-mode shortcuts and action-mode shortcuts that differ from normal mode.
@@ -935,7 +938,7 @@ Selectable rows:
 - Remote rows: `Enter` opens fetch, set-default, rename, URL edit, push URL edit, and delete actions.
 - Add remote row: `Enter` opens name and URL prompts.
 - Theme rows: `Enter` activates and saves the selected theme.
-- Layout visibility rows: `Enter` toggles the row or resets layout.
+- Display toggle rows: `Enter` toggles the row or resets layout.
 - Keybinding rows: `Enter` opens key capture.
 
 Settings reuses normal navigation. Use `Tab` / `Shift+Tab` or click a tab label to switch tabs. Use `j`/`k`, page keys, `g`, `Shift+G`, or mouse wheel to move within the active tab. Use `h`, `Esc`, or `?` to return to the graph.
@@ -1006,7 +1009,7 @@ Windows: %APPDATA%\guitar
 The app writes:
 
 - `keymap.json`: keyboard mappings.
-- `layout.json`: pane visibility, widths, weights, SHA display, graph reflog setting, zen/minimal state.
+- `layout.json`: pane visibility, widths, weights, graph metadata display, graph reflog setting, zen/minimal state.
 - `theme.json`: active theme and all color slots.
 - `recent.json`: recent repository paths.
 - `branch_visibility.json`: per-repository hidden branch names.
@@ -1080,9 +1083,11 @@ Command
 Meta
 ```
 
-Supported commands are the command names listed in the keymap tables, without spaces, for example `ToggleSplitDiffMode`, `FocusPaneRight`, `ResizePaneRight`, `RemoveRecentRepository`, `CreateWorktree`, `ToggleSubmodules`, `ReturnToParentRepository`, `UpdateSubmodule`, `SyncSubmodule`, `Revert`, `ContinueOperation`, and `AbortOperation`.
+Supported commands are the command names listed in the keymap tables, without spaces, for example `ToggleSplitDiffMode`, `FocusPaneRight`, `ResizePaneRight`, `RemoveRecentRepository`, `CreateWorktree`, `ToggleSubmodules`, `ToggleGraphDates`, `ToggleGraphCommitters`, `ToggleGraphRefs`, `ReturnToParentRepository`, `UpdateSubmodule`, `SyncSubmodule`, `Revert`, `ContinueOperation`, and `AbortOperation`.
 
 Existing `keymap.json` files are preserved. When a new default command is missing and its default key is unbound, `guitar` may add that binding automatically; otherwise, edit the keymap or reset saved config to adopt changed defaults.
+
+If an existing keymap still has the old untouched number/symbol pane-toggle defaults, `guitar` migrates that row to the current `1`-through-`9` pane toggles and `Ctrl+0`-through-`Ctrl+4` graph metadata toggles. `Ctrl+digit` handling depends on terminal support; rebind those commands if your terminal does not emit distinct keys for them.
 
 ### layout.json
 
@@ -1097,6 +1102,9 @@ Default layout:
   "is_stashes": false,
   "is_reflogs": false,
   "is_graph_reflogs": false,
+  "is_graph_dates": false,
+  "is_graph_committers": false,
+  "is_graph_refs": true,
   "is_worktrees": false,
   "is_submodules": false,
   "is_status": true,

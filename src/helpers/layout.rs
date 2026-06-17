@@ -61,6 +61,12 @@ pub struct LayoutConfig {
     #[facet(default = true)]
     pub is_graph_reflogs: bool,
     #[facet(default = false)]
+    pub is_graph_dates: bool,
+    #[facet(default = false)]
+    pub is_graph_committers: bool,
+    #[facet(default = true)]
+    pub is_graph_refs: bool,
+    #[facet(default = false)]
     pub is_worktrees: bool,
     #[facet(default = false)]
     pub is_submodules: bool,
@@ -110,6 +116,9 @@ impl Default for LayoutConfig {
             is_reflogs: false,
             is_search: false,
             is_graph_reflogs: false,
+            is_graph_dates: false,
+            is_graph_committers: false,
+            is_graph_refs: true,
             is_worktrees: false,
             is_submodules: false,
             is_status: true,

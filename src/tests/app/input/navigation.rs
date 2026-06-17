@@ -108,6 +108,12 @@ fn diff_filenames(app: &App) -> Vec<String> {
     app.current_diff.iter().map(|change| change.filename.clone()).collect()
 }
 
+fn stop_graph_service(app: &mut App) {
+    if let Some(tx) = app.graph_tx.take() {
+        let _ = tx.send(GraphCommand::Shutdown);
+    }
+}
+
 fn search_history_row(graph_index: usize, oid: git2::Oid) -> GraphFileHistoryRow {
     GraphFileHistoryRow { graph_index, oid, short_oid: oid.to_string()[..8].to_string(), summary: "history".to_string(), status: FileStatus::Modified }
 }
@@ -806,6 +812,8 @@ fn zen_graph_narrow_promotes_cached_window_row_before_opening_inspector() {
             alias: 99,
             oid,
             summary: "cached".to_string(),
+            committer_date: String::new(),
+            committer_name: String::new(),
             has_any_branch: false,
             branches: Vec::new(),
             tags: Vec::new(),
@@ -849,6 +857,8 @@ fn graph_row_lookup_result_opens_inspector_with_reflog() {
                 alias: 99,
                 oid,
                 summary: "commit".to_string(),
+                committer_date: String::new(),
+                committer_name: String::new(),
                 has_any_branch: false,
                 branches: Vec::new(),
                 tags: Vec::new(),
@@ -1079,30 +1089,66 @@ fn settings_reset_layout_command_resets_and_stays_in_settings() {
 #[test]
 fn toggle_shas_shortcut_works_from_left_and_right_panes() {
     let mut keymaps = minimal_keymaps();
-    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('8'), KeyModifiers::NONE), Command::ToggleShas);
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('1'), KeyModifiers::CONTROL), Command::ToggleShas);
     let mut app = App { viewport: Viewport::Graph, focus: Focus::Branches, keymaps, ..Default::default() };
     app.layout_config.is_shas = true;
 
-    app.handle_key_event(KeyEvent::new(KeyCode::Char('8'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::CONTROL));
     assert!(!app.layout_config.is_shas);
 
     app.focus = Focus::StatusTop;
-    app.handle_key_event(KeyEvent::new(KeyCode::Char('8'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::CONTROL));
     assert!(app.layout_config.is_shas);
+}
+
+#[test]
+fn graph_metadata_ctrl_digit_shortcuts_toggle_display_flags() {
+    let mut keymaps = minimal_keymaps();
+    let normal = keymaps.get_mut(&InputMode::Normal).unwrap();
+    normal.insert(KeyBinding::new(KeyCode::Char('2'), KeyModifiers::CONTROL), Command::ToggleGraphDates);
+    normal.insert(KeyBinding::new(KeyCode::Char('3'), KeyModifiers::CONTROL), Command::ToggleGraphCommitters);
+    normal.insert(KeyBinding::new(KeyCode::Char('4'), KeyModifiers::CONTROL), Command::ToggleGraphRefs);
+    let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, keymaps, ..Default::default() };
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::CONTROL));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::CONTROL));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::CONTROL));
+
+    assert!(app.layout_config.is_graph_dates);
+    assert!(app.layout_config.is_graph_committers);
+    assert!(!app.layout_config.is_graph_refs);
+}
+
+#[test]
+fn graph_reflog_ctrl_digit_shortcut_toggles_and_reloads() {
+    let (path, repo) = temp_repo("graph-reflog-shortcut");
+    commit_file(&repo, "head.txt", "head");
+    let path = path.display().to_string();
+    let mut keymaps = minimal_keymaps();
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('0'), KeyModifiers::CONTROL), Command::ToggleGraphReflogs);
+    let mut app = App { path: Some(path.clone()), recent: vec![path], repo: Some(Rc::new(repo)), viewport: Viewport::Graph, focus: Focus::Branches, keymaps, ..Default::default() };
+
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::CONTROL));
+
+    assert!(app.layout_config.is_graph_reflogs);
+    assert_eq!(app.viewport, Viewport::Graph);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert!(app.graph_tx.is_some());
+    stop_graph_service(&mut app);
 }
 
 #[test]
 fn toggle_search_shortcut_opens_and_closes_search_pane() {
     let mut keymaps = minimal_keymaps();
-    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('`'), KeyModifiers::NONE), Command::ToggleSearch);
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('7'), KeyModifiers::NONE), Command::ToggleSearch);
     let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, keymaps, ..Default::default() };
     app.layout_config.is_search = false;
 
-    app.handle_key_event(KeyEvent::new(KeyCode::Char('`'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('7'), KeyModifiers::NONE));
     assert!(app.layout_config.is_search);
     assert_eq!(app.focus, Focus::Search);
 
-    app.handle_key_event(KeyEvent::new(KeyCode::Char('`'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('7'), KeyModifiers::NONE));
     assert!(!app.layout_config.is_search);
     assert_eq!(app.focus, Focus::Viewport);
 }
@@ -1110,15 +1156,15 @@ fn toggle_search_shortcut_opens_and_closes_search_pane() {
 #[test]
 fn toggle_submodules_shortcut_opens_and_closes_submodule_pane() {
     let mut keymaps = minimal_keymaps();
-    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('\\'), KeyModifiers::NONE), Command::ToggleSubmodules);
+    keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Char('6'), KeyModifiers::NONE), Command::ToggleSubmodules);
     let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, keymaps, ..Default::default() };
     app.layout_config.is_submodules = false;
 
-    app.handle_key_event(KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('6'), KeyModifiers::NONE));
     assert!(app.layout_config.is_submodules);
     assert_eq!(app.focus, Focus::Submodules);
 
-    app.handle_key_event(KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::NONE));
+    app.handle_key_event(KeyEvent::new(KeyCode::Char('6'), KeyModifiers::NONE));
     assert!(!app.layout_config.is_submodules);
     assert_eq!(app.focus, Focus::Viewport);
 }

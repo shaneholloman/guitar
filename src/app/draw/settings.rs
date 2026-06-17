@@ -21,19 +21,25 @@ use ratatui::{
     widgets::{Block, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
-const SETTINGS_LAYOUT_COMMANDS: &[(char, Command, &str)] = &[
-    ('1', Command::ToggleBranches, "branches"),
-    ('2', Command::ToggleTags, "tags"),
-    ('3', Command::ToggleStashes, "stashes"),
-    ('4', Command::ToggleStatus, "status"),
-    ('5', Command::ToggleInspector, "inspector"),
-    ('6', Command::ToggleWorktrees, "worktrees"),
-    ('\\', Command::ToggleSubmodules, "submodules"),
-    ('7', Command::ToggleReflogs, "reflog"),
-    ('`', Command::ToggleSearch, "search"),
-    ('8', Command::ToggleShas, "SHAs"),
-    ('9', Command::ToggleGraphReflogs, "graph reflog commits"),
-    ('0', Command::ResetLayout, "reset layout"),
+const SETTINGS_PANE_COMMANDS: &[(&str, Command, &str)] = &[
+    ("1", Command::ToggleBranches, "branches"),
+    ("2", Command::ToggleTags, "tags"),
+    ("3", Command::ToggleStashes, "stashes"),
+    ("4", Command::ToggleReflogs, "reflog"),
+    ("5", Command::ToggleWorktrees, "worktrees"),
+    ("6", Command::ToggleSubmodules, "submodules"),
+    ("7", Command::ToggleSearch, "search"),
+    ("8", Command::ToggleInspector, "inspector"),
+    ("9", Command::ToggleStatus, "status"),
+    ("0", Command::ResetLayout, "reset layout"),
+];
+
+const SETTINGS_GRAPH_COMMANDS: &[(&str, Command, &str)] = &[
+    ("Ctrl + 0", Command::ToggleGraphReflogs, "graph reflog commits"),
+    ("Ctrl + 1", Command::ToggleShas, "SHAs"),
+    ("Ctrl + 2", Command::ToggleGraphDates, "committer dates"),
+    ("Ctrl + 3", Command::ToggleGraphCommitters, "committers"),
+    ("Ctrl + 4", Command::ToggleGraphRefs, "refs"),
 ];
 
 const SETTINGS_TAB_COMPACT_LABEL: &str = "•";
@@ -47,7 +53,7 @@ impl App {
         Line::from(Span::styled(fill_width(label, "", width), Style::default().fg(self.theme.COLOR_HIGHLIGHTED))).centered()
     }
 
-    fn settings_layout_command_key(&self, command: &Command, fallback: char) -> String {
+    fn settings_layout_command_key(&self, command: &Command, fallback: &str) -> String {
         self.keymaps
             .get(&InputMode::Normal)
             .and_then(|mode_keymap| mode_keymap.iter().find(|(_, current)| *current == command).map(|(key, _)| keybinding_to_visual_string(key)))
@@ -128,6 +134,27 @@ impl App {
             },
             Command::ToggleGraphReflogs => {
                 if self.layout_config.is_graph_reflogs {
+                    SETTINGS_LAYOUT_ON
+                } else {
+                    SETTINGS_LAYOUT_OFF
+                }
+            },
+            Command::ToggleGraphDates => {
+                if self.layout_config.is_graph_dates {
+                    SETTINGS_LAYOUT_ON
+                } else {
+                    SETTINGS_LAYOUT_OFF
+                }
+            },
+            Command::ToggleGraphCommitters => {
+                if self.layout_config.is_graph_committers {
+                    SETTINGS_LAYOUT_ON
+                } else {
+                    SETTINGS_LAYOUT_OFF
+                }
+            },
+            Command::ToggleGraphRefs => {
+                if self.layout_config.is_graph_refs {
                     SETTINGS_LAYOUT_ON
                 } else {
                     SETTINGS_LAYOUT_OFF
@@ -358,10 +385,25 @@ impl App {
 
     fn append_settings_layout(&mut self, lines: &mut Vec<Line<'static>>, width: usize) {
         lines.push(Line::default());
-        lines.push(self.settings_section_line(" layout visibility:", width));
+        lines.push(self.settings_section_line(" pane visibility:", width));
         lines.push(Line::default());
-        for (idx, (fallback, command, label)) in SETTINGS_LAYOUT_COMMANDS.iter().enumerate() {
-            let key = self.settings_layout_command_key(command, *fallback);
+        for (idx, (fallback, command, label)) in SETTINGS_PANE_COMMANDS.iter().enumerate() {
+            let key = self.settings_layout_command_key(command, fallback);
+            let label = format!(" {} {}:", key, label);
+            let state = format!(" {} ", self.settings_layout_command_state(command));
+            let mut style = Style::default().fg(self.theme.COLOR_TEXT);
+            if idx.is_multiple_of(2) {
+                style = style.bg(self.theme.background_or_default(self.theme.COLOR_GREY_900));
+            }
+            lines.push(self.settings_filled_line(&label, &state, width, style));
+            self.add_settings_selection(lines, SettingsSelectionKind::LayoutCommand(command.clone()));
+        }
+
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(" graph metadata:", width));
+        lines.push(Line::default());
+        for (idx, (fallback, command, label)) in SETTINGS_GRAPH_COMMANDS.iter().enumerate() {
+            let key = self.settings_layout_command_key(command, fallback);
             let label = format!(" {} {}:", key, label);
             let state = format!(" {} ", self.settings_layout_command_state(command));
             let mut style = Style::default().fg(self.theme.COLOR_TEXT);

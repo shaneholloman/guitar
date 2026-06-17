@@ -20,6 +20,8 @@ use ratatui::{
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+pub const GRAPH_COMMITTER_WIDTH: usize = 18;
+
 // Render graph symbols from worker-projected rows. The lane history is still
 // precomputed by Buffer, but only for the requested visible range.
 pub fn render_graph_projection(theme: &Theme, rows: &[GraphRow], history: &GraphHistory, head_alias: u32, start: usize, end: usize, render_uncommitted_row: bool) -> Vec<Line<'static>> {
@@ -360,7 +362,36 @@ pub fn render_sha_projection(theme: &Theme, rows: &[GraphRow], selected: usize) 
         .collect()
 }
 
-pub fn render_message_projection(theme: &Theme, rows: &[GraphRow], show_reflog_labels: bool, selected: usize, uncommitted: &UncommittedChanges, render_uncommitted_row: bool) -> Vec<Line<'static>> {
+pub fn render_date_projection(theme: &Theme, rows: &[GraphRow], selected: usize) -> Vec<Line<'static>> {
+    rows.iter()
+        .map(|row| {
+            if row.alias != NONE {
+                let color = if row.index == selected { theme.COLOR_HIGHLIGHTED } else { theme.COLOR_TEXT };
+                Line::from(Span::styled(row.committer_date.clone(), Style::default().fg(color)))
+            } else {
+                Line::from("")
+            }
+        })
+        .collect()
+}
+
+pub fn render_committer_projection(theme: &Theme, rows: &[GraphRow], selected: usize) -> Vec<Line<'static>> {
+    rows.iter()
+        .map(|row| {
+            if row.alias != NONE {
+                let color = if row.index == selected { theme.COLOR_HIGHLIGHTED } else { theme.COLOR_TEXT };
+                let truncated = truncate_with_ellipsis(&row.committer_name, GRAPH_COMMITTER_WIDTH);
+                Line::from(Span::styled(format!("{:<width$}", truncated, width = GRAPH_COMMITTER_WIDTH), Style::default().fg(color)))
+            } else {
+                Line::from("")
+            }
+        })
+        .collect()
+}
+
+pub fn render_message_projection(
+    theme: &Theme, rows: &[GraphRow], show_reflog_labels: bool, show_ref_labels: bool, selected: usize, uncommitted: &UncommittedChanges, render_uncommitted_row: bool,
+) -> Vec<Line<'static>> {
     let color_picker = ColorPicker::from_theme(theme);
     let mut lines = Vec::new();
 
@@ -370,35 +401,41 @@ pub fn render_message_projection(theme: &Theme, rows: &[GraphRow], show_reflog_l
         if row.alias == NONE && !render_uncommitted_row {
             lines.push(Line::default());
         } else if row.alias != NONE {
-            for worktree in &row.worktrees {
-                let color = if !worktree.is_valid || worktree.locked_reason.is_some() {
-                    theme.COLOR_GREY_600
-                } else if worktree.is_current {
-                    theme.COLOR_GRASS
-                } else {
-                    theme.COLOR_TEAL
-                };
-                spans.push(Span::styled(format!("{SYM_WORKTREE} {} ", worktree.name), Style::default().fg(color)));
+            if show_ref_labels {
+                for worktree in &row.worktrees {
+                    let color = if !worktree.is_valid || worktree.locked_reason.is_some() {
+                        theme.COLOR_GREY_600
+                    } else if worktree.is_current {
+                        theme.COLOR_GRASS
+                    } else {
+                        theme.COLOR_TEAL
+                    };
+                    spans.push(Span::styled(format!("{SYM_WORKTREE} {} ", worktree.name), Style::default().fg(color)));
+                }
             }
-            let has_worktree_label = !row.worktrees.is_empty();
+            let has_worktree_label = show_ref_labels && !row.worktrees.is_empty();
 
-            for branch in &row.branches {
-                let color = branch.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
-                spans.push(Span::styled(format!("{} {} ", if branch.is_local { SYM_COMMIT_BRANCH } else { "◆" }, branch.name), Style::default().fg(color)));
+            if show_ref_labels {
+                for branch in &row.branches {
+                    let color = branch.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                    spans.push(Span::styled(format!("{} {} ", if branch.is_local { SYM_COMMIT_BRANCH } else { "◆" }, branch.name), Style::default().fg(color)));
+                }
             }
-            let has_visible_branch_label = !row.branches.is_empty();
+            let has_visible_branch_label = show_ref_labels && !row.branches.is_empty();
 
-            for tag in &row.tags {
-                let color = tag.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
-                spans.push(Span::styled(format!("{} {} ", SYM_TAG, tag.name), Style::default().fg(color)));
+            if show_ref_labels {
+                for tag in &row.tags {
+                    let color = tag.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                    spans.push(Span::styled(format!("{} {} ", SYM_TAG, tag.name), Style::default().fg(color)));
+                }
             }
-            let has_tag_label = !row.tags.is_empty();
+            let has_tag_label = show_ref_labels && !row.tags.is_empty();
 
-            if row.is_stash {
+            if show_ref_labels && row.is_stash {
                 let color = row.stash_lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
                 spans.push(Span::styled(format!("{SYM_COMMIT_STASH} stash "), Style::default().fg(color)));
             }
-            let has_stash_label = row.is_stash;
+            let has_stash_label = show_ref_labels && row.is_stash;
 
             if show_reflog_labels
                 && !has_visible_branch_label
@@ -472,7 +509,13 @@ pub fn render_keybindings(theme: &Theme, keymap: &IndexMap<KeyBinding, Command>,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::{
+        chunk::NONE,
+        graph_service::{GraphBranchLabel, GraphReflogLabel, GraphTagLabel},
+        worktrees::{WorktreeEntry, WorktreeKind},
+    };
     use git2::Oid;
+    use std::path::PathBuf;
 
     fn graph_row(index: usize, oid: Oid, summary: &str) -> GraphRow {
         GraphRow {
@@ -480,6 +523,8 @@ mod tests {
             alias: index as u32 + 1,
             oid,
             summary: summary.to_string(),
+            committer_date: String::new(),
+            committer_name: String::new(),
             has_any_branch: false,
             branches: Vec::new(),
             tags: Vec::new(),
@@ -488,6 +533,10 @@ mod tests {
             worktrees: Vec::new(),
             reflog: None,
         }
+    }
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans.iter().map(|span| span.content.as_ref()).collect()
     }
 
     #[test]
@@ -508,9 +557,81 @@ mod tests {
         let rows =
             vec![graph_row(0, Oid::from_str("1111111111111111111111111111111111111111").unwrap(), "first"), graph_row(1, Oid::from_str("2222222222222222222222222222222222222222").unwrap(), "second")];
 
-        let lines = render_message_projection(&theme, &rows, false, 1, &UncommittedChanges::default(), true);
+        let lines = render_message_projection(&theme, &rows, false, true, 1, &UncommittedChanges::default(), true);
 
         assert_eq!(lines[0].spans[0].style.fg, Some(theme.COLOR_TEXT));
         assert_eq!(lines[1].spans[0].style.fg, Some(theme.COLOR_HIGHLIGHTED));
+    }
+
+    #[test]
+    fn date_projection_renders_commit_dates_and_blanks_uncommitted_rows() {
+        let theme = Theme::classic();
+        let mut commit = graph_row(1, Oid::from_str("2222222222222222222222222222222222222222").unwrap(), "commit");
+        commit.committer_date = "2026-06-17".to_string();
+        let mut uncommitted = graph_row(0, Oid::zero(), "");
+        uncommitted.alias = NONE;
+        uncommitted.committer_date = "ignored".to_string();
+
+        let lines = render_date_projection(&theme, &[uncommitted, commit], 1);
+
+        assert_eq!(line_text(&lines[0]), "");
+        assert_eq!(line_text(&lines[1]), "2026-06-17");
+    }
+
+    #[test]
+    fn committer_projection_renders_fixed_width_names_and_blanks_uncommitted_rows() {
+        let theme = Theme::classic();
+        let mut commit = graph_row(1, Oid::from_str("2222222222222222222222222222222222222222").unwrap(), "commit");
+        commit.committer_name = "Very Long Committer Name".to_string();
+        let mut uncommitted = graph_row(0, Oid::zero(), "");
+        uncommitted.alias = NONE;
+        uncommitted.committer_name = "ignored".to_string();
+
+        let lines = render_committer_projection(&theme, &[uncommitted, commit], 1);
+        let rendered = line_text(&lines[1]);
+
+        assert_eq!(line_text(&lines[0]), "");
+        assert_eq!(rendered.chars().count(), GRAPH_COMMITTER_WIDTH);
+        assert!(rendered.contains("..."));
+    }
+
+    #[test]
+    fn message_projection_toggles_refs_without_hiding_reflog_labels() {
+        let theme = Theme::classic();
+        let mut row = graph_row(0, Oid::from_str("1111111111111111111111111111111111111111").unwrap(), "summary");
+        row.branches = vec![GraphBranchLabel { name: "main".to_string(), is_local: true, lane: Some(0) }];
+        row.tags = vec![GraphTagLabel { name: "v1".to_string(), lane: Some(0) }];
+        row.is_stash = true;
+        row.worktrees = vec![WorktreeEntry {
+            name: "wt".to_string(),
+            path: PathBuf::from("/tmp/wt"),
+            branch: Some("main".to_string()),
+            head: Some(row.oid),
+            alias: Some(row.alias),
+            kind: WorktreeKind::Linked,
+            is_current: false,
+            is_valid: true,
+            is_prunable: false,
+            locked_reason: None,
+            is_dirty: false,
+        }];
+        row.reflog = Some(GraphReflogLabel { selector: "HEAD@{0}".to_string(), message: "commit: summary".to_string(), lane: Some(0) });
+
+        let shown = render_message_projection(&theme, &[row.clone()], true, true, 0, &UncommittedChanges::default(), true);
+        let hidden = render_message_projection(&theme, &[row], true, false, 0, &UncommittedChanges::default(), true);
+        let shown = line_text(&shown[0]);
+        let hidden = line_text(&hidden[0]);
+
+        assert!(shown.contains("main"));
+        assert!(shown.contains("v1"));
+        assert!(shown.contains("stash"));
+        assert!(shown.contains("wt"));
+        assert!(!shown.contains("HEAD@{0}"));
+        assert!(hidden.contains("HEAD@{0}"));
+        assert!(hidden.contains("summary"));
+        assert!(!hidden.contains("main"));
+        assert!(!hidden.contains("v1"));
+        assert!(!hidden.contains("stash"));
+        assert!(!hidden.contains("wt"));
     }
 }
