@@ -73,6 +73,7 @@ impl App {
         let x = frame.area().x + (frame.area().width.saturating_sub(modal_width)) / 2;
         let y = frame.area().y + (frame.area().height.saturating_sub(modal_height)) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);
+        self.modal_area = Some(modal_area);
         self.theme.clear_area(modal_area, frame.buffer_mut());
 
         let border_color = if self.modal_key_capture_error.is_some() { self.theme.COLOR_ORANGE } else { self.theme.COLOR_GREY_600 };

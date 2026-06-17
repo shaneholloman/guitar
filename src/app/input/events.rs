@@ -6,7 +6,7 @@ use crate::{
     },
 };
 use ratatui::{
-    crossterm::event::{self, Event, KeyEventKind, MouseButton, MouseEvent, MouseEventKind},
+    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind},
     layout::Rect,
 };
 use std::{
@@ -15,6 +15,7 @@ use std::{
 };
 
 const DOUBLE_CLICK_THRESHOLD: Duration = Duration::from_millis(500);
+const MODAL_ESC_TITLE_WIDTH: u16 = 7;
 
 #[derive(Clone, Copy)]
 enum GraphPaneClickKind {
@@ -86,6 +87,9 @@ impl App {
                 self.open_context_menu(mouse_event.column, mouse_event.row);
             },
             MouseEventKind::Down(MouseButton::Left) => {
+                if self.handle_modal_left_click(mouse_event.column, mouse_event.row) {
+                    return;
+                }
                 if !self.handle_context_menu_left_click(mouse_event.column, mouse_event.row) {
                     self.handle_mouse_down(mouse_event.column, mouse_event.row);
                 }
@@ -112,6 +116,34 @@ impl App {
             },
             _ => {},
         }
+    }
+
+    fn handle_modal_left_click(&mut self, column: u16, row: u16) -> bool {
+        if !self.is_modal_focus() {
+            return false;
+        }
+
+        self.mouse_drag = None;
+        self.last_mouse_click = None;
+
+        if self.modal_escape_hitbox_contains(column, row) {
+            self.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        }
+
+        true
+    }
+
+    fn modal_escape_hitbox_contains(&self, column: u16, row: u16) -> bool {
+        let Some(area) = self.modal_area else {
+            return false;
+        };
+        if row != area.y || area.width <= 2 {
+            return false;
+        }
+
+        let left = area.x.saturating_add(area.width.saturating_sub(MODAL_ESC_TITLE_WIDTH.saturating_add(1)));
+        let right = area.x.saturating_add(area.width.saturating_sub(1));
+        column >= left && column < right
     }
 
     fn handle_mouse_down(&mut self, column: u16, row: u16) {

@@ -515,6 +515,7 @@ pub struct App {
     pub mouse_drag: Option<MouseDrag>,
     pub last_mouse_click: Option<(MouseSelectionTarget, Instant)>,
     pub context_menu: Option<ContextMenuState>,
+    pub modal_area: Option<Rect>,
     pub viewport: Viewport,
     pub focus: Focus,
 
@@ -781,6 +782,7 @@ impl App {
             }
 
             // Modals render last so they overlay panes without changing pane layout.
+            self.modal_area = None;
             match self.focus {
                 Focus::ModalCheckout => {
                     self.draw_modal_checkout(frame);

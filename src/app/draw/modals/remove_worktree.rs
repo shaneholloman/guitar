@@ -37,6 +37,7 @@ impl App {
         let x = frame.area().x + (frame.area().width.saturating_sub(modal_width)) / 2;
         let y = frame.area().y + (frame.area().height.saturating_sub(modal_height)) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);
+        self.modal_area = Some(modal_area);
         self.theme.clear_area(modal_area, frame.buffer_mut());
 
         let modal_block = modal_block(self.theme.COLOR_GREY_600, self.theme.COLOR_HIGHLIGHTED);

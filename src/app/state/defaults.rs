@@ -96,6 +96,7 @@ impl Default for App {
             mouse_drag: None,
             last_mouse_click: None,
             context_menu: None,
+            modal_area: None,
             viewport: Viewport::Splash,
             focus: Focus::Viewport,
 

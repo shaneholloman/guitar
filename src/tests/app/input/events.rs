@@ -100,6 +100,57 @@ fn right_click_does_not_open_context_menu_over_modal_focus() {
 }
 
 #[test]
+fn modal_esc_corner_click_closes_dismissible_modal_like_escape() {
+    let mut app = graph_app();
+    app.focus = Focus::ModalCommit;
+    app.modal_area = Some(Rect::new(10, 4, 40, 12));
+    app.modal_input.set_value("draft message");
+
+    app.handle_mouse_event(left_down(45, 4));
+
+    assert_eq!(app.focus, Focus::Viewport);
+    assert!(app.modal_input.value().is_empty());
+}
+
+#[test]
+fn modal_esc_corner_click_closes_error_modal_like_escape() {
+    let mut app = graph_app();
+    app.focus = Focus::ModalError;
+    app.modal_area = Some(Rect::new(10, 4, 40, 12));
+    app.modal_error_return_focus = Focus::Branches;
+    app.modal_error_message = "boom".into();
+
+    app.handle_mouse_event(left_down(45, 4));
+
+    assert_eq!(app.focus, Focus::Branches);
+    assert!(app.modal_error_message.is_empty());
+}
+
+#[test]
+fn modal_esc_corner_click_does_not_dismiss_progress_modal() {
+    let mut app = graph_app();
+    app.focus = Focus::ModalOperationProgress;
+    app.modal_area = Some(Rect::new(10, 4, 40, 12));
+
+    app.handle_mouse_event(left_down(45, 4));
+
+    assert_eq!(app.focus, Focus::ModalOperationProgress);
+}
+
+#[test]
+fn modal_left_click_outside_esc_corner_is_consumed() {
+    let mut app = graph_app();
+    app.focus = Focus::ModalCommit;
+    app.modal_area = Some(Rect::new(10, 4, 40, 12));
+    app.graph_selected = 4;
+
+    app.handle_mouse_event(left_down(1, 1));
+
+    assert_eq!(app.focus, Focus::ModalCommit);
+    assert_eq!(app.graph_selected, 4);
+}
+
+#[test]
 fn left_click_outside_context_menu_dismisses_without_selecting_underlying_row() {
     let mut app = context_menu_app();
     app.graph_selected = 4;

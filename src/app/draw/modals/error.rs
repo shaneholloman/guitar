@@ -35,6 +35,7 @@ impl App {
         let x = frame.area().x + (frame.area().width.saturating_sub(modal_width)) / 2;
         let y = frame.area().y + (frame.area().height.saturating_sub(modal_height)) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);
+        self.modal_area = Some(modal_area);
 
         // Paint a plain overlay before clearing the modal rectangle.
         let bg_block = Block::default().style(Style::default().fg(self.theme.COLOR_BORDER));
