@@ -255,6 +255,29 @@ fn graph_context_menu_includes_fetch_and_push_when_repo_is_loaded() {
 }
 
 #[test]
+fn graph_context_menu_groups_regular_action_mode_and_navigation_sections() {
+    let (_path, repo) = temp_repo("graph-section-menu");
+    let mut app = graph_app();
+    app.repo = Some(Rc::new(repo));
+    app.graph_scroll.set(2);
+
+    app.handle_mouse_event(right_down(1, 3));
+
+    let items = &app.context_menu.as_ref().unwrap().items;
+    let divider_indices = items.iter().enumerate().filter_map(|(index, item)| matches!(item.action, ContextMenuAction::Divider).then_some(index)).collect::<Vec<_>>();
+    assert_eq!(divider_indices.len(), 2, "{items:?}");
+
+    let labels = context_menu_labels(&app);
+    let first_divider = divider_indices[0];
+    let second_divider = divider_indices[1];
+    assert!(labels[..first_divider].contains(&"Fetch".to_string()), "{labels:?}");
+    assert!(!labels[..first_divider].contains(&"Push".to_string()), "{labels:?}");
+    assert!(labels[first_divider + 1..second_divider].contains(&"Push".to_string()), "{labels:?}");
+    assert!(labels[first_divider + 1..second_divider].contains(&"Checkout".to_string()), "{labels:?}");
+    assert_eq!(&labels[second_divider + 2..], &["Settings".to_string(), "Splash screen".to_string(), "Exit".to_string()]);
+}
+
+#[test]
 fn uncommitted_graph_context_menu_includes_fetch_and_push_when_repo_is_loaded() {
     let (_path, repo) = temp_repo("uncommitted-network-menu");
     let mut app = graph_app();

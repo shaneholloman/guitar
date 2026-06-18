@@ -6,7 +6,7 @@ use crate::{
     },
     git::queries::commits::get_current_branch,
     helpers::{
-        keymap::{Command, command_to_visual_string},
+        keymap::{Command, InputMode, command_to_visual_string},
         localisation::menu,
     },
 };
@@ -96,7 +96,7 @@ impl App {
     }
 
     fn context_menu_items_for_target(&self, target: Option<MouseSelectionTarget>) -> Vec<ContextMenuItem> {
-        let mut items = match target {
+        let mut local_items = match target {
             Some(MouseSelectionTarget::Graph(index)) => self.graph_context_menu_items(index, false, true),
             Some(MouseSelectionTarget::Viewer(_)) => self.viewer_context_menu_items(),
             Some(MouseSelectionTarget::Branches(_)) => self.branch_context_menu_items(),
@@ -116,17 +116,90 @@ impl App {
         };
 
         if self.repo.is_some() {
-            items.insert(0, Self::command_item(menu::RELOAD, Command::Reload));
+            local_items.insert(0, Self::command_item(menu::RELOAD, Command::Reload));
         }
 
-        let global_items = self.global_context_menu_items();
-        if !items.is_empty() && !global_items.is_empty() {
+        let (regular_items, action_items) = self.partition_context_menu_action_mode_items(local_items);
+        let navigation_items = self.global_context_menu_items();
+
+        let mut items = regular_items;
+        Self::append_context_menu_section(&mut items, action_items);
+        Self::append_context_menu_section(&mut items, navigation_items);
+        items
+    }
+
+    fn append_context_menu_section(items: &mut Vec<ContextMenuItem>, section: Vec<ContextMenuItem>) {
+        if section.is_empty() {
+            return;
+        }
+
+        if !items.is_empty() {
             items.push(Self::spacer_item());
             items.push(Self::divider_item());
             items.push(Self::spacer_item());
         }
-        items.extend(global_items);
-        items
+
+        items.extend(section);
+    }
+
+    fn partition_context_menu_action_mode_items(&self, items: Vec<ContextMenuItem>) -> (Vec<ContextMenuItem>, Vec<ContextMenuItem>) {
+        let mut regular_items = Vec::new();
+        let mut action_items = Vec::new();
+
+        for item in items {
+            if self.context_menu_item_is_action_mode_only(&item) {
+                action_items.push(item);
+            } else {
+                regular_items.push(item);
+            }
+        }
+
+        (regular_items, action_items)
+    }
+
+    fn context_menu_item_is_action_mode_only(&self, item: &ContextMenuItem) -> bool {
+        match &item.action {
+            ContextMenuAction::Command(command) | ContextMenuAction::GraphCommand(command) => self.command_is_action_mode_only(command),
+            _ => false,
+        }
+    }
+
+    fn command_is_action_mode_only(&self, command: &Command) -> bool {
+        let normal = self.keymaps.get(&InputMode::Normal);
+        let action = self.keymaps.get(&InputMode::Action);
+
+        if let Some(action) = action
+            && !action.is_empty()
+        {
+            let in_action = action.values().any(|mapped| mapped == command);
+            let in_normal = normal.is_some_and(|normal| normal.values().any(|mapped| mapped == command));
+            return in_action && !in_normal;
+        }
+
+        matches!(
+            command,
+            Command::Drop
+                | Command::Pop
+                | Command::Stash
+                | Command::Checkout
+                | Command::HardReset
+                | Command::MixedReset
+                | Command::ForcePush
+                | Command::PushTags
+                | Command::DeleteBranch
+                | Command::RenameBranch
+                | Command::Untag
+                | Command::Cherrypick
+                | Command::Revert
+                | Command::Rebase
+                | Command::Merge
+                | Command::ContinueOperation
+                | Command::AbortOperation
+                | Command::RemoveWorktree
+                | Command::ToggleWorktreeLock
+                | Command::UpdateSubmodule
+                | Command::SyncSubmodule
+        )
     }
 
     fn item(label: impl Into<String>, action: ContextMenuAction, enabled: bool) -> ContextMenuItem {
