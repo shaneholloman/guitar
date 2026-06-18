@@ -3,7 +3,7 @@ use crate::helpers::heatmap::heat_cell;
 use crate::helpers::keymap::{Command, InputMode, KeymapSelection, action_keymap_visible_entries, keybinding_to_visual_string};
 use crate::helpers::layout::scrollbar_content_length;
 use crate::helpers::palette::*;
-use crate::helpers::symbols::WEEKDAY_LABELS;
+use crate::helpers::symbols::{SYM_CHECKBOX_OFF, SYM_CHECKBOX_ON, SYM_RADIO_OFF, SYM_RADIO_ON, WEEKDAY_LABELS};
 use crate::helpers::version::VERSION;
 use crate::{
     app::app::{App, Direction, Focus, SettingsSelection, SettingsSelectionKind, SettingsTab, SettingsTabHitbox},
@@ -41,10 +41,10 @@ const SETTINGS_GRAPH_COMMANDS: &[(&str, Command, &str)] = &[
 ];
 
 const SETTINGS_TAB_COMPACT_LABEL: &str = "•";
-const SETTINGS_LAYOUT_OFF: &str = "🞎";
-const SETTINGS_LAYOUT_ON: &str = "🞕";
-const SETTINGS_THEME_OFF: &str = "🞅";
-const SETTINGS_THEME_ON: &str = "🞊";
+const SETTINGS_LAYOUT_OFF: &str = SYM_CHECKBOX_OFF;
+const SETTINGS_LAYOUT_ON: &str = SYM_CHECKBOX_ON;
+const SETTINGS_THEME_OFF: &str = SYM_RADIO_OFF;
+const SETTINGS_THEME_ON: &str = SYM_RADIO_ON;
 
 impl App {
     fn settings_section_line(&self, label: &str, width: usize) -> Line<'static> {

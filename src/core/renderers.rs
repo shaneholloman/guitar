@@ -410,7 +410,7 @@ pub fn render_message_projection(
                     } else {
                         theme.COLOR_TEAL
                     };
-                    spans.push(Span::styled(format!("{SYM_WORKTREE} {} ", worktree.name), Style::default().fg(color)));
+                    spans.push(Span::styled(format!("{SYM_WORKTREE}{} ", worktree.name), Style::default().fg(color)));
                 }
             }
             let has_worktree_label = show_ref_labels && !row.worktrees.is_empty();

@@ -39,7 +39,7 @@ impl App {
             let locked = if entry.locked_reason.is_some() { format!(" {SYM_WORKTREE_LOCKED}") } else { String::new() };
             let invalid = if !entry.is_valid { format!(" {SYM_WORKTREE_INVALID}") } else { String::new() };
             let icon = if entry.is_current { SYM_WORKTREE } else { SYM_WORKTREE_OTHER };
-            let label = format!("{icon} {}  {}{}{}{}  {}", entry.name, target, dirty, locked, invalid, entry.path.display());
+            let label = format!("{icon}{}  {}{}{}{}  {}", entry.name, target, dirty, locked, invalid, entry.path.display());
             let label = truncate_with_ellipsis(&label, max_line_width);
             length = length.max(label.len());
             height += 1;

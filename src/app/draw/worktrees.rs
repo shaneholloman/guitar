@@ -29,10 +29,26 @@ impl App {
             let target =
                 entry.branch.as_ref().map(|branch| format!("{SYM_COMMIT_BRANCH} {branch}")).or_else(|| entry.head.map(|oid| format!("detached #{:.6}", oid))).unwrap_or_else(|| "no head".to_string());
 
-            let dirty = if entry.is_dirty { format!(" {SYM_WORKTREE_DIRTY}") } else { String::new() };
-            let locked = if entry.locked_reason.is_some() { format!(" {SYM_WORKTREE_LOCKED}") } else { String::new() };
-            let invalid = if !entry.is_valid { format!(" {SYM_WORKTREE_INVALID}") } else { String::new() };
-            let label = truncate_with_ellipsis(format!("{}, branch: {} {}{}{}", entry.name, target, dirty, locked, invalid).as_str(), max_text_width.saturating_sub(1));
+            // Status icons stack on the right edge of the row; the worktree name and branch stay on the left.
+            let mut status_parts: Vec<&str> = Vec::new();
+            if entry.is_dirty {
+                status_parts.push(SYM_WORKTREE_DIRTY.trim_end());
+            }
+            if entry.locked_reason.is_some() {
+                status_parts.push(SYM_WORKTREE_LOCKED.trim_end());
+            }
+            if !entry.is_valid {
+                status_parts.push(SYM_WORKTREE_INVALID.trim_end());
+            }
+            let status = status_parts.join(" ");
+
+            // Left side (name + branch) truncates first so the right-aligned status icons stay visible.
+            let budget = max_text_width.saturating_sub(1);
+            let status_len = status.chars().count();
+            let reserve = if status_len == 0 { 0 } else { status_len + 1 };
+            let left = truncate_with_ellipsis(format!("{} {}", entry.name, target).as_str(), budget.saturating_sub(reserve));
+            let gap = budget.saturating_sub(left.chars().count() + status_len);
+            let label = format!("{}{}{} ", left, " ".repeat(gap), status);
 
             let icon = if entry.is_current { SYM_WORKTREE } else { SYM_WORKTREE_OTHER };
             let color = if !entry.is_valid {
@@ -45,7 +61,7 @@ impl App {
                 self.theme.COLOR_TEAL
             };
 
-            lines.push(Line::from(Span::styled(format!("{icon} {label}"), Style::default().fg(color))));
+            lines.push(Line::from(Span::styled(format!("{icon}{label}"), Style::default().fg(color))));
         }
 
         let visible_height = if self.layout_config.is_zen {
@@ -65,7 +81,7 @@ impl App {
             for _ in 0..blank_lines_before {
                 lines.push(Line::default());
             }
-            let empty_text = format!("{SYM_WORKTREE_EMPTY} no worktrees");
+            let empty_text = format!("{SYM_WORKTREE_EMPTY}no worktrees");
             lines.push(Line::from(Span::styled(center_line(&truncate_with_ellipsis(&empty_text, max_text_width), max_text_width + 3), Style::default().fg(self.theme.COLOR_GREY_800))));
         }
 

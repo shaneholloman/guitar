@@ -25,7 +25,7 @@ impl App {
 
     pub fn draw_statusbar(&mut self, frame: &mut Frame, repo: &git2::Repository) {
         let mut left_spans: Vec<Span> = match self.worktrees.current_name() {
-            Some(name) => vec![Span::styled(format!("  {SYM_WORKTREE} {name} "), Style::default().fg(self.theme.COLOR_GRASS))],
+            Some(name) => vec![Span::styled(format!("  {SYM_WORKTREE}{name} "), Style::default().fg(self.theme.COLOR_GRASS))],
             None => vec![Span::raw("  ")],
         };
         if let Some(label) = self.submodule_stack_status_label() {
