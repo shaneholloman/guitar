@@ -132,34 +132,3 @@ pub mod worktree {
 }
 
 pub const WEEKDAY_LABELS: [&str; 7] = ["M", "T", "W", "T", "F", "S", "S"];
-
-pub const SYM_FOLDER: &str = entity::FOLDER;
-pub const SYM_COMMIT_BRANCH: &str = graph::COMMIT_BRANCH;
-pub const SYM_COMMIT: &str = graph::COMMIT;
-pub const SYM_COMMIT_STASH: &str = graph::COMMIT_STASH;
-pub const SYM_REFLOG: &str = entity::REFLOG;
-pub const SYM_WORKTREE: &str = worktree::CURRENT;
-pub const SYM_WORKTREE_OTHER: &str = worktree::OTHER;
-pub const SYM_WORKTREE_DIRTY: &str = worktree::DIRTY;
-pub const SYM_WORKTREE_LOCKED: &str = worktree::LOCKED;
-pub const SYM_WORKTREE_INVALID: &str = worktree::INVALID;
-pub const SYM_WORKTREE_EMPTY: &str = worktree::EMPTY;
-pub const SYM_SUBMODULE: &str = submodule::DEFAULT;
-pub const SYM_SUBMODULE_EMPTY: &str = submodule::EMPTY;
-pub const SYM_SUBMODULE_DIRTY: &str = submodule::DIRTY;
-pub const SYM_SUBMODULE_UNINITIALIZED: &str = submodule::UNINITIALIZED;
-pub const SYM_VERTICAL: &str = graph::VERTICAL;
-pub const SYM_VERTICAL_DOTTED: &str = graph::VERTICAL_DOTTED;
-pub const SYM_HORIZONTAL: &str = graph::HORIZONTAL;
-pub const SYM_EMPTY: &str = graph::EMPTY;
-pub const SYM_MERGE_LEFT_FROM: &str = graph::MERGE_LEFT_FROM;
-pub const SYM_MERGE_RIGHT_FROM: &str = graph::MERGE_RIGHT_FROM;
-pub const SYM_BRANCH_UP: &str = graph::BRANCH_UP;
-pub const SYM_BRANCH_DOWN: &str = graph::BRANCH_DOWN;
-pub const SYM_MERGE: &str = graph::MERGE;
-pub const SYM_UNCOMMITED: &str = graph::UNCOMMITTED;
-pub const SYM_TAG: &str = entity::TAG;
-pub const SYM_CHECKBOX_OFF: &str = form::CHECKBOX_OFF;
-pub const SYM_CHECKBOX_ON: &str = form::CHECKBOX_ON;
-pub const SYM_RADIO_OFF: &str = form::RADIO_OFF;
-pub const SYM_RADIO_ON: &str = form::RADIO_ON;
