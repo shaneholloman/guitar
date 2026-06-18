@@ -241,6 +241,34 @@ fn right_click_selects_graph_row_and_opens_contextual_actions() {
 }
 
 #[test]
+fn graph_context_menu_includes_fetch_and_push_when_repo_is_loaded() {
+    let (_path, repo) = temp_repo("graph-network-menu");
+    let mut app = graph_app();
+    app.repo = Some(Rc::new(repo));
+    app.graph_scroll.set(2);
+
+    app.handle_mouse_event(right_down(1, 3));
+
+    let labels = context_menu_labels(&app);
+    assert!(labels.iter().any(|label| label == "Fetch"), "{labels:?}");
+    assert!(labels.iter().any(|label| label == "Push"), "{labels:?}");
+}
+
+#[test]
+fn uncommitted_graph_context_menu_includes_fetch_and_push_when_repo_is_loaded() {
+    let (_path, repo) = temp_repo("uncommitted-network-menu");
+    let mut app = graph_app();
+    app.repo = Some(Rc::new(repo));
+
+    app.handle_mouse_event(right_down(1, 0));
+
+    assert_eq!(app.graph_selected, 0);
+    let labels = context_menu_labels(&app);
+    assert!(labels.iter().any(|label| label == "Fetch"), "{labels:?}");
+    assert!(labels.iter().any(|label| label == "Push"), "{labels:?}");
+}
+
+#[test]
 fn right_click_selects_left_pane_row_and_opens_contextual_actions() {
     let mut app = graph_app();
     app.layout_config.is_branches = true;

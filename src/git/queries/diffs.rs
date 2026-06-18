@@ -192,7 +192,7 @@ pub fn get_filenames_diff_at_oid(repo: &Repository, oid: Oid) -> Vec<FileChange>
     // Compare against the first parent, matching the normal `git show` view of merges.
     let parent_tree = commit.parent(0).unwrap().tree().unwrap();
     let mut opts = DiffOptions::new();
-    opts.include_untracked(false).recurse_untracked_dirs(false).include_typechange(false).ignore_submodules(true).show_binary(false).minimal(false).skip_binary_check(true);
+    opts.include_untracked(false).recurse_untracked_dirs(false).include_typechange(false).ignore_submodules(false).show_binary(false).minimal(false).skip_binary_check(true);
 
     let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), Some(&mut opts)).unwrap();
 

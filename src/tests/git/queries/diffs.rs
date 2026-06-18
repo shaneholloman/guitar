@@ -234,6 +234,21 @@ fn workdir_diff_lists_staged_submodule_pointer_as_staged_modified() {
 }
 
 #[test]
+fn commit_diff_lists_committed_submodule_pointer_change() {
+    let dir = TestDir::new("submodule-pointer-commit");
+    let parent = parent_with_submodule(&dir);
+    let sub_repo = Repository::open(parent.workdir().unwrap().join("deps/child")).unwrap();
+    write(sub_repo.workdir().unwrap(), "file.txt", "advanced\n");
+    commit(&sub_repo, "file.txt", "advance child");
+    stage_submodule_head(&parent, "deps/child").unwrap();
+
+    let commit_oid = commit_index(&parent, "update submodule pointer");
+    let changes = get_filenames_diff_at_oid(&parent, commit_oid);
+
+    assert!(changes.iter().any(|change| change.filename == "deps/child" && change.status == FileStatus::Modified), "{changes:?}");
+}
+
+#[test]
 fn submodule_status_path_guard_matches_exact_paths_and_children() {
     let submodule_paths = vec![PathBuf::from("deps/child")];
 

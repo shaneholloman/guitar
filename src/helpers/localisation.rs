@@ -215,6 +215,7 @@ pub mod menu {
     pub const OPEN_SUBMODULE: &str = "Open submodule";
     pub const OPEN_WORKTREE: &str = "Open worktree";
     pub const POP_STASH: &str = "Pop stash";
+    pub const PUSH: &str = "Push";
     pub const REBASE: &str = "Rebase";
     pub const REBIND_SHORTCUT: &str = "Rebind shortcut";
     pub const RELOAD: &str = "Reload";

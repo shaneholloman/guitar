@@ -150,6 +150,14 @@ impl App {
         Self::item(label, action, true)
     }
 
+    fn graph_network_context_menu_items(&self, force_graph_focus: bool) -> Vec<ContextMenuItem> {
+        if self.repo.is_none() {
+            return Vec::new();
+        }
+
+        vec![Self::graph_command_item(menu::FETCH, Command::FetchAll, force_graph_focus), Self::graph_command_item(menu::PUSH, Command::ForcePush, force_graph_focus)]
+    }
+
     fn global_context_menu_items(&self) -> Vec<ContextMenuItem> {
         let mut items = Vec::new();
         if self.viewport == Viewport::Settings {
@@ -193,6 +201,7 @@ impl App {
             Self::graph_command_item(menu::REBASE, Command::Rebase, force_graph_focus),
             Self::graph_command_item(menu::MERGE, Command::Merge, force_graph_focus),
         ]);
+        items.extend(self.graph_network_context_menu_items(force_graph_focus));
 
         if let Some(alias) = self.graph_alias_at(index) {
             let branches = self.graph_branch_choices(alias);
@@ -239,6 +248,7 @@ impl App {
             items.push(Self::command_item(menu::CONTINUE_OPERATION, Command::ContinueOperation));
             items.push(Self::command_item(menu::ABORT_OPERATION, Command::AbortOperation));
         }
+        items.extend(self.graph_network_context_menu_items(false));
         items.push(Self::command_item(menu::FIND, Command::Find));
         if self.repo.is_some() {
             items.push(Self::command_item(menu::FIND_FILE, Command::FindFile));
