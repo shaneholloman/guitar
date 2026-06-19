@@ -52,6 +52,13 @@ fn branch_up_history(current_lane: usize) -> GraphHistory {
     GraphHistory::from(Vector::from(vec![Vector::from(vec![Chunk::commit(10, 1, NONE), Chunk::commit(11, 2, NONE)]), last]))
 }
 
+fn transient_merge_closeout_history() -> GraphHistory {
+    GraphHistory::from(Vector::from(vec![
+        Vector::from(vec![Chunk::commit(10, 100, NONE), Chunk::commit(11, 101, NONE), Chunk::commit(20, 4, 2), Chunk::commit(12, 102, NONE)]),
+        Vector::from(vec![Chunk::commit(4, NONE, NONE), Chunk::commit(11, 101, NONE), Chunk::dummy(), Chunk::commit(12, 102, NONE)]),
+    ]))
+}
+
 #[test]
 fn sha_projection_uses_text_and_highlighted_text_colors() {
     let theme = Theme::classic();
@@ -153,6 +160,23 @@ fn graph_projection_keeps_branch_up_when_dummy_lane_points_back_left() {
     assert!(text.contains(graph::BRANCH_UP), "{text:?}");
     assert!(!text.contains(graph::BRANCH_UP_RIGHT), "{text:?}");
     assert!(text.find(graph::COMMIT) < text.find(graph::BRANCH_UP), "{text:?}");
+}
+
+#[test]
+fn graph_projection_closes_transient_merge_lane_to_first_parent() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let rows = vec![graph_row_with_alias(0, 20), graph_row_with_alias(1, 4)];
+    let lines = render_graph_projection(&theme, &symbols, &rows, &transient_merge_closeout_history(), NONE, 0, 2, true);
+    let text = line_text(&lines[1]);
+
+    let commit_idx = text.find(graph::COMMIT).unwrap();
+    let horizontal_idx = text.find(graph::HORIZONTAL).unwrap();
+    let branch_up_idx = text.find(graph::BRANCH_UP).unwrap();
+
+    assert!(commit_idx < horizontal_idx, "{text:?}");
+    assert!(horizontal_idx < branch_up_idx, "{text:?}");
+    assert!(!text.contains(graph::BRANCH_UP_RIGHT), "{text:?}");
 }
 
 #[test]

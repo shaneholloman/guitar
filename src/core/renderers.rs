@@ -74,7 +74,7 @@ pub fn render_graph_projection(
             if chunk.is_dummy()
                 && let Some(prev_snapshot) = prev
                 && let Some(prev) = prev_snapshot.get(lane_idx)
-                && ((prev.parent_a != NONE && prev.parent_b == NONE) || (prev.parent_a == NONE && prev.parent_b != NONE))
+                && dummy_lane_closes_to_row(prev, row.alias)
             {
                 branching_lanes.push(lane_idx);
                 continue;
@@ -112,7 +112,7 @@ pub fn render_graph_projection(
                 if let Some(prev_snapshot) = prev {
                     match prev_snapshot.get(lane_idx) {
                         Some(prev) => {
-                            if (prev.parent_a != NONE && prev.parent_b == NONE) || (prev.parent_a == NONE && prev.parent_b != NONE) {
+                            if dummy_lane_closes_to_row(prev, row.alias) {
                                 layers.commit(&graph.empty, lane_idx);
                                 layers.commit(&graph.empty, lane_idx);
                                 layers.pipe(branch_up_symbol(graph, last, lane_idx, row.alias), lane_idx);
@@ -329,6 +329,10 @@ fn branch_up_symbol<'a>(graph: &'a GraphSymbols, snapshot: &Vector<Chunk>, lane_
 
 fn next_non_dummy_lane_is_alias(snapshot: &Vector<Chunk>, lane_idx: usize, row_alias: u32) -> bool {
     snapshot.iter().skip(lane_idx + 1).find(|chunk| !chunk.is_dummy()).is_some_and(|chunk| chunk.alias == row_alias)
+}
+
+fn dummy_lane_closes_to_row(prev: &Chunk, row_alias: u32) -> bool {
+    single_active_parent(prev).is_some() || (prev.parent_a != NONE && prev.parent_b != NONE && prev.parent_a == row_alias)
 }
 
 fn previous_scanline_carries_parent(prev: Option<&Vector<Chunk>>, lane_idx: usize, chunk: &Chunk) -> bool {

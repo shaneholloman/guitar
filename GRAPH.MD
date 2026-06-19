@@ -976,6 +976,17 @@ Correct next row:
 |  |
 ```
 
+If the next row is the merge's first parent, the expired lane can still need a
+one-row closeout back to that parent:
+
+```text
+|  o--/   P1
+```
+
+The renderer handles that closeout from the previous snapshot. It only uses
+`parent_a` for this transient-lane closeout because the merge-row connector
+already drew the edge toward `parent_b`.
+
 The walker detects the case when:
 
 - the commit has two parents,
