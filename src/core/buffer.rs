@@ -13,6 +13,12 @@ pub enum DeltaOp {
     Replace { index: usize, new: Chunk },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UpdateOutcome {
+    pub lane_idx: usize,
+    pub started_lane: bool,
+}
+
 #[derive(Default, Clone)]
 pub struct Buffer {
     pub curr: Vector<Chunk>,
@@ -21,6 +27,7 @@ pub struct Buffer {
     pub checkpoints: OrdMap<usize, Vector<Chunk>>,
     pub delta: Delta,
     mergers: Vector<u32>,
+    transient_lanes: Vector<usize>,
 }
 
 impl Buffer {
@@ -28,8 +35,22 @@ impl Buffer {
         self.mergers.push_back(alias);
     }
 
-    pub fn update(&mut self, chunk: Chunk) {
+    pub fn expire_lane_after_snapshot(&mut self, lane_idx: usize) {
+        if !self.transient_lanes.iter().any(|idx| *idx == lane_idx) {
+            self.transient_lanes.push_back(lane_idx);
+        }
+    }
+
+    pub fn update(&mut self, chunk: Chunk) -> UpdateOutcome {
         self.backup();
+
+        let transient_lanes = std::mem::take(&mut self.transient_lanes);
+        for lane_idx in transient_lanes {
+            if lane_idx < self.curr.len() && !self.curr[lane_idx].is_dummy() {
+                self.curr[lane_idx] = Chunk::dummy();
+                self.delta.ops.push_back(DeltaOp::Replace { index: lane_idx, new: self.curr[lane_idx].clone() });
+            }
+        }
 
         // Trailing dummy lanes carry no future topology and can be removed immediately.
         while let Some(last_idx) = self.curr.len().checked_sub(1) {
@@ -88,9 +109,12 @@ impl Buffer {
 
                 self.delta.ops.push_back(DeltaOp::Replace { index: i, new: inner.clone() });
             }
+
+            UpdateOutcome { lane_idx: first_idx, started_lane: false }
         } else {
             self.curr.push_back(chunk.clone());
             self.delta.ops.push_back(DeltaOp::Insert { index: self.curr.len() - 1, item: chunk });
+            UpdateOutcome { lane_idx: self.curr.len() - 1, started_lane: true }
         }
     }
 

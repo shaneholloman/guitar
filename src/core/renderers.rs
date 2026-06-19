@@ -5,7 +5,7 @@ use crate::helpers::{
     localisation::status as status_text,
 };
 use crate::{
-    core::chunk::NONE,
+    core::chunk::{Chunk, NONE},
     git::queries::helpers::UncommittedChanges,
     helpers::{
         colors::ColorPicker,
@@ -15,7 +15,7 @@ use crate::{
     },
     layers,
 };
-use im::HashSet;
+use im::{HashSet, Vector};
 use indexmap::IndexMap;
 use ratatui::{
     style::Style,
@@ -187,7 +187,8 @@ pub fn render_graph_projection(theme: &Theme, rows: &[GraphRow], history: &Graph
                                 if chunk_nested_idx == merger_idx {
                                     layers.merge(graph::MERGE_RIGHT_FROM, merger_idx);
                                 } else {
-                                    layers.merge(graph::HORIZONTAL, merger_idx);
+                                    let symbol = if previous_scanline_carries_parent(prev, chunk_nested_idx, chunk_nested) { graph::MERGE_RIGHT_FROM_AND_UP } else { graph::HORIZONTAL };
+                                    layers.merge(symbol, merger_idx);
                                 }
 
                                 if chunk_nested_idx + 1 == mergee_idx {
@@ -310,6 +311,25 @@ pub fn render_graph_projection(theme: &Theme, rows: &[GraphRow], history: &Graph
     remove_empty_columns(&mut lines);
     let _ = start;
     lines
+}
+
+fn previous_scanline_carries_parent(prev: Option<&Vector<Chunk>>, lane_idx: usize, chunk: &Chunk) -> bool {
+    let Some(parent) = single_active_parent(chunk) else {
+        return false;
+    };
+    let Some(prev_chunk) = prev.and_then(|snapshot| snapshot.get(lane_idx)) else {
+        return false;
+    };
+
+    !prev_chunk.is_dummy() && (prev_chunk.parent_a == parent || prev_chunk.parent_b == parent)
+}
+
+fn single_active_parent(chunk: &Chunk) -> Option<u32> {
+    match (chunk.parent_a != NONE, chunk.parent_b != NONE) {
+        (true, false) => Some(chunk.parent_a),
+        (false, true) => Some(chunk.parent_b),
+        _ => None,
+    }
 }
 
 // Remove graph lane pairs that are visually empty across every rendered row.
@@ -518,6 +538,7 @@ mod tests {
         worktrees::{WorktreeEntry, WorktreeKind},
     };
     use git2::Oid;
+    use im::Vector;
     use std::path::PathBuf;
 
     fn graph_row(index: usize, oid: Oid, summary: &str) -> GraphRow {
@@ -540,6 +561,19 @@ mod tests {
 
     fn line_text(line: &Line<'_>) -> String {
         line.spans.iter().map(|span| span.content.as_ref()).collect()
+    }
+
+    fn graph_row_with_alias(index: usize, alias: u32) -> GraphRow {
+        let mut row = graph_row(index, Oid::from_str("1111111111111111111111111111111111111111").unwrap(), "merge");
+        row.alias = alias;
+        row
+    }
+
+    fn merge_right_from_history(prev_lane_parent: u32) -> GraphHistory {
+        GraphHistory::from(Vector::from(vec![
+            Vector::from(vec![Chunk::commit(20, prev_lane_parent, NONE), Chunk::commit(21, 200, NONE), Chunk::dummy()]),
+            Vector::from(vec![Chunk::commit(10, 1, NONE), Chunk::commit(11, 2, NONE), Chunk::commit(4, 1, 2)]),
+        ]))
     }
 
     #[test]
@@ -596,6 +630,18 @@ mod tests {
         assert_eq!(line_text(&lines[0]), "");
         assert_eq!(rendered.chars().count(), GRAPH_COMMITTER_WIDTH);
         assert!(rendered.contains("..."));
+    }
+
+    #[test]
+    fn graph_projection_uses_merge_right_from_and_up_when_previous_lane_carries_same_parent() {
+        let theme = Theme::classic();
+        let row = graph_row_with_alias(1, 4);
+
+        let with_up = render_graph_projection(&theme, &[row.clone()], &merge_right_from_history(1), NONE, 1, 2, true);
+        let without_up = render_graph_projection(&theme, &[row], &merge_right_from_history(99), NONE, 1, 2, true);
+
+        assert!(line_text(&with_up[0]).contains(graph::MERGE_RIGHT_FROM_AND_UP), "{:?}", line_text(&with_up[0]));
+        assert!(!line_text(&without_up[0]).contains(graph::MERGE_RIGHT_FROM_AND_UP), "{:?}", line_text(&without_up[0]));
     }
 
     #[test]

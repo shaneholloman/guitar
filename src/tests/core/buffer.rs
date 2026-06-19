@@ -55,3 +55,22 @@ fn planned_merger_splits_lane_before_replacing_first_parent() {
     assert_eq!(buffer.curr[1].parent_a, 2);
     assert_eq!(buffer.curr[1].parent_b, NONE);
 }
+
+#[test]
+fn transient_lane_survives_one_snapshot_then_expires() {
+    let mut buffer = Buffer::default();
+
+    buffer.update(Chunk::commit(4, 2, NONE));
+    buffer.update(Chunk::commit(5, 3, NONE));
+    let merge = buffer.update(Chunk::commit(6, 2, 3));
+    buffer.expire_lane_after_snapshot(merge.lane_idx);
+    buffer.update(Chunk::commit(2, NONE, NONE));
+    buffer.backup();
+
+    let history = buffer.window(1, buffer.deltas.len());
+
+    assert_eq!(history[2].len(), 3);
+    assert_eq!(history[2][merge.lane_idx].alias, 6);
+    assert_eq!(history[3].len(), 2);
+    assert!(history[3].iter().all(|chunk| chunk.alias != 6));
+}

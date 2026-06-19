@@ -10,7 +10,7 @@ use crate::{
     git::queries::reflogs::get_head_reflog_entries,
 };
 use git2::Repository;
-use im::HashSet;
+use im::{HashSet, Vector};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 // Walks git history into lane snapshots and ref lookup tables.
@@ -126,6 +126,7 @@ impl Walker {
 
         for &alias in sorted_batch.iter() {
             let mut merger_alias: u32 = NONE;
+            let mut transient_lane: Option<usize> = None;
             let oid = self.oids.get_oid_by_alias(alias);
             let commit = repo.find_commit(*oid).unwrap();
 
@@ -143,7 +144,7 @@ impl Walker {
 
             let chunk = Chunk::commit(alias, parent_a, parent_b);
 
-            buffer.update(chunk);
+            let update = buffer.update(chunk);
 
             for (lane_idx, chunk) in buffer.curr.iter().enumerate() {
                 if !chunk.is_dummy() && alias == chunk.alias {
@@ -175,6 +176,13 @@ impl Walker {
                         }
                         if !is_merger_found {
                             merger_alias = chunk.alias;
+                        } else if update.started_lane
+                            && update.lane_idx == lane_idx
+                            && lane_idx + 1 == buffer.curr.len()
+                            && parent_is_on_prior_lane(&buffer.curr, chunk.parent_a, lane_idx)
+                            && parent_is_on_prior_lane(&buffer.curr, chunk.parent_b, lane_idx)
+                        {
+                            transient_lane = Some(lane_idx);
                         }
                     }
                 }
@@ -182,6 +190,8 @@ impl Walker {
 
             if merger_alias != NONE {
                 buffer.merger(merger_alias);
+            } else if let Some(lane_idx) = transient_lane {
+                buffer.expire_lane_after_snapshot(lane_idx);
             }
 
             // Preserve the rendered order separately from first-seen alias assignment.
@@ -196,6 +206,14 @@ impl Walker {
 
         true
     }
+}
+
+fn parent_is_on_prior_lane(lanes: &Vector<Chunk>, parent: u32, before_lane: usize) -> bool {
+    parent != NONE && lanes.iter().take(before_lane).any(|chunk| is_single_parent_lane_for(chunk, parent))
+}
+
+fn is_single_parent_lane_for(chunk: &Chunk, parent: u32) -> bool {
+    (chunk.parent_a == parent && chunk.parent_b == NONE) || (chunk.parent_a == NONE && chunk.parent_b == parent)
 }
 
 #[cfg(test)]

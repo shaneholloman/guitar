@@ -9,6 +9,7 @@ pub mod border {
     pub const HORIZONTAL: &str = "─";
     pub const VERTICAL: &str = "│";
     pub const T_RIGHT: &str = "┤";
+    pub const T_LEFT: &str = "├";
     pub const TOP_T: &str = "┬";
     pub const BOTTOM_T: &str = "┴";
     pub const ROUNDED_TOP_RIGHT: &str = "╮";
@@ -43,6 +44,7 @@ pub mod graph {
     pub const VERTICAL_DOTTED: &str = "┊";
     pub const MERGE_LEFT_FROM: &str = super::border::T_RIGHT;
     pub const MERGE_RIGHT_FROM: &str = super::border::ROUNDED_TOP_LEFT;
+    pub const MERGE_RIGHT_FROM_AND_UP: &str = super::border::ROUNDED_TOP_LEFT;
     pub const BRANCH_UP: &str = super::border::ROUNDED_BOTTOM_RIGHT;
     pub const BRANCH_DOWN: &str = super::border::ROUNDED_TOP_RIGHT;
     pub const MERGE: &str = "•";
