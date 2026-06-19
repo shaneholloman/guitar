@@ -83,6 +83,7 @@ impl SymbolTheme {
             merge_left_from: border.t_right.clone(),
             merge_right_from: border.rounded_top_left.clone(),
             branch_up: border.rounded_bottom_right.clone(),
+            branch_up_right: border.rounded_bottom_left.clone(),
             branch_down: border.rounded_top_right.clone(),
             merge: s("•"),
             uncommitted: s("◌"),
@@ -185,6 +186,7 @@ impl SymbolTheme {
             merge_left_from: border.t_right.clone(),
             merge_right_from: border.rounded_top_left.clone(),
             branch_up: border.rounded_bottom_right.clone(),
+            branch_up_right: border.rounded_bottom_left.clone(),
             branch_down: border.rounded_top_right.clone(),
             merge: s("x"),
             uncommitted: s("?"),
@@ -408,6 +410,7 @@ pub struct GraphSymbols {
     pub merge_left_from: String,
     pub merge_right_from: String,
     pub branch_up: String,
+    pub branch_up_right: String,
     pub branch_down: String,
     pub merge: String,
     pub uncommitted: String,
@@ -426,6 +429,7 @@ impl GraphSymbols {
             self.merge_left_from.as_str(),
             self.merge_right_from.as_str(),
             self.branch_up.as_str(),
+            self.branch_up_right.as_str(),
             self.branch_down.as_str(),
             self.merge.as_str(),
             self.uncommitted.as_str(),
@@ -690,6 +694,7 @@ optional_symbol_config!(GraphSymbolConfig {
     merge_left_from,
     merge_right_from,
     branch_up,
+    branch_up_right,
     branch_down,
     merge,
     uncommitted,
@@ -785,6 +790,7 @@ fn apply_symbols(theme: &mut SymbolTheme, config: &SymbolConfig) {
         apply_symbol(&mut theme.graph.merge_left_from, &graph.merge_left_from);
         apply_symbol(&mut theme.graph.merge_right_from, &graph.merge_right_from);
         apply_symbol(&mut theme.graph.branch_up, &graph.branch_up);
+        apply_symbol(&mut theme.graph.branch_up_right, &graph.branch_up_right);
         apply_symbol(&mut theme.graph.branch_down, &graph.branch_down);
         apply_symbol(&mut theme.graph.merge, &graph.merge);
         apply_symbol(&mut theme.graph.uncommitted, &graph.uncommitted);
@@ -912,6 +918,7 @@ fn symbol_config(theme: &SymbolTheme) -> SymbolConfig {
             merge_left_from: Some(theme.graph.merge_left_from.clone()),
             merge_right_from: Some(theme.graph.merge_right_from.clone()),
             branch_up: Some(theme.graph.branch_up.clone()),
+            branch_up_right: Some(theme.graph.branch_up_right.clone()),
             branch_down: Some(theme.graph.branch_down.clone()),
             merge: Some(theme.graph.merge.clone()),
             uncommitted: Some(theme.graph.uncommitted.clone()),
@@ -1105,6 +1112,7 @@ pub mod graph {
     pub const MERGE_LEFT_FROM: &str = super::border::T_RIGHT;
     pub const MERGE_RIGHT_FROM: &str = super::border::ROUNDED_TOP_LEFT;
     pub const BRANCH_UP: &str = super::border::ROUNDED_BOTTOM_RIGHT;
+    pub const BRANCH_UP_RIGHT: &str = super::border::ROUNDED_BOTTOM_LEFT;
     pub const BRANCH_DOWN: &str = super::border::ROUNDED_TOP_RIGHT;
     pub const MERGE: &str = "•";
     pub const UNCOMMITTED: &str = "◌";

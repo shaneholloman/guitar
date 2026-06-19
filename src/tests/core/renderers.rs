@@ -45,6 +45,13 @@ fn merge_right_from_history(prev_lane_parent: u32) -> GraphHistory {
     ]))
 }
 
+fn branch_up_history(current_lane: usize) -> GraphHistory {
+    let mut last = Vector::from(vec![Chunk::dummy(), Chunk::dummy()]);
+    last[current_lane] = Chunk::commit(4, NONE, NONE);
+
+    GraphHistory::from(Vector::from(vec![Vector::from(vec![Chunk::commit(10, 1, NONE), Chunk::commit(11, 2, NONE)]), last]))
+}
+
 #[test]
 fn sha_projection_uses_text_and_highlighted_text_colors() {
     let theme = Theme::classic();
@@ -120,6 +127,32 @@ fn graph_projection_uses_merge_right_from_and_up_when_previous_lane_carries_same
     assert!(connector_after_merge_right_from.contains(graph::HORIZONTAL), "{with_up_text:?}");
     assert!(connector_after_merge_right_from.replace(graph::HORIZONTAL, "").trim().is_empty(), "{with_up_text:?}");
     assert_eq!(without_up_text.matches(graph::MERGE_RIGHT_FROM).count(), 1, "{without_up_text:?}");
+}
+
+#[test]
+fn graph_projection_uses_branch_up_right_when_dummy_lane_points_to_commit_on_right() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let row = graph_row_with_alias(1, 4);
+    let lines = render_graph_projection(&theme, &symbols, &[row], &branch_up_history(1), NONE, 1, 2, true);
+    let text = line_text(&lines[0]);
+
+    assert!(text.contains(graph::BRANCH_UP_RIGHT), "{text:?}");
+    assert!(!text.contains(graph::BRANCH_UP), "{text:?}");
+    assert!(text.find(graph::BRANCH_UP_RIGHT) < text.find(graph::COMMIT), "{text:?}");
+}
+
+#[test]
+fn graph_projection_keeps_branch_up_when_dummy_lane_points_back_left() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let row = graph_row_with_alias(1, 4);
+    let lines = render_graph_projection(&theme, &symbols, &[row], &branch_up_history(0), NONE, 1, 2, true);
+    let text = line_text(&lines[0]);
+
+    assert!(text.contains(graph::BRANCH_UP), "{text:?}");
+    assert!(!text.contains(graph::BRANCH_UP_RIGHT), "{text:?}");
+    assert!(text.find(graph::COMMIT) < text.find(graph::BRANCH_UP), "{text:?}");
 }
 
 #[test]

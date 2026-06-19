@@ -63,6 +63,7 @@ The real UI uses Unicode glyphs from `src/helpers/symbols.rs`:
 | merge from left | `graph::MERGE_LEFT_FROM` | `┤` |
 | merge from right | `graph::MERGE_RIGHT_FROM` | `╭` |
 | branch up | `graph::BRANCH_UP` | `╯` |
+| branch up right | `graph::BRANCH_UP_RIGHT` | `╰` |
 | branch down | `graph::BRANCH_DOWN` | `╮` |
 
 ## Source Files
@@ -838,7 +839,9 @@ o  |
 o
 ```
 
-The curve is rendered with `graph::BRANCH_UP` (`╯`) in the pipe layer.
+The curve is rendered with `graph::BRANCH_UP` (`╯`) in the pipe layer. If the
+next non-dummy lane to the right is the current row commit, the mirrored
+`graph::BRANCH_UP_RIGHT` (`╰`) is used instead.
 
 ### Visible-parent merge
 
@@ -1279,7 +1282,8 @@ When a graph bug appears, inspect the pipeline in this order:
 6. Renderer row pass
    - Is the current row alias found in `last`?
    - Is an unrelated active lane drawing a vertical pipe because it still has a parent?
-   - Is a dummy lane drawing `BRANCH_UP` because `prev` had a single-parent lane?
+   - Is a dummy lane drawing `BRANCH_UP` or `BRANCH_UP_RIGHT` because `prev`
+     had a single-parent lane?
 
 7. Layer compositing
    - Is a commit marker hiding a merge/pipe glyph as intended?
