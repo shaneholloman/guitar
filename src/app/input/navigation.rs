@@ -445,6 +445,11 @@ impl App {
         self.focus = Focus::ModalKeyCapture;
     }
 
+    fn begin_graph_lane_limit_input(&mut self) {
+        self.modal_input.set_value(self.layout_config.graph_lane_limit.to_string());
+        self.focus = Focus::ModalGraphLaneLimit;
+    }
+
     fn activate_settings_layout_command(&mut self, command: Command) {
         let selected = self.settings_selected;
         let scroll = self.settings_scroll.get();
@@ -590,6 +595,9 @@ impl App {
                         },
                         Some(SettingsSelectionKind::LayoutCommand(command)) => {
                             self.activate_settings_layout_command(command);
+                        },
+                        Some(SettingsSelectionKind::GraphLaneLimit) => {
+                            self.begin_graph_lane_limit_input();
                         },
                         Some(SettingsSelectionKind::RemoteAdd) => {
                             self.begin_add_remote();
@@ -2037,6 +2045,10 @@ impl App {
             Focus::ModalRemoteAction | Focus::ModalRemoteDelete | Focus::ModalRemoteName | Focus::ModalRemoteUrl => {
                 self.close_remote_modal();
             },
+            Focus::ModalGraphLaneLimit => {
+                self.modal_input.clear();
+                self.focus = Focus::Viewport;
+            },
             Focus::ModalFileSearch => {
                 self.modal_input.clear();
                 self.modal_file_search_results.clear();
@@ -2140,6 +2152,7 @@ impl App {
             | Focus::ModalLockWorktree
             | Focus::ModalRemoteName
             | Focus::ModalRemoteUrl
+            | Focus::ModalGraphLaneLimit
             | Focus::ModalFileSearch => {
                 self.modal_input.clear();
                 self.modal_file_search_results.clear();
@@ -2187,6 +2200,41 @@ impl App {
         if should_reload {
             self.reload(None);
         }
+    }
+
+    fn set_graph_lane_limit_from_shortcut(&mut self, limit: usize) {
+        let limit = limit.max(1);
+        if self.layout_config.graph_lane_limit == limit {
+            return;
+        }
+
+        let was_settings = self.viewport == Viewport::Settings;
+        let settings_selected = self.settings_selected;
+        let settings_scroll = self.settings_scroll.get();
+
+        self.layout_config.graph_lane_limit = limit;
+        self.save_layout();
+
+        if self.repo.is_some() {
+            self.reload(None);
+        }
+
+        if was_settings {
+            self.viewport = Viewport::Settings;
+            self.focus = Focus::Viewport;
+            self.settings_selected = settings_selected;
+            self.settings_scroll.set(settings_scroll);
+        }
+    }
+
+    pub fn on_shrink_graph_lane_limit(&mut self) {
+        let current = self.layout_config.graph_lane_limit.max(1);
+        self.set_graph_lane_limit_from_shortcut(current.saturating_sub(1).max(1));
+    }
+
+    pub fn on_grow_graph_lane_limit(&mut self) {
+        let current = self.layout_config.graph_lane_limit.max(1);
+        self.set_graph_lane_limit_from_shortcut(current.saturating_add(1));
     }
 
     pub fn on_toggle_shas(&mut self) {
@@ -2359,7 +2407,7 @@ impl App {
             Viewport::Graph => {
                 self.viewport = Viewport::Settings;
                 self.focus = Focus::Viewport;
-                self.settings_tab = SettingsTab::Paths;
+                self.settings_tab = SettingsTab::General;
                 self.settings_selected = 0;
                 self.settings_scroll.set(0);
                 self.last_input_direction = None;

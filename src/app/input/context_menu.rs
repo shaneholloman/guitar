@@ -7,7 +7,7 @@ use crate::{
     git::queries::commits::get_current_branch,
     helpers::{
         keymap::{Command, InputMode, command_to_visual_string},
-        localisation::menu,
+        localisation::{menu, settings},
     },
 };
 use ratatui::{
@@ -505,6 +505,7 @@ impl App {
             SettingsSelectionKind::Language(_) => vec![Self::command_item(menu::APPLY_LANGUAGE(), Command::Select)],
             SettingsSelectionKind::Theme(_) | SettingsSelectionKind::SymbolTheme(_) => vec![Self::command_item(menu::APPLY_THEME(), Command::Select)],
             SettingsSelectionKind::KeyBinding(_) => vec![Self::command_item(menu::REBIND_SHORTCUT(), Command::Select)],
+            SettingsSelectionKind::GraphLaneLimit => vec![Self::command_item(menu::run_command(settings::GRAPH_LANE_LIMIT().trim()), Command::Select)],
             SettingsSelectionKind::LayoutCommand(command) => {
                 let label = menu::run_command(&command_to_visual_string(&command));
                 vec![Self::command_item(label, Command::Select)]
@@ -637,7 +638,7 @@ impl App {
 
     fn open_settings_from_context_menu(&mut self) {
         if self.viewport != Viewport::Settings {
-            self.settings_tab = SettingsTab::Paths;
+            self.settings_tab = SettingsTab::General;
             self.settings_selected = 0;
             self.settings_scroll.set(0);
         }

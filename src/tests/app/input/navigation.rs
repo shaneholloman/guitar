@@ -1,7 +1,7 @@
 use super::*;
 use crate::app::app::{GraphWindowCache, PaneWindowCache};
 use crate::core::{
-    chunk::NONE,
+    chunk::{LaneRef, NONE},
     graph_service::{GraphCommand, GraphEvent, GraphFileHistoryRow, GraphLookupKind, GraphLookupResult, GraphPane, GraphPaneRow, GraphReflogLabel, GraphRow},
     reflogs::HeadReflogAliasEntry,
 };
@@ -872,7 +872,7 @@ fn graph_row_lookup_result_opens_inspector_with_reflog() {
                 is_stash: false,
                 stash_lane: None,
                 worktrees: Vec::new(),
-                reflog: Some(GraphReflogLabel { selector: "HEAD@{0}".to_string(), message: "commit: commit".to_string(), lane: Some(2) }),
+                reflog: Some(GraphReflogLabel { selector: "HEAD@{0}".to_string(), message: "commit: commit".to_string(), lane: Some(LaneRef::new(2, false)) }),
             })),
         })
         .unwrap();
@@ -997,7 +997,7 @@ fn settings_tab_commands_cycle_tabs_and_reset_selection() {
     let mut keymaps = minimal_keymaps();
     keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::Tab, KeyModifiers::NONE), Command::FocusNextPane);
     keymaps.get_mut(&InputMode::Normal).unwrap().insert(KeyBinding::new(KeyCode::BackTab, KeyModifiers::SHIFT), Command::FocusPreviousPane);
-    let mut app = App { repo: Some(Rc::new(repo)), viewport: Viewport::Settings, focus: Focus::Viewport, settings_tab: SettingsTab::Paths, settings_selected: 99, keymaps, ..Default::default() };
+    let mut app = App { repo: Some(Rc::new(repo)), viewport: Viewport::Settings, focus: Focus::Viewport, settings_tab: SettingsTab::General, settings_selected: 99, keymaps, ..Default::default() };
     app.layout.graph = Rect::new(0, 0, 120, 40);
     app.layout.app = Rect::new(0, 0, 120, 40);
     app.settings_scroll.set(12);
@@ -1011,14 +1011,14 @@ fn settings_tab_commands_cycle_tabs_and_reset_selection() {
 
     app.handle_key_event(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
 
-    assert_eq!(app.settings_tab, SettingsTab::Paths);
+    assert_eq!(app.settings_tab, SettingsTab::General);
     assert_eq!(app.settings_scroll.get(), 0);
     assert!(app.settings_selections.iter().any(|selection| selection.line == app.settings_selected));
     assert!(app.settings_selected > app.settings_tab_hitboxes.first().unwrap().line);
 }
 
 #[test]
-fn toggle_help_opens_settings_on_paths_tab() {
+fn toggle_help_opens_settings_on_general_tab() {
     let mut app = App { viewport: Viewport::Graph, focus: Focus::Viewport, settings_tab: SettingsTab::Shortcuts, settings_selected: 42, ..Default::default() };
     app.settings_scroll.set(9);
 
@@ -1026,7 +1026,7 @@ fn toggle_help_opens_settings_on_paths_tab() {
 
     assert_eq!(app.viewport, Viewport::Settings);
     assert_eq!(app.focus, Focus::Viewport);
-    assert_eq!(app.settings_tab, SettingsTab::Paths);
+    assert_eq!(app.settings_tab, SettingsTab::General);
     assert_eq!(app.settings_selected, 0);
     assert_eq!(app.settings_scroll.get(), 0);
 }

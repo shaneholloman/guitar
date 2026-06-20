@@ -1,4 +1,4 @@
-use crate::helpers::colors::ColorPicker;
+use crate::{core::chunk::LaneRef, helpers::colors::ColorPicker};
 use ratatui::{
     style::{Color, Style},
     text::Span,
@@ -17,17 +17,19 @@ pub struct LayersContext {
     merges: Vec<LayerToken>,
     pipes: Vec<LayerToken>,
     color: ColorPicker,
+    flattened_lanes: Vec<bool>,
 }
 
 impl LayersContext {
     pub fn new(color: ColorPicker) -> Self {
-        Self { commits: Vec::new(), merges: Vec::new(), pipes: Vec::new(), color }
+        Self { commits: Vec::new(), merges: Vec::new(), pipes: Vec::new(), color, flattened_lanes: Vec::new() }
     }
 
     pub fn clear(&mut self) {
         self.commits.clear();
         self.merges.clear();
         self.pipes.clear();
+        self.flattened_lanes.clear();
     }
 
     pub fn reserve(&mut self, additional: usize) {
@@ -36,34 +38,67 @@ impl LayersContext {
         self.pipes.reserve(additional);
     }
 
+    pub fn set_flattened_lanes(&mut self, flattened_lanes: Vec<bool>) {
+        self.flattened_lanes = flattened_lanes;
+    }
+
     pub fn commit(&mut self, sym: &str, lane: usize) {
-        let color = self.color.get_lane(lane);
+        self.commit_ref(sym, self.lane_ref_for_index(lane));
+    }
+
+    pub fn commit_ref(&mut self, sym: &str, lane: LaneRef) {
+        let color = self.color.get_lane_ref(lane);
         self.commits.push(LayerToken { symbol: sym.to_string(), color });
     }
 
+    pub fn commit_at(&mut self, token_index: usize, sym: &str, lane: usize) {
+        while self.commits.len() <= token_index {
+            self.commits.push(LayerToken { symbol: " ".to_string(), color: Color::Black });
+        }
+
+        let color = self.color.get_lane_ref(self.lane_ref_for_index(lane));
+        self.commits[token_index] = LayerToken { symbol: sym.to_string(), color };
+    }
+
     pub fn pipe(&mut self, sym: &str, lane: usize) {
-        let color = self.color.get_lane(lane);
+        self.pipe_ref(sym, self.lane_ref_for_index(lane));
+    }
+
+    pub fn pipe_ref(&mut self, sym: &str, lane: LaneRef) {
+        let color = self.color.get_lane_ref(lane);
         self.pipes.push(LayerToken { symbol: sym.to_string(), color });
     }
 
     pub fn merge(&mut self, sym: &str, lane: usize) {
-        let color = self.color.get_lane(lane);
+        self.merge_ref(sym, self.lane_ref_for_index(lane));
+    }
+
+    pub fn merge_ref(&mut self, sym: &str, lane: LaneRef) {
+        let color = self.color.get_lane_ref(lane);
         self.merges.push(LayerToken { symbol: sym.to_string(), color });
     }
 
     pub fn merge_at(&mut self, token_index: usize, sym: &str, lane: usize) {
+        self.merge_at_ref(token_index, sym, self.lane_ref_for_index(lane));
+    }
+
+    pub fn merge_at_ref(&mut self, token_index: usize, sym: &str, lane: LaneRef) {
         while self.merges.len() <= token_index {
             self.merges.push(LayerToken { symbol: " ".to_string(), color: Color::Black });
         }
 
         if is_empty(&self.merges[token_index].symbol) {
-            let color = self.color.get_lane(lane);
+            let color = self.color.get_lane_ref(lane);
             self.merges[token_index] = LayerToken { symbol: sym.to_string(), color };
         }
     }
 
     pub fn pipe_custom(&mut self, sym: &str, _lane: usize, color: Color) {
         self.pipes.push(LayerToken { symbol: sym.to_string(), color });
+    }
+
+    fn lane_ref_for_index(&self, lane: usize) -> LaneRef {
+        LaneRef::new(lane, self.flattened_lanes.get(lane).copied().unwrap_or(false))
     }
 
     pub fn bake(&mut self, spans: &mut Vec<Span<'static>>) {

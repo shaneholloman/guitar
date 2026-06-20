@@ -246,7 +246,9 @@ impl App {
 
     fn mouse_target_activates_on_single_click(&self, target: MouseSelectionTarget) -> bool {
         match target {
-            MouseSelectionTarget::Settings(index) => self.settings_selections.iter().any(|selection| selection.line == index && matches!(selection.kind, SettingsSelectionKind::LayoutCommand(_))),
+            MouseSelectionTarget::Settings(index) => {
+                self.settings_selections.iter().any(|selection| selection.line == index && matches!(selection.kind, SettingsSelectionKind::LayoutCommand(_) | SettingsSelectionKind::GraphLaneLimit))
+            },
             _ => false,
         }
     }
@@ -1206,6 +1208,7 @@ impl App {
                 | Focus::ModalRemoteDelete
                 | Focus::ModalRemoteName
                 | Focus::ModalRemoteUrl
+                | Focus::ModalGraphLaneLimit
                 | Focus::ModalGrep
                 | Focus::ModalFileSearch
                 | Focus::ModalTag

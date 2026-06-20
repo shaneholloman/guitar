@@ -58,7 +58,7 @@ impl App {
                     } else {
                         self.symbols.branch.remote_hidden.as_str()
                     };
-                    let color = if is_visible { lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(self.theme.COLOR_TEXT) } else { self.theme.COLOR_TEXT };
+                    let color = if is_visible { lane.map(|lane| color_picker.get_lane_ref(lane)).unwrap_or(self.theme.COLOR_TEXT) } else { self.theme.COLOR_TEXT };
                     lines.push(Line::from(Span::styled(format!("{icon} {truncated}"), Style::default().fg(color))));
                 } else {
                     lines.push(Line::default());

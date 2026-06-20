@@ -51,6 +51,44 @@ fn active_language_changes_localised_text() {
 }
 
 #[test]
+fn settings_general_performance_lane_limit_text_is_localised() {
+    for (language, general, performance, lane_limit, prompt) in [
+        (Language::English, "general", " performance:", " graph lane limit:", "Enter graph lane limit"),
+        (Language::Spanish, "general", " rendimiento:", " límite de carriles del grafo:", "Introduce límite de carriles del grafo"),
+        (Language::French, "général", " performances :", " limite de voies du graphe :", "Saisir la limite de voies du graphe"),
+        (Language::Russian, "общие", " производительность:", " лимит дорожек графа:", "Введите лимит дорожек графа"),
+        (Language::Turkish, "genel", " performans:", " grafik şerit sınırı:", "Grafik şerit sınırını gir"),
+    ] {
+        set_active_language(language);
+        assert_eq!(settings::GENERAL(), general);
+        assert_eq!(settings::PERFORMANCE(), performance);
+        assert_eq!(settings::GRAPH_LANE_LIMIT(), lane_limit);
+        assert_eq!(modal::PROMPT_GRAPH_LANE_LIMIT(), prompt);
+    }
+
+    set_active_language(Language::English);
+}
+
+#[test]
+fn graph_lane_limit_shortcut_command_labels_are_localised() {
+    use crate::helpers::keymap::{Command, command_to_visual_string};
+
+    for (language, shrink, grow) in [
+        (Language::English, "Shrink graph lane limit", "Grow graph lane limit"),
+        (Language::Spanish, "Reducir límite de carriles del grafo", "Aumentar límite de carriles del grafo"),
+        (Language::French, "Réduire la limite de voies du graphe", "Augmenter la limite de voies du graphe"),
+        (Language::Russian, "Уменьшить лимит дорожек графа", "Увеличить лимит дорожек графа"),
+        (Language::Turkish, "Grafik şerit sınırını azalt", "Grafik şerit sınırını artır"),
+    ] {
+        set_active_language(language);
+        assert_eq!(command_to_visual_string(&Command::ShrinkGraphLaneLimit), shrink);
+        assert_eq!(command_to_visual_string(&Command::GrowGraphLaneLimit), grow);
+    }
+
+    set_active_language(Language::English);
+}
+
+#[test]
 fn formatted_messages_keep_runtime_values() {
     set_active_language(Language::Turkish);
     assert!(network::pushing("main", "origin").contains("main"));

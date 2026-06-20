@@ -235,7 +235,21 @@ impl App {
         self.settings_selections.push(SettingsSelection { line: lines.len().saturating_sub(1), kind });
     }
 
-    fn append_settings_paths(&mut self, lines: &mut Vec<Line<'static>>, width: usize) {
+    fn append_settings_performance(&mut self, lines: &mut Vec<Line<'static>>, width: usize) {
+        lines.push(Line::default());
+        lines.push(self.settings_section_line(settings_text::PERFORMANCE(), width));
+        lines.push(Line::default());
+
+        lines.push(self.settings_filled_line(
+            settings_text::GRAPH_LANE_LIMIT(),
+            format!(" {} {} ", self.layout_config.graph_lane_limit, settings_text::ENTER_ACTION()).as_str(),
+            width,
+            Style::default().fg(self.theme.COLOR_TEXT).bg(self.theme.background_or_default(self.theme.COLOR_GREY_900)),
+        ));
+        self.add_settings_selection(lines, SettingsSelectionKind::GraphLaneLimit);
+    }
+
+    fn append_settings_general(&mut self, lines: &mut Vec<Line<'static>>, width: usize) {
         // Config paths are informational, but still selectable for consistent navigation.
         lines.push(Line::default());
         lines.push(self.settings_section_line(settings_text::PATHS_SECTION(), width));
@@ -259,6 +273,8 @@ impl App {
         self.add_settings_selection(lines, SettingsSelectionKind::Info);
         lines.push(self.settings_filled_line(settings_text::RECENT_FILE(), format!(" {}/recent.json ", path).as_str(), width, plain));
         self.add_settings_selection(lines, SettingsSelectionKind::Info);
+
+        self.append_settings_performance(lines, width);
 
         lines.push(Line::default());
         lines.push(self.settings_section_line(settings_text::RECENT_REPOSITORIES(), width));
@@ -575,7 +591,7 @@ impl App {
         self.append_settings_header(&mut lines, heatmap_width, week_start);
 
         match self.settings_tab {
-            SettingsTab::Paths => self.append_settings_paths(&mut lines, heatmap_width),
+            SettingsTab::General => self.append_settings_general(&mut lines, heatmap_width),
             SettingsTab::Display => {
                 self.append_settings_languages(&mut lines, heatmap_width);
                 self.append_settings_layout(&mut lines, heatmap_width);

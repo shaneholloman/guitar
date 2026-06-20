@@ -8,7 +8,7 @@ use crate::helpers::{
     localisation::status as status_text,
 };
 use crate::{
-    core::chunk::{Chunk, NONE},
+    core::chunk::{Chunk, LaneRef, NONE},
     git::queries::helpers::UncommittedChanges,
     helpers::{
         colors::ColorPicker,
@@ -62,7 +62,11 @@ pub fn render_graph_projection(
                 continue;
             },
         };
+        let next = history.get(delta + 1);
         layers.reserve(last.len().saturating_mul(2));
+        let flattened_lanes = flattened_lanes(last, prev);
+        let closeout_flattened_lanes = flattened_lanes_around_closeout(last, prev, next);
+        layers.set_flattened_lanes(flattened_lanes.clone());
 
         if row.alias == NONE {
             lines.push(Line::from(Span::styled(format!(" {}", graph.uncommitted), Style::default().fg(theme.COLOR_GREY_400))));
@@ -103,8 +107,8 @@ pub fn render_graph_projection(
                     layers.merge(&graph.empty, closest_lane);
                     layers.commit(&graph.empty, closest_lane);
                     layers.commit(&graph.empty, closest_lane);
-                    layers.pipe(&graph.horizontal, closest_lane);
-                    layers.pipe(&graph.horizontal, closest_lane);
+                    layers.pipe(pipe_symbol(graph, &flattened_lanes, closest_lane, &graph.horizontal), closest_lane);
+                    layers.pipe(pipe_symbol(graph, &flattened_lanes, closest_lane, &graph.horizontal), closest_lane);
                     lane_idx += 1;
                     continue;
                 }
@@ -211,21 +215,21 @@ pub fn render_graph_projection(
                                 } else {
                                     &graph.horizontal
                                 };
-                                layers.merge(symbol, merger_idx);
+                                layers.merge(pipe_symbol(graph, &flattened_lanes, merger_idx, symbol), merger_idx);
 
                                 if chunk_nested_idx + 1 == mergee_idx {
                                     layers.merge(&graph.empty, merger_idx);
                                 } else {
-                                    layers.merge(&graph.horizontal, merger_idx);
+                                    layers.merge(pipe_symbol(graph, &flattened_lanes, merger_idx, &graph.horizontal), merger_idx);
                                 }
                                 is_drawing = true;
                             } else if is_drawing {
                                 if chunk_nested_idx + 1 == mergee_idx {
-                                    layers.merge(&graph.horizontal, merger_idx);
+                                    layers.merge(pipe_symbol(graph, &flattened_lanes, merger_idx, &graph.horizontal), merger_idx);
                                     layers.merge(&graph.empty, merger_idx);
                                 } else {
-                                    layers.merge(&graph.horizontal, merger_idx);
-                                    layers.merge(&graph.horizontal, merger_idx);
+                                    layers.merge(pipe_symbol(graph, &flattened_lanes, merger_idx, &graph.horizontal), merger_idx);
+                                    layers.merge(pipe_symbol(graph, &flattened_lanes, merger_idx, &graph.horizontal), merger_idx);
                                 }
                             } else {
                                 layers.merge(&graph.empty, merger_idx);
@@ -240,8 +244,8 @@ pub fn render_graph_projection(
                                 is_merged_before = true;
                                 is_drawing = false;
                             } else if is_drawing {
-                                layers.merge(&graph.horizontal, merger_idx);
-                                layers.merge(&graph.horizontal, merger_idx);
+                                layers.merge(pipe_symbol(graph, &flattened_lanes, merger_idx, &graph.horizontal), merger_idx);
+                                layers.merge(pipe_symbol(graph, &flattened_lanes, merger_idx, &graph.horizontal), merger_idx);
                             } else {
                                 layers.merge(&graph.empty, merger_idx);
                                 layers.merge(&graph.empty, merger_idx);
@@ -275,25 +279,16 @@ pub fn render_graph_projection(
                             }
                         }
 
-                        if trailing_dummies > 0 && prev.is_some() && prev.unwrap().len() > idx + 1 && prev.unwrap()[idx + 1].is_dummy() {
-                            layers.merge(&graph.branch_down, idx + 1);
-                            layers.merge(&graph.empty, idx + 1);
-                        } else if trailing_dummies > 0 {
-                            for _ in lane_idx..idx {
-                                layers.merge(&graph.horizontal, idx + 1);
-                                layers.merge(&graph.horizontal, idx + 1);
+                        if let Some(closeout_idx) = merge_closeout_lane(last, &closeout_flattened_lanes, lane_idx, idx + 1) {
+                            if trailing_dummies > 0 && prev.is_some_and(|prev| prev.len() > closeout_idx && prev[closeout_idx].is_dummy()) {
+                                draw_merge_closeout_symbol(&mut layers, &closeout_flattened_lanes, &graph.branch_down, closeout_idx);
+                            } else if trailing_dummies > 0 {
+                                draw_merge_closeout_horizontals(&mut layers, graph, &closeout_flattened_lanes, lane_idx, closeout_idx);
+                                draw_merge_closeout_symbol(&mut layers, &closeout_flattened_lanes, &graph.merge_left_from, closeout_idx);
+                            } else {
+                                draw_merge_closeout_horizontals(&mut layers, graph, &closeout_flattened_lanes, lane_idx, closeout_idx);
+                                draw_merge_closeout_symbol(&mut layers, &closeout_flattened_lanes, &graph.branch_down, closeout_idx);
                             }
-
-                            layers.merge(&graph.merge_left_from, idx + 1);
-                            layers.merge(&graph.empty, idx + 1);
-                        } else {
-                            for _ in lane_idx..idx {
-                                layers.merge(&graph.horizontal, idx + 1);
-                                layers.merge(&graph.horizontal, idx + 1);
-                            }
-
-                            layers.merge(&graph.branch_down, idx + 1);
-                            layers.merge(&graph.empty, idx + 1);
                         }
                     }
                 }
@@ -305,7 +300,7 @@ pub fn render_graph_projection(
                 } else if chunk.parent_a == NONE && chunk.parent_b == NONE {
                     layers.pipe(" ", lane_idx);
                 } else {
-                    layers.pipe(&graph.vertical, lane_idx);
+                    layers.pipe(pipe_symbol(graph, &flattened_lanes, lane_idx, &graph.vertical), lane_idx);
                 }
                 layers.pipe(&graph.empty, lane_idx);
             }
@@ -314,20 +309,26 @@ pub fn render_graph_projection(
         }
 
         if !is_commit_found {
-            if row.has_any_branch {
-                layers.commit(&graph.commit_branch, lane_idx);
+            let symbol = if row.has_any_branch {
+                &graph.commit_branch
             } else if row.worktrees.iter().any(|entry| entry.branch.is_none() || !row.has_any_branch) {
-                layers.commit(&worktree.current, lane_idx);
+                &worktree.current
             } else {
-                layers.commit(&graph.commit, lane_idx);
+                &graph.commit
             };
-            layers.commit(&graph.empty, lane_idx);
-            layers.pipe(&graph.empty, lane_idx);
-            layers.pipe(&graph.empty, lane_idx);
+
+            if let Some(flattened_lane_idx) = flattened_lane_idx(last) {
+                layers.commit_at(flattened_lane_idx.saturating_mul(2), symbol, flattened_lane_idx);
+            } else {
+                layers.commit(symbol, lane_idx);
+                layers.commit(&graph.empty, lane_idx);
+                layers.pipe(&graph.empty, lane_idx);
+                layers.pipe(&graph.empty, lane_idx);
+            }
         }
 
         for (from_lane_idx, to_lane_idx) in branch_up_bridges {
-            draw_branch_up_bridge(&mut layers, graph, from_lane_idx, to_lane_idx);
+            draw_branch_up_bridge(&mut layers, graph, &flattened_lanes, from_lane_idx, to_lane_idx);
         }
 
         layers.bake(&mut spans);
@@ -343,7 +344,76 @@ fn branch_up_symbol(graph: &GraphSymbols, lane_idx: usize, current_row_lane_idx:
     if current_row_lane_idx.is_some_and(|row_lane_idx| lane_idx < row_lane_idx) { &graph.branch_up_right } else { &graph.branch_up }
 }
 
-fn draw_branch_up_bridge(layers: &mut LayersContext, graph: &GraphSymbols, from_lane_idx: usize, to_lane_idx: usize) {
+fn flattened_lanes(last: &Vector<Chunk>, prev: Option<&Vector<Chunk>>) -> Vec<bool> {
+    let len = last.len().max(prev.map_or(0, |snapshot| snapshot.len()));
+    (0..len).map(|lane_idx| last.get(lane_idx).is_some_and(|chunk| chunk.is_flattened) || prev.and_then(|snapshot| snapshot.get(lane_idx)).is_some_and(|chunk| chunk.is_flattened)).collect()
+}
+
+fn flattened_lanes_around_closeout(last: &Vector<Chunk>, prev: Option<&Vector<Chunk>>, next: Option<&Vector<Chunk>>) -> Vec<bool> {
+    let len = last.len().max(prev.map_or(0, |snapshot| snapshot.len())).max(next.map_or(0, |snapshot| snapshot.len()));
+    (0..len)
+        .map(|lane_idx| {
+            last.get(lane_idx).is_some_and(|chunk| chunk.is_flattened)
+                || prev.and_then(|snapshot| snapshot.get(lane_idx)).is_some_and(|chunk| chunk.is_flattened)
+                || next.and_then(|snapshot| snapshot.get(lane_idx)).is_some_and(|chunk| chunk.is_flattened)
+        })
+        .collect()
+}
+
+fn flattened_lane_idx(snapshot: &Vector<Chunk>) -> Option<usize> {
+    snapshot.iter().position(|chunk| chunk.is_flattened)
+}
+
+fn merge_closeout_lane(snapshot: &Vector<Chunk>, flattened_lanes: &[bool], current_lane_idx: usize, candidate_lane_idx: usize) -> Option<usize> {
+    let lane_idx = if let Some(flattened_idx) = flattened_lanes.iter().position(|is_flattened| *is_flattened).filter(|flattened_idx| candidate_lane_idx >= *flattened_idx) {
+        flattened_idx
+    } else if draws_past_flattened_cap(snapshot, candidate_lane_idx) {
+        flattened_lane_idx(snapshot)?
+    } else {
+        candidate_lane_idx
+    };
+
+    (lane_idx > current_lane_idx).then_some(lane_idx)
+}
+
+fn draws_past_flattened_cap(snapshot: &Vector<Chunk>, lane_idx: usize) -> bool {
+    lane_idx >= snapshot.len() && snapshot.back().is_some_and(|chunk| chunk.is_flattened)
+}
+
+fn pipe_symbol<'a>(graph: &'a GraphSymbols, flattened_lanes: &[bool], lane_idx: usize, symbol: &'a str) -> &'a str {
+    if !flattened_lanes.get(lane_idx).copied().unwrap_or(false) {
+        return symbol;
+    }
+
+    if symbol == graph.vertical.as_str() {
+        graph.vertical_dotted.as_str()
+    } else if symbol == graph.horizontal.as_str() {
+        graph.horizontal_dotted.as_str()
+    } else {
+        symbol
+    }
+}
+
+fn draw_merge_closeout_horizontals(layers: &mut LayersContext, graph: &GraphSymbols, flattened_lanes: &[bool], from_lane_idx: usize, to_lane_idx: usize) {
+    let symbol = pipe_symbol(graph, flattened_lanes, to_lane_idx, &graph.horizontal);
+    let start_token_idx = from_lane_idx.saturating_add(1).saturating_mul(2);
+    let end_token_idx = to_lane_idx.saturating_mul(2);
+    let lane = closeout_lane_ref(flattened_lanes, to_lane_idx);
+
+    for token_idx in start_token_idx..end_token_idx {
+        layers.merge_at_ref(token_idx, symbol, lane);
+    }
+}
+
+fn draw_merge_closeout_symbol(layers: &mut LayersContext, flattened_lanes: &[bool], symbol: &str, lane_idx: usize) {
+    layers.merge_at_ref(lane_idx.saturating_mul(2), symbol, closeout_lane_ref(flattened_lanes, lane_idx));
+}
+
+fn closeout_lane_ref(flattened_lanes: &[bool], lane_idx: usize) -> LaneRef {
+    LaneRef::new(lane_idx, flattened_lanes.get(lane_idx).copied().unwrap_or(false))
+}
+
+fn draw_branch_up_bridge(layers: &mut LayersContext, graph: &GraphSymbols, flattened_lanes: &[bool], from_lane_idx: usize, to_lane_idx: usize) {
     if from_lane_idx >= to_lane_idx {
         return;
     }
@@ -351,7 +421,7 @@ fn draw_branch_up_bridge(layers: &mut LayersContext, graph: &GraphSymbols, from_
     let start_token_idx = from_lane_idx.saturating_mul(2).saturating_add(1);
     let end_token_idx = to_lane_idx.saturating_mul(2).saturating_sub(1);
     for token_idx in start_token_idx..end_token_idx {
-        layers.merge_at(token_idx, &graph.horizontal, from_lane_idx);
+        layers.merge_at(token_idx, pipe_symbol(graph, flattened_lanes, from_lane_idx, &graph.horizontal), from_lane_idx);
     }
 }
 
@@ -508,7 +578,7 @@ pub fn render_message_projection(
 
             if show_ref_labels {
                 for branch in &row.branches {
-                    let color = branch.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                    let color = branch.lane.map(|lane| color_picker.get_lane_ref(lane)).unwrap_or(theme.COLOR_TEXT);
                     spans.push(Span::styled(
                         format!("{} {} ", if branch.is_local { branch_symbols.local_visible.as_str() } else { branch_symbols.remote_visible.as_str() }, branch.name),
                         Style::default().fg(color),
@@ -519,14 +589,14 @@ pub fn render_message_projection(
 
             if show_ref_labels {
                 for tag in &row.tags {
-                    let color = tag.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                    let color = tag.lane.map(|lane| color_picker.get_lane_ref(lane)).unwrap_or(theme.COLOR_TEXT);
                     spans.push(Span::styled(format!("{} {} ", entity.tag, tag.name), Style::default().fg(color)));
                 }
             }
             let has_tag_label = show_ref_labels && !row.tags.is_empty();
 
             if show_ref_labels && row.is_stash {
-                let color = row.stash_lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                let color = row.stash_lane.map(|lane| color_picker.get_lane_ref(lane)).unwrap_or(theme.COLOR_TEXT);
                 spans.push(Span::styled(format!("{} {} ", graph.commit_stash, status_text::STASH()), Style::default().fg(color)));
             }
             let has_stash_label = show_ref_labels && row.is_stash;
@@ -538,7 +608,7 @@ pub fn render_message_projection(
                 && !has_worktree_label
                 && let Some(reflog) = &row.reflog
             {
-                let color = reflog.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(theme.COLOR_TEXT);
+                let color = reflog.lane.map(|lane| color_picker.get_lane_ref(lane)).unwrap_or(theme.COLOR_TEXT);
                 spans.push(Span::styled(format!("{} {} ", entity.reflog, reflog.selector), Style::default().fg(color)));
             }
 

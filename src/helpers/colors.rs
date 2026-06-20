@@ -1,9 +1,10 @@
-use crate::helpers::palette::*;
+use crate::{core::chunk::LaneRef, helpers::palette::*};
 use ratatui::style::Color;
 
 #[derive(Clone)]
 pub struct ColorPicker {
     palette_a: [Color; 16],
+    flattened_lane: Color,
 }
 
 impl Default for ColorPicker {
@@ -33,10 +34,15 @@ impl ColorPicker {
                 theme.COLOR_LIME,
                 theme.COLOR_YELLOW,
             ],
+            flattened_lane: theme.COLOR_GREY_500,
         }
     }
 
     pub fn get_lane(&self, lane: usize) -> Color {
         self.palette_a[lane % self.palette_a.len()]
+    }
+
+    pub fn get_lane_ref(&self, lane: LaneRef) -> Color {
+        if lane.is_flattened { self.flattened_lane } else { self.get_lane(lane.index) }
     }
 }

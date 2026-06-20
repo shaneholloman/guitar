@@ -37,6 +37,7 @@ fn layout_config_reads_old_boolean_only_config() {
     assert!(config.is_graph_refs);
     assert_eq!(config.weight_viewer_split_left, LAYOUT_WEIGHT_DEFAULT);
     assert_eq!(config.weight_viewer_split_right, LAYOUT_WEIGHT_DEFAULT);
+    assert_eq!(config.graph_lane_limit, GRAPH_LANE_LIMIT_DEFAULT);
 }
 
 #[test]
@@ -58,12 +59,13 @@ fn default_layout_shows_primary_workflow_panes() {
     assert!(!config.is_submodules);
     assert!(!config.is_search);
     assert!(!config.is_zen);
+    assert_eq!(config.graph_lane_limit, GRAPH_LANE_LIMIT_DEFAULT);
 }
 
 #[test]
 fn save_layout_config_writes_pretty_json_and_round_trips() {
     let path = temp_layout_path("pretty");
-    let config = LayoutConfig { is_shas: false, is_tags: true, width_left_pane: 52, weight_status: 3, ..Default::default() };
+    let config = LayoutConfig { is_shas: false, is_tags: true, width_left_pane: 52, weight_status: 3, graph_lane_limit: 12, ..Default::default() };
 
     save_layout_config_to_path(&path, &config);
 
@@ -71,12 +73,21 @@ fn save_layout_config_writes_pretty_json_and_round_trips() {
     assert!(contents.contains('\n'), "{contents}");
     assert!(contents.contains("\n  \"is_shas\""), "{contents}");
     assert!(contents.contains("\n  \"width_left_pane\""), "{contents}");
+    assert!(contents.contains("\n  \"graph_lane_limit\""), "{contents}");
 
     let loaded = facet_json::from_str::<LayoutConfig>(&contents).unwrap();
     assert!(!loaded.is_shas);
     assert!(loaded.is_tags);
     assert_eq!(loaded.width_left_pane, 52);
     assert_eq!(loaded.weight_status, 3);
+    assert_eq!(loaded.graph_lane_limit, 12);
+}
+
+#[test]
+fn layout_config_normalizes_graph_lane_limit_to_positive_value() {
+    let config = LayoutConfig { graph_lane_limit: 0, ..Default::default() }.normalized();
+
+    assert_eq!(config.graph_lane_limit, 1);
 }
 
 #[test]

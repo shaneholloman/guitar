@@ -94,7 +94,7 @@ fn walker_loads_commit_reachable_only_from_head_reflog() {
     let base_commit = repo.find_commit(base).unwrap();
     repo.reset(base_commit.as_object(), ResetType::Hard, None).unwrap();
 
-    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), true).unwrap();
+    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), true, 20).unwrap();
     walker.walk();
     let lost_alias = walker.oids.aliases.get(&lost).copied().unwrap();
 
@@ -109,7 +109,7 @@ fn walker_can_hide_commit_reachable_only_from_head_reflog() {
     let base_commit = repo.find_commit(base).unwrap();
     repo.reset(base_commit.as_object(), ResetType::Hard, None).unwrap();
 
-    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), false).unwrap();
+    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), false, 20).unwrap();
     walker.walk();
     let lost_alias = walker.oids.aliases.get(&lost).copied().unwrap();
 
@@ -132,7 +132,7 @@ fn walker_expires_new_right_merge_lane_before_next_rendered_row() {
     repo.reference("refs/heads/merge", merge, true, "test").unwrap();
     repo.set_head("refs/heads/main").unwrap();
 
-    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), false).unwrap();
+    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), false, 20).unwrap();
     while walker.walk() {}
 
     let merge_alias = walker.oids.aliases.get(&merge).copied().unwrap();
@@ -168,7 +168,7 @@ fn walker_records_ref_stash_and_reflog_lanes_from_update_lane() {
     }
     let stash = stash_tracked_change(&mut repo, "file.txt", "stashed change");
 
-    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), true).unwrap();
+    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), true, 20).unwrap();
     while walker.walk() {}
 
     let base_alias = walker.oids.aliases.get(&base).copied().unwrap();
@@ -186,7 +186,7 @@ fn walker_keeps_stash_adjacent_to_its_base_parent() {
     let base = commit(&repo, "file.txt", "base");
     let stash = stash_tracked_change(&mut repo, "file.txt", "stashed change");
 
-    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), false).unwrap();
+    let mut walker = Walker::new(path.display().to_string(), 100, HashSet::new(), false, 20).unwrap();
     while walker.walk() {}
 
     let aliases = walker.oids.get_sorted_aliases();

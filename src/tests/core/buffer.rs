@@ -63,14 +63,14 @@ fn transient_lane_survives_one_snapshot_then_expires() {
     buffer.update(Chunk::commit(4, 2, NONE));
     buffer.update(Chunk::commit(5, 3, NONE));
     let merge = buffer.update(Chunk::commit(6, 2, 3));
-    buffer.expire_lane_after_snapshot(merge.lane_idx);
+    buffer.expire_lane_after_snapshot(merge.lane.index);
     buffer.update(Chunk::commit(2, NONE, NONE));
     buffer.backup();
 
     let history = buffer.window(1, buffer.deltas.len());
 
     assert_eq!(history[2].len(), 3);
-    assert_eq!(history[2][merge.lane_idx].alias, 6);
+    assert_eq!(history[2][merge.lane.index].alias, 6);
     assert_eq!(history[3].len(), 2);
     assert!(history[3].iter().all(|chunk| chunk.alias != 6));
 }
@@ -94,4 +94,39 @@ fn update_records_only_changed_parent_lanes() {
 
     assert_eq!(latest[0], Chunk::commit(2, NONE, NONE));
     assert_eq!(latest[1], untouched);
+}
+
+#[test]
+fn capped_buffer_never_returns_snapshots_wider_than_lane_limit() {
+    let mut buffer = Buffer::with_lane_limit(5);
+
+    for alias in 1..=7 {
+        let update = buffer.update(Chunk::commit(alias, 100 + alias, NONE));
+        if alias > 5 {
+            assert_eq!(update.lane.index, 4);
+            assert!(update.lane.is_flattened);
+        }
+    }
+    buffer.backup();
+
+    let history = buffer.window(1, buffer.deltas.len());
+
+    assert!(history.iter().all(|snapshot| snapshot.len() <= 5));
+    let latest = history.back().unwrap();
+    assert_eq!(latest.len(), 5);
+    assert_eq!(latest[4].alias, 7);
+    assert!(latest[4].is_flattened);
+}
+
+#[test]
+fn capped_buffer_keeps_normal_last_lane_palette_eligible_without_overflow() {
+    let mut buffer = Buffer::with_lane_limit(5);
+
+    for alias in 1..=5 {
+        buffer.update(Chunk::commit(alias, 100 + alias, NONE));
+    }
+
+    assert_eq!(buffer.curr.len(), 5);
+    assert_eq!(buffer.curr[4].alias, 5);
+    assert!(!buffer.curr[4].is_flattened);
 }
