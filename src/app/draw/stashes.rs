@@ -59,7 +59,7 @@ impl App {
             for row in rows {
                 if let Some(GraphPaneRow::Stash { summary, lane, .. }) = row {
                     let truncated = truncate_with_ellipsis(summary.as_str(), max_text_width.saturating_sub(1));
-                    let color = lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(self.theme.COLOR_TEXT);
+                    let color = lane.map(|lane| color_picker.get_lane_ref(lane)).unwrap_or(self.theme.COLOR_TEXT);
                     lines.push(Line::from(Span::styled(format!("{} {truncated}", self.symbols.graph.commit_stash), Style::default().fg(color))));
                 } else {
                     lines.push(Line::default());

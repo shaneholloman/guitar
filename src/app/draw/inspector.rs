@@ -71,7 +71,7 @@ impl App {
                     lines.push(Line::from(Span::styled(inspector::FEATURED_BRANCHES(), Style::default().fg(self.theme.COLOR_HIGHLIGHTED))));
                     for branch in &row.branches {
                         let text = truncate_with_ellipsis(&format!("{} {}", self.symbols.branch.local_visible, branch.name), max_text_width);
-                        let color = branch.lane.map(|lane| color_picker.get_lane(lane)).unwrap_or(self.theme.COLOR_TEXT);
+                        let color = branch.lane.map(|lane| color_picker.get_lane_ref(lane)).unwrap_or(self.theme.COLOR_TEXT);
                         lines.push(Line::from(Span::styled(text, Style::default().fg(color))));
                     }
                 } else if let Some(branches) = self.branches.all.get(&alias)

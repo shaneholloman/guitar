@@ -1,6 +1,6 @@
 use crate::{
     core::{
-        chunk::{Chunk, NONE},
+        chunk::{Chunk, LaneRef, NONE},
         reflogs::HeadReflogAliasEntry,
         walker::Walker,
         worktrees::{WorktreeEntry, Worktrees},
@@ -69,20 +69,20 @@ pub enum GraphCommand {
 pub struct GraphBranchLabel {
     pub name: String,
     pub is_local: bool,
-    pub lane: Option<usize>,
+    pub lane: Option<LaneRef>,
 }
 
 #[derive(Clone, Debug)]
 pub struct GraphTagLabel {
     pub name: String,
-    pub lane: Option<usize>,
+    pub lane: Option<LaneRef>,
 }
 
 #[derive(Clone, Debug)]
 pub struct GraphReflogLabel {
     pub selector: String,
     pub message: String,
-    pub lane: Option<usize>,
+    pub lane: Option<LaneRef>,
 }
 
 #[derive(Clone, Debug)]
@@ -97,17 +97,17 @@ pub struct GraphRow {
     pub branches: Vec<GraphBranchLabel>,
     pub tags: Vec<GraphTagLabel>,
     pub is_stash: bool,
-    pub stash_lane: Option<usize>,
+    pub stash_lane: Option<LaneRef>,
     pub worktrees: Vec<WorktreeEntry>,
     pub reflog: Option<GraphReflogLabel>,
 }
 
 #[derive(Clone, Debug)]
 pub enum GraphPaneRow {
-    Branch { alias: u32, name: String, is_local: bool, lane: Option<usize>, graph_index: Option<usize> },
-    Tag { alias: u32, name: String, lane: Option<usize>, graph_index: Option<usize> },
-    Stash { alias: u32, summary: String, lane: Option<usize>, graph_index: Option<usize> },
-    Reflog { alias: u32, selector: String, message: String, lane: Option<usize>, graph_index: Option<usize> },
+    Branch { alias: u32, name: String, is_local: bool, lane: Option<LaneRef>, graph_index: Option<usize> },
+    Tag { alias: u32, name: String, lane: Option<LaneRef>, graph_index: Option<usize> },
+    Stash { alias: u32, summary: String, lane: Option<LaneRef>, graph_index: Option<usize> },
+    Reflog { alias: u32, selector: String, message: String, lane: Option<LaneRef>, graph_index: Option<usize> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -150,6 +150,7 @@ pub struct GraphServiceConfig {
     pub amount: usize,
     pub hidden_branch_names: HashSet<String>,
     pub include_head_reflog_roots: bool,
+    pub graph_lane_limit: usize,
     pub worktrees: Vec<WorktreeEntry>,
     pub symbols: SymbolTheme,
 }
@@ -160,7 +161,7 @@ pub fn spawn_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand
 
 fn run_graph_service(config: GraphServiceConfig, rx: Receiver<GraphCommand>, tx: Sender<GraphEvent>, cancel: Arc<AtomicBool>) {
     let generation = config.generation;
-    let mut walk_ctx = match Walker::new(config.path, config.amount, config.hidden_branch_names.clone(), config.include_head_reflog_roots) {
+    let mut walk_ctx = match Walker::new(config.path, config.amount, config.hidden_branch_names.clone(), config.include_head_reflog_roots, config.graph_lane_limit) {
         Ok(walker) => walker,
         Err(error) => {
             let _ = tx.send(GraphEvent::Error { generation, message: errors::walker_failed(error) });

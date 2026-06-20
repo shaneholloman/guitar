@@ -992,11 +992,12 @@ impl App {
             // Move only serializable state into the worker thread.
             let hidden_branch_names = self.branches.hidden_branch_names.clone();
             let include_head_reflog_roots = self.layout_config.is_graph_reflogs;
+            let graph_lane_limit = self.layout_config.graph_lane_limit;
             let worktrees = self.worktrees.entries.clone();
 
             // The worker streams partial graph state so large repositories become usable quickly.
             let handle = spawn_graph_service(
-                GraphServiceConfig { generation, path: absolute_path, amount: 10000, hidden_branch_names, include_head_reflog_roots, worktrees, symbols: self.symbols.clone() },
+                GraphServiceConfig { generation, path: absolute_path, amount: 10000, hidden_branch_names, include_head_reflog_roots, graph_lane_limit, worktrees, symbols: self.symbols.clone() },
                 command_rx,
                 event_tx,
                 cancel_clone,

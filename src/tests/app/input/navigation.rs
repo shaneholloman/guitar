@@ -1,7 +1,7 @@
 use super::*;
 use crate::app::app::{GraphWindowCache, PaneWindowCache};
 use crate::core::{
-    chunk::NONE,
+    chunk::{LaneRef, NONE},
     graph_service::{GraphCommand, GraphEvent, GraphFileHistoryRow, GraphLookupKind, GraphLookupResult, GraphPane, GraphPaneRow, GraphReflogLabel, GraphRow},
     reflogs::HeadReflogAliasEntry,
 };
@@ -872,7 +872,7 @@ fn graph_row_lookup_result_opens_inspector_with_reflog() {
                 is_stash: false,
                 stash_lane: None,
                 worktrees: Vec::new(),
-                reflog: Some(GraphReflogLabel { selector: "HEAD@{0}".to_string(), message: "commit: commit".to_string(), lane: Some(2) }),
+                reflog: Some(GraphReflogLabel { selector: "HEAD@{0}".to_string(), message: "commit: commit".to_string(), lane: Some(LaneRef::new(2, false)) }),
             })),
         })
         .unwrap();

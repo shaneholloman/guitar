@@ -3,7 +3,7 @@ use crate::{
     core::{
         batcher::Batcher,
         buffer::Buffer,
-        chunk::{Chunk, NONE},
+        chunk::{Chunk, LaneRef, NONE},
         oids::Oids,
     },
     git::queries::commits::{get_sorted_oids, get_tag_oids, get_tip_oids},
@@ -31,15 +31,15 @@ pub struct Walker {
     // Alias and ref metadata accumulated during the walk.
     pub oids: Oids,
 
-    pub branches_lanes: HashMap<u32, usize>,
+    pub branches_lanes: HashMap<u32, LaneRef>,
     pub branches_local: HashMap<u32, Vec<String>>,
     pub branches_remote: HashMap<u32, Vec<String>>,
 
-    pub tags_lanes: HashMap<u32, usize>,
+    pub tags_lanes: HashMap<u32, LaneRef>,
     pub tags_local: HashMap<u32, Vec<String>>,
 
-    pub stashes_lanes: HashMap<u32, usize>,
-    pub reflogs_lanes: HashMap<u32, usize>,
+    pub stashes_lanes: HashMap<u32, LaneRef>,
+    pub reflogs_lanes: HashMap<u32, LaneRef>,
     pub head_reflog_entries: Vec<HeadReflogEntry>,
     stash_aliases: StdHashSet<u32>,
     reflog_aliases: StdHashSet<u32>,
@@ -51,11 +51,11 @@ pub struct Walker {
 
 impl Walker {
     // Open the repository and seed all metadata that does not depend on walking commits.
-    pub fn new(path: String, amount: usize, hidden_branch_names: HashSet<String>, include_head_reflog_roots: bool) -> Result<Self, git2::Error> {
+    pub fn new(path: String, amount: usize, hidden_branch_names: HashSet<String>, include_head_reflog_roots: bool, graph_lane_limit: usize) -> Result<Self, git2::Error> {
         let path = path.clone();
         let repo = Rc::new(RefCell::new(Repository::open(path).expect("Failed to open repo")));
 
-        let buffer = RefCell::new(Buffer::default());
+        let buffer = RefCell::new(Buffer::with_lane_limit(graph_lane_limit));
 
         let mut oids = Oids::default();
 
@@ -171,27 +171,28 @@ impl Walker {
 
             let update = buffer.update(chunk);
 
-            if let Some(chunk) = buffer.curr.get(update.lane_idx)
+            if let Some(chunk) = buffer.curr.get(update.lane.index)
                 && !chunk.is_dummy()
                 && alias == chunk.alias
             {
-                let lane_idx = update.lane_idx;
+                let lane = update.lane;
+                let lane_idx = lane.index;
 
                 // Ref lanes are captured after the buffer decides where this alias sits.
                 if self.branches_local.contains_key(&alias) || self.branches_remote.contains_key(&alias) {
-                    self.branches_lanes.insert(alias, lane_idx);
+                    self.branches_lanes.insert(alias, lane);
                 }
 
                 if self.tags_local.contains_key(&alias) {
-                    self.tags_lanes.insert(alias, lane_idx);
+                    self.tags_lanes.insert(alias, lane);
                 }
 
                 if self.stash_aliases.contains(&alias) {
-                    self.stashes_lanes.insert(alias, lane_idx);
+                    self.stashes_lanes.insert(alias, lane);
                 }
 
                 if self.reflog_aliases.contains(&alias) {
-                    self.reflogs_lanes.insert(alias, lane_idx);
+                    self.reflogs_lanes.insert(alias, lane);
                 }
 
                 if chunk.parent_a != NONE && chunk.parent_b != NONE {
@@ -200,6 +201,7 @@ impl Walker {
                     if !is_merger_found {
                         merger_alias = chunk.alias;
                     } else if update.started_lane
+                        && !lane.is_flattened
                         && lane_idx + 1 == buffer.curr.len()
                         && parent_is_on_prior_lane(&buffer.curr, chunk.parent_a, lane_idx)
                         && parent_is_on_prior_lane(&buffer.curr, chunk.parent_b, lane_idx)

@@ -1,5 +1,5 @@
 use crate::{
-    app::app::{App, AuthInputField, Focus, OperationKind, PendingGraphLookup},
+    app::app::{App, AuthInputField, Focus, OperationKind, PendingGraphLookup, Viewport},
     core::graph_service::GraphLookupKind,
     git::actions::{
         branching::{create_branch, rename_branch},
@@ -224,10 +224,20 @@ impl App {
             return;
         }
 
+        let selected = self.settings_selected;
+        let scroll = self.settings_scroll.get();
+        let should_reload = self.repo.is_some() && self.layout_config.graph_lane_limit != limit;
         self.layout_config.graph_lane_limit = limit;
         self.save_layout();
         self.modal_input.clear();
         self.focus = Focus::Viewport;
+        if should_reload {
+            self.reload(None);
+            self.viewport = Viewport::Settings;
+            self.focus = Focus::Viewport;
+            self.settings_selected = selected;
+            self.settings_scroll.set(scroll);
+        }
     }
 
     pub(super) fn handle_modal_key_event(&mut self, key_event: KeyEvent) -> bool {

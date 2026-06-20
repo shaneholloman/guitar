@@ -1,4 +1,4 @@
-use crate::core::chunk::{Chunk, NONE};
+use crate::core::chunk::{Chunk, LaneRef, NONE};
 use im::{OrdMap, Vector};
 
 #[derive(Default, Clone)]
@@ -15,7 +15,7 @@ pub enum DeltaOp {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UpdateOutcome {
-    pub lane_idx: usize,
+    pub lane: LaneRef,
     pub started_lane: bool,
 }
 
@@ -28,14 +28,28 @@ pub struct Buffer {
     pub delta: Delta,
     mergers: Vec<u32>,
     transient_lanes: Vec<usize>,
+    lane_limit: Option<usize>,
 }
 
 impl Buffer {
+    pub fn with_lane_limit(limit: usize) -> Self {
+        Self { lane_limit: Some(limit.max(1)), ..Self::default() }
+    }
+
     pub fn merger(&mut self, alias: u32) {
         self.mergers.push(alias);
     }
 
     pub fn expire_lane_after_snapshot(&mut self, lane_idx: usize) {
+        if let Some(limit) = self.lane_limit {
+            if lane_idx >= limit {
+                return;
+            }
+            if lane_idx + 1 == limit && self.curr.get(lane_idx).is_some_and(|chunk| chunk.is_flattened) {
+                return;
+            }
+        }
+
         if !self.transient_lanes.iter().any(|idx| *idx == lane_idx) {
             self.transient_lanes.push(lane_idx);
         }
@@ -112,12 +126,64 @@ impl Buffer {
                 }
             }
 
-            UpdateOutcome { lane_idx: first_idx, started_lane: false }
+            self.enforce_lane_limit(Some(first_idx));
+            UpdateOutcome { lane: self.lane_ref_for_original_index(first_idx), started_lane: false }
         } else {
             self.curr.push_back(chunk);
             self.delta.ops.push(DeltaOp::Insert { index: self.curr.len() - 1, item: chunk });
-            UpdateOutcome { lane_idx: self.curr.len() - 1, started_lane: true }
+            let lane_idx = self.curr.len() - 1;
+            self.enforce_lane_limit(Some(lane_idx));
+            UpdateOutcome { lane: self.lane_ref_for_original_index(lane_idx), started_lane: true }
         }
+    }
+
+    fn enforce_lane_limit(&mut self, preferred_idx: Option<usize>) {
+        let Some(limit) = self.lane_limit else {
+            return;
+        };
+
+        if self.curr.len() <= limit {
+            self.purge_unstored_mergers();
+            self.transient_lanes.retain(|lane_idx| *lane_idx < limit);
+            return;
+        }
+
+        let cap_idx = limit - 1;
+        let replacement = self.flattened_representative(cap_idx, preferred_idx);
+        if self.curr[cap_idx] != replacement {
+            self.curr[cap_idx] = replacement;
+            self.delta.ops.push(DeltaOp::Replace { index: cap_idx, new: replacement });
+        }
+
+        while self.curr.len() > limit {
+            let idx = self.curr.len() - 1;
+            self.curr.pop_back();
+            self.delta.ops.push(DeltaOp::Remove { index: idx });
+        }
+
+        self.purge_unstored_mergers();
+        self.transient_lanes.retain(|lane_idx| *lane_idx < limit && (*lane_idx + 1 != limit || !self.curr.get(*lane_idx).is_some_and(|chunk| chunk.is_flattened)));
+    }
+
+    fn flattened_representative(&self, cap_idx: usize, preferred_idx: Option<usize>) -> Chunk {
+        let preferred = preferred_idx.and_then(|idx| (idx >= cap_idx).then(|| self.curr.get(idx)).flatten()).copied().filter(|chunk| !chunk.is_dummy());
+
+        let fallback = self.curr.iter().skip(cap_idx).find(|chunk| !chunk.is_dummy()).copied().unwrap_or_else(Chunk::dummy);
+        preferred.unwrap_or(fallback).with_flattened(true)
+    }
+
+    fn lane_ref_for_original_index(&self, lane_idx: usize) -> LaneRef {
+        if let Some(limit) = self.lane_limit
+            && lane_idx >= limit
+        {
+            return LaneRef::new(limit - 1, true);
+        }
+
+        LaneRef::new(lane_idx, self.curr.get(lane_idx).is_some_and(|chunk| chunk.is_flattened))
+    }
+
+    fn purge_unstored_mergers(&mut self) {
+        self.mergers.retain(|alias| self.curr.iter().any(|chunk| !chunk.is_dummy() && chunk.alias == *alias));
     }
 
     pub fn backup(&mut self) {

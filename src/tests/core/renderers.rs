@@ -1,9 +1,10 @@
 use super::*;
 use crate::core::{
-    chunk::NONE,
+    chunk::{LaneRef, NONE},
     graph_service::{GraphBranchLabel, GraphReflogLabel, GraphTagLabel},
     worktrees::{WorktreeEntry, WorktreeKind},
 };
+use crate::helpers::colors::ColorPicker;
 use crate::helpers::symbols::{SymbolTheme, graph};
 use git2::Oid;
 use im::Vector;
@@ -30,6 +31,14 @@ fn graph_row(index: usize, oid: Oid, summary: &str) -> GraphRow {
 
 fn line_text(line: &Line<'_>) -> String {
     line.spans.iter().map(|span| span.content.as_ref()).collect()
+}
+
+fn span_color(line: &Line<'_>, symbol: &str) -> Option<Color> {
+    line.spans.iter().find(|span| span.content.as_ref() == symbol).and_then(|span| span.style.fg)
+}
+
+fn span_containing_color(line: &Line<'_>, text: &str) -> Option<Color> {
+    line.spans.iter().find(|span| span.content.contains(text)).and_then(|span| span.style.fg)
 }
 
 fn graph_row_with_alias(index: usize, alias: u32) -> GraphRow {
@@ -70,6 +79,10 @@ fn transient_merge_closeout_history() -> GraphHistory {
         Vector::from(vec![Chunk::commit(10, 100, NONE), Chunk::commit(11, 101, NONE), Chunk::commit(20, 4, 2), Chunk::commit(12, 102, NONE)]),
         Vector::from(vec![Chunk::commit(4, NONE, NONE), Chunk::commit(11, 101, NONE), Chunk::dummy(), Chunk::commit(12, 102, NONE)]),
     ]))
+}
+
+fn capped_flattened_history(chunk: Chunk) -> GraphHistory {
+    GraphHistory::from(Vector::from(vec![Vector::from(vec![Chunk::dummy(), Chunk::dummy(), Chunk::dummy(), Chunk::dummy(), chunk.with_flattened(true)])]))
 }
 
 #[test]
@@ -229,8 +242,8 @@ fn message_projection_toggles_refs_without_hiding_reflog_labels() {
     let theme = Theme::classic();
     let symbols = SymbolTheme::main();
     let mut row = graph_row(0, Oid::from_str("1111111111111111111111111111111111111111").unwrap(), "summary");
-    row.branches = vec![GraphBranchLabel { name: "main".to_string(), is_local: true, lane: Some(0) }];
-    row.tags = vec![GraphTagLabel { name: "v1".to_string(), lane: Some(0) }];
+    row.branches = vec![GraphBranchLabel { name: "main".to_string(), is_local: true, lane: Some(LaneRef::new(0, false)) }];
+    row.tags = vec![GraphTagLabel { name: "v1".to_string(), lane: Some(LaneRef::new(0, false)) }];
     row.is_stash = true;
     row.worktrees = vec![WorktreeEntry {
         name: "wt".to_string(),
@@ -245,7 +258,7 @@ fn message_projection_toggles_refs_without_hiding_reflog_labels() {
         locked_reason: None,
         is_dirty: false,
     }];
-    row.reflog = Some(GraphReflogLabel { selector: "HEAD@{0}".to_string(), message: "commit: summary".to_string(), lane: Some(0) });
+    row.reflog = Some(GraphReflogLabel { selector: "HEAD@{0}".to_string(), message: "commit: summary".to_string(), lane: Some(LaneRef::new(0, false)) });
 
     let shown = render_message_projection(&theme, &symbols, &[row.clone()], true, true, 0, &UncommittedChanges::default(), true);
     let hidden = render_message_projection(&theme, &symbols, &[row], true, false, 0, &UncommittedChanges::default(), true);
@@ -280,12 +293,95 @@ fn graph_projection_uses_ascii_symbols_when_requested() {
 }
 
 #[test]
+fn graph_projection_renders_flattened_commit_on_capped_lane_in_grey() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let row = graph_row_with_alias(0, 9);
+    let history = capped_flattened_history(Chunk::commit(9, NONE, NONE));
+
+    let lines = render_graph_projection(&theme, &symbols, &[row], &history, NONE, 0, 1, true);
+
+    assert_eq!(span_color(&lines[0], graph::COMMIT), Some(theme.COLOR_GREY_500));
+}
+
+#[test]
+fn graph_projection_keeps_normal_last_lane_palette_colored_without_overflow() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let row = graph_row_with_alias(0, 5);
+    let history = GraphHistory::from(Vector::from(vec![Vector::from(vec![Chunk::dummy(), Chunk::dummy(), Chunk::dummy(), Chunk::dummy(), Chunk::commit(5, NONE, NONE)])]));
+
+    let lines = render_graph_projection(&theme, &symbols, &[row], &history, NONE, 0, 1, true);
+
+    assert_eq!(span_color(&lines[0], graph::COMMIT), Some(ColorPicker::from_theme(&theme).get_lane(4)));
+}
+
+#[test]
+fn graph_projection_uses_flattened_color_for_pipe_merge_and_connector_spans() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+
+    let pipe_history =
+        GraphHistory::from(Vector::from(vec![Vector::from(vec![Chunk::commit(1, NONE, NONE), Chunk::dummy(), Chunk::dummy(), Chunk::dummy(), Chunk::commit(9, 99, NONE).with_flattened(true)])]));
+    let pipe_lines = render_graph_projection(&theme, &symbols, &[graph_row_with_alias(0, 1)], &pipe_history, NONE, 0, 1, true);
+    assert_eq!(span_color(&pipe_lines[0], graph::VERTICAL), Some(theme.COLOR_GREY_500));
+
+    let merge_history = capped_flattened_history(Chunk::commit(9, 1, 2));
+    let merge_lines = render_graph_projection(&theme, &symbols, &[graph_row_with_alias(0, 9)], &merge_history, NONE, 0, 1, true);
+    assert_eq!(span_color(&merge_lines[0], graph::MERGE), Some(theme.COLOR_GREY_500));
+
+    let connector_history = GraphHistory::from(Vector::from(vec![
+        Vector::from(vec![Chunk::commit(30, 4, NONE).with_flattened(true), Chunk::commit(31, 101, NONE), Chunk::commit(32, 102, NONE), Chunk::commit(33, 103, NONE)]),
+        Vector::from(vec![Chunk::dummy(), Chunk::commit(31, 101, NONE), Chunk::commit(32, 102, NONE), Chunk::commit(4, NONE, NONE)]),
+    ]));
+    let connector_rows = vec![graph_row_with_alias(0, 30), graph_row_with_alias(1, 4)];
+    let connector_lines = render_graph_projection(&theme, &symbols, &connector_rows, &connector_history, NONE, 0, 2, true);
+    assert_eq!(span_color(&connector_lines[1], graph::HORIZONTAL), Some(theme.COLOR_GREY_500));
+}
+
+#[test]
+fn graph_projection_does_not_draw_flattened_merge_past_snapshot_width() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let row = graph_row_with_alias(0, 9);
+    let history = capped_flattened_history(Chunk::commit(9, 1, 2));
+
+    let lines = render_graph_projection(&theme, &symbols, &[row], &history, NONE, 0, 1, true);
+
+    assert!(lines[0].spans.len() <= 1 + 5 * 2, "{:?}", line_text(&lines[0]));
+}
+
+#[test]
+fn message_projection_uses_flattened_lane_color_for_ref_labels() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let flattened = LaneRef::new(4, true);
+    let mut row = graph_row(0, Oid::from_str("1111111111111111111111111111111111111111").unwrap(), "summary");
+    row.branches = vec![GraphBranchLabel { name: "main".to_string(), is_local: true, lane: Some(flattened) }];
+    row.tags = vec![GraphTagLabel { name: "v1".to_string(), lane: Some(flattened) }];
+    row.is_stash = true;
+    row.stash_lane = Some(flattened);
+
+    let lines = render_message_projection(&theme, &symbols, &[row], true, true, 0, &UncommittedChanges::default(), true);
+
+    assert_eq!(span_containing_color(&lines[0], "main"), Some(theme.COLOR_GREY_500));
+    assert_eq!(span_containing_color(&lines[0], "v1"), Some(theme.COLOR_GREY_500));
+    assert_eq!(span_containing_color(&lines[0], "stash"), Some(theme.COLOR_GREY_500));
+
+    let mut reflog_row = graph_row(0, Oid::from_str("2222222222222222222222222222222222222222").unwrap(), "summary");
+    reflog_row.reflog = Some(GraphReflogLabel { selector: "HEAD@{0}".to_string(), message: "commit: summary".to_string(), lane: Some(flattened) });
+    let reflog_lines = render_message_projection(&theme, &symbols, &[reflog_row], true, false, 0, &UncommittedChanges::default(), true);
+
+    assert_eq!(span_containing_color(&reflog_lines[0], "HEAD@{0}"), Some(theme.COLOR_GREY_500));
+}
+
+#[test]
 fn message_projection_uses_ascii_symbols_when_requested() {
     let theme = Theme::classic();
     let symbols = SymbolTheme::ascii();
     let mut row = graph_row(0, Oid::from_str("1111111111111111111111111111111111111111").unwrap(), "summary");
-    row.branches = vec![GraphBranchLabel { name: "main".to_string(), is_local: true, lane: Some(0) }];
-    row.tags = vec![GraphTagLabel { name: "v1".to_string(), lane: Some(0) }];
+    row.branches = vec![GraphBranchLabel { name: "main".to_string(), is_local: true, lane: Some(LaneRef::new(0, false)) }];
+    row.tags = vec![GraphTagLabel { name: "v1".to_string(), lane: Some(LaneRef::new(0, false)) }];
 
     let lines = render_message_projection(&theme, &symbols, &[row], true, true, 0, &UncommittedChanges::default(), true);
     let rendered = line_text(&lines[0]);

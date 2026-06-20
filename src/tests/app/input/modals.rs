@@ -301,6 +301,45 @@ fn graph_lane_limit_input_updates_and_saves_value() {
 }
 
 #[test]
+fn graph_lane_limit_input_reloads_open_repo_and_preserves_settings_position() {
+    let (path, repo) = temp_repo("lane-limit-reload");
+    commit_files(&repo, &["file.txt"], "initial");
+    let repo_path = path.display().to_string();
+    let mut app = App {
+        path: Some(repo_path.clone()),
+        recent: vec![repo_path],
+        repo: Some(Rc::new(repo)),
+        viewport: Viewport::Settings,
+        focus: Focus::ModalGraphLaneLimit,
+        settings_selected: 12,
+        ..Default::default()
+    };
+    app.settings_scroll.set(4);
+    app.layout_config.graph_lane_limit = 20;
+    app.modal_input.set_value("7");
+
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.layout_config.graph_lane_limit, 7);
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.settings_selected, 12);
+    assert_eq!(app.settings_scroll.get(), 4);
+    assert!(app.graph_tx.is_some());
+    assert!(app.walker_handle.is_some());
+
+    if let Some(tx) = app.graph_tx.take() {
+        let _ = tx.send(GraphCommand::Shutdown);
+    }
+    if let Some(cancel) = &app.walker_cancel {
+        cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    if let Some(handle) = app.walker_handle.take() {
+        handle.join().unwrap();
+    }
+}
+
+#[test]
 fn add_remote_flow_creates_remote_and_returns_to_settings() {
     let (path, mut app) = remote_app("add-remote");
     app.begin_add_remote();
