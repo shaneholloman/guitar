@@ -109,6 +109,7 @@ pub enum Focus {
     ModalRemoteDelete,
     ModalRemoteName,
     ModalRemoteUrl,
+    ModalGraphLaneLimit,
     ModalGrep,
     ModalFileSearch,
     ModalTag,
@@ -254,7 +255,7 @@ pub enum Direction {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsTab {
-    Paths,
+    General,
     Display,
     Auth,
     Repo,
@@ -262,11 +263,11 @@ pub enum SettingsTab {
 }
 
 impl SettingsTab {
-    pub const ALL: [SettingsTab; 5] = [SettingsTab::Paths, SettingsTab::Display, SettingsTab::Auth, SettingsTab::Repo, SettingsTab::Shortcuts];
+    pub const ALL: [SettingsTab; 5] = [SettingsTab::General, SettingsTab::Display, SettingsTab::Auth, SettingsTab::Repo, SettingsTab::Shortcuts];
 
     pub fn label(self) -> &'static str {
         match self {
-            SettingsTab::Paths => settings::PATHS(),
+            SettingsTab::General => settings::GENERAL(),
             SettingsTab::Display => settings::DISPLAY(),
             SettingsTab::Auth => settings::AUTH(),
             SettingsTab::Repo => settings::REPO(),
@@ -296,6 +297,7 @@ pub enum SettingsSelectionKind {
     SymbolTheme(usize),
     KeyBinding(KeymapSelection),
     LayoutCommand(Command),
+    GraphLaneLimit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -843,6 +845,9 @@ impl App {
                 },
                 Focus::ModalRemoteName | Focus::ModalRemoteUrl => {
                     self.draw_modal_input(frame, self.remote_input_title());
+                },
+                Focus::ModalGraphLaneLimit => {
+                    self.draw_modal_input(frame, modal::PROMPT_GRAPH_LANE_LIMIT());
                 },
                 Focus::ModalGrep => {
                     self.draw_modal_input(frame, modal::PROMPT_FIND_SHA());

@@ -277,7 +277,7 @@ For merge commits, file lists and file diffs compare against the first parent.
 
 ### Settings
 
-The settings/help view is opened with `?`. It shows version and the commit heatmap above tabbed settings sections for paths, display, auth, repo, and shortcuts. Recent repository rows, remote rows, theme rows, layout rows, and keybinding rows are selectable.
+The settings/help view is opened with `?`. It shows version and the commit heatmap above tabbed settings sections for general, display, auth, repo, and shortcuts. Recent repository rows, performance rows, remote rows, theme rows, layout rows, and keybinding rows are selectable.
 
 ## Navigation
 
@@ -319,6 +319,7 @@ Hidden panes are skipped. The unstaged status pane is focusable only on the unco
 - Settings add remote: open the add-remote prompts.
 - Settings keybinding: open key capture.
 - Settings layout row: toggle that layout option or reset layout.
+- Settings graph lane limit row: open a numeric prompt.
 - Graph: open a worktree badge if the selected commit has valid worktree candidates.
 - Branch/tag/stash/reflog panes: jump to the corresponding graph row and center it when possible.
 - Worktree pane: open the selected valid worktree.
@@ -922,8 +923,8 @@ Open settings with `?`.
 
 The settings view includes app version and commit heatmap above these tabs:
 
-- `paths`: config file paths and recent repositories.
-- `display`: pane visibility, graph metadata toggles, and theme list.
+- `general`: config file paths, performance settings, and recent repositories.
+- `display`: pane visibility, graph metadata toggles, language, symbol themes, and theme list.
 - `auth`: Git `user.name`, `user.email`, and auth behavior notes.
 - `repo`: remotes and remote URLs.
 - `shortcuts`: normal-mode shortcuts and action-mode shortcuts that differ from normal mode.
@@ -935,6 +936,7 @@ Selectable rows:
 - Add remote row: `Enter` opens name and URL prompts.
 - Theme rows: `Enter` activates and saves the selected theme.
 - Display toggle rows: `Enter` toggles the row or resets layout.
+- Graph lane limit row: `Enter` opens a numeric prompt. Positive values save to `layout.json`; `0` and invalid input keep the modal open without changing the setting.
 - Keybinding rows: `Enter` opens key capture.
 
 Settings reuses normal navigation. Use `Tab` / `Shift+Tab` or click a tab label to switch tabs. Use `j`/`k`, page keys, `g`, `Shift+G`, or mouse wheel to move within the active tab. Use `h`, `Esc`, or `?` to return to the graph.
@@ -1007,7 +1009,7 @@ Windows: %APPDATA%\guitar
 The app writes:
 
 - `keymap.json`: keyboard mappings.
-- `layout.json`: pane visibility, widths, weights, graph metadata display, graph reflog setting, zen/minimal state.
+- `layout.json`: pane visibility, widths, weights, graph metadata display, graph reflog setting, graph lane limit, zen/minimal state.
 - `theme.json`: active theme and all color slots.
 - `symbols.json`: active symbol theme and all configurable UI symbols.
 - `recent.json`: recent repository paths.
@@ -1124,11 +1126,14 @@ Default layout:
   "weight_status_top": 100,
   "weight_status_bottom": 100,
   "weight_viewer_split_left": 100,
-  "weight_viewer_split_right": 100
+  "weight_viewer_split_right": 100,
+  "graph_lane_limit": 20
 }
 ```
 
 Width values are clamped to a minimum of 16 columns. The center pane keeps at least 20 columns when possible. Stacked pane weights are normalized to at least `1`. Split viewer weights may exist in older configs, but the split divider is always centered.
+
+`graph_lane_limit` defaults to `20` and is normalized to at least `1`.
 
 The graph reflog toggle requires a reload because it changes graph roots.
 

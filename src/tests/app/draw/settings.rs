@@ -4,6 +4,7 @@ use crate::{
     git::queries::remotes::GUITAR_DEFAULT_REMOTE_CONFIG,
     helpers::{
         keymap::{Command, InputMode, KeyBinding},
+        layout::GRAPH_LANE_LIMIT_DEFAULT,
         localisation::Language,
         symbols::SymbolTheme,
     },
@@ -45,6 +46,7 @@ fn settings_app() -> App {
     keymaps.insert(InputMode::Action, action);
     app.keymaps = keymaps;
     app.layout_config.is_zen = false;
+    app.layout_config.graph_lane_limit = GRAPH_LANE_LIMIT_DEFAULT;
     app.layout.graph = Rect::new(0, 0, 90, 10);
     app.layout.app = Rect::new(0, 0, 90, 10);
     app
@@ -78,7 +80,7 @@ fn remote_selection_lines(app: &App, remote_name: &str) -> Vec<usize> {
 }
 
 #[test]
-fn settings_default_tab_is_paths_and_only_paths_sections_render() {
+fn settings_default_tab_is_general_and_renders_general_sections() {
     let (_path, repo) = temp_repo("default-tab");
     let mut app = settings_app();
     app.layout.graph = Rect::new(0, 0, 140, 120);
@@ -86,15 +88,21 @@ fn settings_default_tab_is_paths_and_only_paths_sections_render() {
 
     let rendered = rendered_settings(&mut app, &repo, 140, 120);
 
-    assert_eq!(app.settings_tab, SettingsTab::Paths);
+    assert_eq!(app.settings_tab, SettingsTab::General);
     assert!(rendered.contains("version:"));
-    assert!(rendered.contains("paths"));
+    assert!(rendered.contains("general"));
     assert!(rendered.contains("display"));
     assert!(rendered.contains("auth"));
     assert!(rendered.contains("repo"));
     assert!(rendered.contains("shortcuts"));
     assert!(rendered.contains("paths:"));
+    assert!(rendered.contains("performance:"));
+    assert!(rendered.contains("graph lane limit:"));
+    let lane_limit_line = app.settings_lines(&repo).iter().map(line_text).find(|line| line.contains("graph lane limit:")).unwrap();
+    assert!(lane_limit_line.contains("20"));
+    assert!(lane_limit_line.contains("(enter)"));
     assert!(rendered.contains("recent repositories:"));
+    assert!(app.settings_selections.iter().any(|selection| selection.kind == SettingsSelectionKind::GraphLaneLimit));
     assert!(!rendered.contains("pane visibility:"));
     assert!(!rendered.contains("credentials:"));
     assert!(!rendered.contains("remotes:"));
@@ -114,6 +122,7 @@ fn settings_active_tabs_render_their_grouped_sections_only() {
     assert!(display.contains("graph metadata:"));
     assert!(display.contains("symbol themes:"));
     assert!(display.contains("themes:"));
+    assert!(!display.contains("graph lane limit:"));
     assert!(!display.contains("recent repositories:"));
     assert!(!display.contains("remotes:"));
 
@@ -231,6 +240,7 @@ fn settings_renders_layout_visibility_rows_with_states() {
     assert!(!rendered.contains("[*]"));
     assert!(!rendered.contains("[ ]"));
     assert!(rendered.contains("(enter)"));
+    assert!(!app.settings_selections.iter().any(|selection| selection.kind == SettingsSelectionKind::GraphLaneLimit));
 }
 
 #[test]
@@ -251,7 +261,7 @@ fn settings_renders_theme_rows_with_unicode_markers() {
 }
 
 #[test]
-fn settings_paths_tab_includes_symbols_json() {
+fn settings_general_tab_includes_symbols_json() {
     let (_path, repo) = temp_repo("symbols-path");
     let mut app = settings_app();
     app.layout.graph = Rect::new(0, 0, 140, 120);
@@ -338,7 +348,7 @@ fn settings_narrow_tab_bar_uses_compact_bullets() {
     let tab_text = line_text(&lines[tab_line]);
 
     assert!(tab_text.contains("• • • • •"));
-    assert!(!tab_text.contains("paths"));
+    assert!(!tab_text.contains("general"));
     assert!(!tab_text.contains("display"));
     assert!(!tab_text.contains("shortcuts"));
     assert_eq!(app.settings_tab_hitboxes.len(), 5);
@@ -356,7 +366,7 @@ fn settings_narrow_tab_bar_uses_compact_bullets() {
     assert_eq!(rendered_bullets, 2);
     assert_eq!(tiny_app.settings_tab_hitboxes.len(), rendered_bullets);
     assert!(!tiny_tab_text.contains(' '));
-    assert!(!tiny_tab_text.contains("paths"));
+    assert!(!tiny_tab_text.contains("general"));
 }
 
 #[test]
@@ -370,7 +380,7 @@ fn settings_section_names_use_highlight_color() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     for (tab, labels) in [
-        (SettingsTab::Paths, vec!["paths:", "recent repositories:"]),
+        (SettingsTab::General, vec!["paths:", "performance:", "recent repositories:"]),
         (SettingsTab::Display, vec!["pane visibility:", "graph metadata:", "symbol themes:", "themes:"]),
         (SettingsTab::Auth, vec!["credentials:"]),
         (SettingsTab::Repo, vec!["remotes:"]),

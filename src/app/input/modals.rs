@@ -216,6 +216,20 @@ impl App {
         true
     }
 
+    fn confirm_graph_lane_limit_input(&mut self) {
+        let Ok(limit) = self.modal_input.value().trim().parse::<usize>() else {
+            return;
+        };
+        if limit == 0 {
+            return;
+        }
+
+        self.layout_config.graph_lane_limit = limit;
+        self.save_layout();
+        self.modal_input.clear();
+        self.focus = Focus::Viewport;
+    }
+
     pub(super) fn handle_modal_key_event(&mut self, key_event: KeyEvent) -> bool {
         if key_event.code == KeyCode::Esc && key_event.modifiers == KeyModifiers::NONE && self.is_dismissible_modal_focus() {
             self.on_back();
@@ -256,6 +270,14 @@ impl App {
 
         if self.focus == Focus::ModalFileSearch {
             return self.handle_file_search_event(key_event);
+        }
+
+        if self.focus == Focus::ModalGraphLaneLimit {
+            match key_event.code {
+                KeyCode::Enter => self.confirm_graph_lane_limit_input(),
+                _ => self.modal_input.on_key(key_event),
+            }
+            return true;
         }
 
         if self.focus == Focus::ModalRemoveWorktree {
@@ -668,6 +690,7 @@ impl App {
                 | Focus::ModalRemoteDelete
                 | Focus::ModalRemoteName
                 | Focus::ModalRemoteUrl
+                | Focus::ModalGraphLaneLimit
                 | Focus::ModalGrep
                 | Focus::ModalFileSearch
                 | Focus::ModalTag

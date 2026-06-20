@@ -763,7 +763,7 @@ fn mouse_click_on_settings_tab_switches_active_tab() {
         focus: Focus::Viewport,
         layout_config: LayoutConfig::default(),
         layout: Layout::default(),
-        settings_tab: SettingsTab::Paths,
+        settings_tab: SettingsTab::General,
         settings_selected: 99,
         ..Default::default()
     };

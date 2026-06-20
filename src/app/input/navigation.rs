@@ -445,6 +445,11 @@ impl App {
         self.focus = Focus::ModalKeyCapture;
     }
 
+    fn begin_graph_lane_limit_input(&mut self) {
+        self.modal_input.set_value(self.layout_config.graph_lane_limit.to_string());
+        self.focus = Focus::ModalGraphLaneLimit;
+    }
+
     fn activate_settings_layout_command(&mut self, command: Command) {
         let selected = self.settings_selected;
         let scroll = self.settings_scroll.get();
@@ -590,6 +595,9 @@ impl App {
                         },
                         Some(SettingsSelectionKind::LayoutCommand(command)) => {
                             self.activate_settings_layout_command(command);
+                        },
+                        Some(SettingsSelectionKind::GraphLaneLimit) => {
+                            self.begin_graph_lane_limit_input();
                         },
                         Some(SettingsSelectionKind::RemoteAdd) => {
                             self.begin_add_remote();
@@ -2037,6 +2045,10 @@ impl App {
             Focus::ModalRemoteAction | Focus::ModalRemoteDelete | Focus::ModalRemoteName | Focus::ModalRemoteUrl => {
                 self.close_remote_modal();
             },
+            Focus::ModalGraphLaneLimit => {
+                self.modal_input.clear();
+                self.focus = Focus::Viewport;
+            },
             Focus::ModalFileSearch => {
                 self.modal_input.clear();
                 self.modal_file_search_results.clear();
@@ -2140,6 +2152,7 @@ impl App {
             | Focus::ModalLockWorktree
             | Focus::ModalRemoteName
             | Focus::ModalRemoteUrl
+            | Focus::ModalGraphLaneLimit
             | Focus::ModalFileSearch => {
                 self.modal_input.clear();
                 self.modal_file_search_results.clear();
@@ -2359,7 +2372,7 @@ impl App {
             Viewport::Graph => {
                 self.viewport = Viewport::Settings;
                 self.focus = Focus::Viewport;
-                self.settings_tab = SettingsTab::Paths;
+                self.settings_tab = SettingsTab::General;
                 self.settings_selected = 0;
                 self.settings_scroll.set(0);
                 self.last_input_direction = None;

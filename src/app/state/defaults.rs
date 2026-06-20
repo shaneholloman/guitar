@@ -156,7 +156,7 @@ impl Default for App {
             recent_save_path: None,
 
             // Settings
-            settings_tab: SettingsTab::Paths,
+            settings_tab: SettingsTab::General,
             settings_selected: 0,
             settings_scroll: 0.into(),
             settings_selections: Vec::new(),

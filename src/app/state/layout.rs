@@ -418,6 +418,7 @@ impl App {
                     | Focus::ModalRemoteDelete
                     | Focus::ModalRemoteName
                     | Focus::ModalRemoteUrl
+                    | Focus::ModalGraphLaneLimit
                     | Focus::ModalGrep
                     | Focus::ModalFileSearch
                     | Focus::ModalTag
@@ -500,6 +501,7 @@ impl App {
                         | Focus::ModalRemoteDelete
                         | Focus::ModalRemoteName
                         | Focus::ModalRemoteUrl
+                        | Focus::ModalGraphLaneLimit
                         | Focus::ModalGrep
                         | Focus::ModalFileSearch
                         | Focus::ModalTag

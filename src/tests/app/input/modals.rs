@@ -251,6 +251,56 @@ fn settings_remote_row_opens_remote_action_modal() {
 }
 
 #[test]
+fn settings_graph_lane_limit_row_opens_prefilled_prompt() {
+    let (_path, mut app) = remote_app("settings-lane-limit-open");
+    app.layout_config.graph_lane_limit = 34;
+    app.settings_selected = 10;
+    app.settings_selections = vec![SettingsSelection { line: 10, kind: SettingsSelectionKind::GraphLaneLimit }];
+
+    app.on_select();
+
+    assert_eq!(app.focus, Focus::ModalGraphLaneLimit);
+    assert_eq!(app.modal_input.value(), "34");
+}
+
+#[test]
+fn graph_lane_limit_input_ignores_zero_and_invalid_values() {
+    let mut app = App { viewport: Viewport::Settings, focus: Focus::ModalGraphLaneLimit, ..Default::default() };
+    app.layout_config.graph_lane_limit = 20;
+
+    app.modal_input.set_value("0");
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.focus, Focus::ModalGraphLaneLimit);
+    assert_eq!(app.layout_config.graph_lane_limit, 20);
+    assert_eq!(app.modal_input.value(), "0");
+
+    app.modal_input.set_value("not-a-number");
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.focus, Focus::ModalGraphLaneLimit);
+    assert_eq!(app.layout_config.graph_lane_limit, 20);
+    assert_eq!(app.modal_input.value(), "not-a-number");
+}
+
+#[test]
+fn graph_lane_limit_input_updates_and_saves_value() {
+    let mut app = App { viewport: Viewport::Settings, focus: Focus::ModalGraphLaneLimit, settings_selected: 12, ..Default::default() };
+    app.settings_scroll.set(4);
+    app.modal_input.set_value("7");
+
+    app.handle_modal_key_event(key(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.layout_config.graph_lane_limit, 7);
+    assert_eq!(app.viewport, Viewport::Settings);
+    assert_eq!(app.focus, Focus::Viewport);
+    assert_eq!(app.settings_selected, 12);
+    assert_eq!(app.settings_scroll.get(), 4);
+    assert!(app.modal_input.value().is_empty());
+    assert!(app.graph_tx.is_none());
+}
+
+#[test]
 fn add_remote_flow_creates_remote_and_returns_to_settings() {
     let (path, mut app) = remote_app("add-remote");
     app.begin_add_remote();

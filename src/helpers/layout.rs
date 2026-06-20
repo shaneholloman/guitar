@@ -11,6 +11,7 @@ pub const LAYOUT_WIDTH_MIN_CENTER: u16 = 20;
 pub const LAYOUT_WIDTH_MIN_SIDE_PANE: u16 = 16;
 pub const LAYOUT_HEIGHT_MIN_STACKED_PANE: u16 = 3;
 pub const LAYOUT_WEIGHT_DEFAULT: u16 = 100;
+pub const GRAPH_LANE_LIMIT_DEFAULT: usize = 20;
 
 pub fn inset_top(mut r: Rect, n: u16) -> Rect {
     r.y += n;
@@ -106,6 +107,8 @@ pub struct LayoutConfig {
     pub weight_viewer_split_left: u16,
     #[facet(default = LAYOUT_WEIGHT_DEFAULT)]
     pub weight_viewer_split_right: u16,
+    #[facet(default = GRAPH_LANE_LIMIT_DEFAULT)]
+    pub graph_lane_limit: usize,
 }
 
 impl Default for LayoutConfig {
@@ -142,6 +145,7 @@ impl Default for LayoutConfig {
             weight_status_bottom: LAYOUT_WEIGHT_DEFAULT,
             weight_viewer_split_left: LAYOUT_WEIGHT_DEFAULT,
             weight_viewer_split_right: LAYOUT_WEIGHT_DEFAULT,
+            graph_lane_limit: GRAPH_LANE_LIMIT_DEFAULT,
         }
     }
 }
@@ -163,6 +167,7 @@ impl LayoutConfig {
         self.weight_status_bottom = self.weight_status_bottom.max(1);
         self.weight_viewer_split_left = self.weight_viewer_split_left.max(1);
         self.weight_viewer_split_right = self.weight_viewer_split_right.max(1);
+        self.graph_lane_limit = self.graph_lane_limit.max(1);
         self
     }
 }
