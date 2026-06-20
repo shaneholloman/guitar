@@ -197,7 +197,7 @@ impl Walker {
 
                 if chunk.parent_a != NONE && chunk.parent_b != NONE {
                     // If the second parent is not already visible as a lane, mark a deferred merge.
-                    let is_merger_found = buffer.curr.iter().any(|chunk_nested| chunk_nested.parent_a != NONE && chunk_nested.parent_b == NONE && chunk.parent_b == chunk_nested.parent_a);
+                    let is_merger_found = buffer.curr.iter().enumerate().any(|(idx, chunk_nested)| idx != lane_idx && chunk_nested.has_parent(chunk.parent_b));
                     if !is_merger_found {
                         merger_alias = chunk.alias;
                     } else if update.started_lane
@@ -236,7 +236,7 @@ fn parent_is_on_prior_lane(lanes: &Vector<Chunk>, parent: u32, before_lane: usiz
 }
 
 fn is_single_parent_lane_for(chunk: &Chunk, parent: u32) -> bool {
-    (chunk.parent_a == parent && chunk.parent_b == NONE) || (chunk.parent_a == NONE && chunk.parent_b == parent)
+    chunk.has_parent(parent)
 }
 
 #[cfg(test)]

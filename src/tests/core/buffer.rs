@@ -81,7 +81,7 @@ fn update_records_only_changed_parent_lanes() {
 
     buffer.update(Chunk::commit(3, 2, NONE));
     buffer.update(Chunk::commit(4, 99, NONE));
-    let untouched = buffer.curr[1];
+    let untouched = buffer.curr[1].clone();
 
     buffer.update(Chunk::commit(2, NONE, NONE));
 
@@ -129,4 +129,41 @@ fn capped_buffer_keeps_normal_last_lane_palette_eligible_without_overflow() {
     assert_eq!(buffer.curr.len(), 5);
     assert_eq!(buffer.curr[4].alias, 5);
     assert!(!buffer.curr[4].is_flattened);
+}
+
+#[test]
+fn capped_buffer_preserves_collapsed_parent_scanlines() {
+    let mut buffer = Buffer::with_lane_limit(3);
+
+    buffer.update(Chunk::commit(10, 110, NONE));
+    buffer.update(Chunk::commit(11, 111, NONE));
+    buffer.update(Chunk::commit(12, 112, NONE));
+    buffer.update(Chunk::commit(13, 113, NONE));
+
+    assert_eq!(buffer.curr.len(), 3);
+    assert_eq!(buffer.curr[2].alias, 13);
+    assert_eq!(buffer.curr[2].parent_a, 113);
+    assert!(buffer.curr[2].is_flattened);
+    assert!(buffer.curr[2].compressed_parents.contains(&112));
+}
+
+#[test]
+fn capped_buffer_consumes_only_reached_collapsed_parent() {
+    let mut buffer = Buffer::with_lane_limit(3);
+
+    buffer.update(Chunk::commit(10, 110, NONE));
+    buffer.update(Chunk::commit(11, 111, NONE));
+    buffer.update(Chunk::commit(12, 112, NONE));
+    buffer.update(Chunk::commit(13, 113, NONE));
+
+    let update = buffer.update(Chunk::commit(112, 212, NONE));
+
+    assert_eq!(update.lane.index, 2);
+    assert!(update.lane.is_flattened);
+    assert!(!update.started_lane);
+    assert_eq!(buffer.curr[2].alias, 112);
+    assert_eq!(buffer.curr[2].parent_a, 212);
+    assert!(buffer.curr[2].is_flattened);
+    assert!(!buffer.curr[2].compressed_parents.contains(&112));
+    assert!(buffer.curr[2].compressed_parents.contains(&113));
 }

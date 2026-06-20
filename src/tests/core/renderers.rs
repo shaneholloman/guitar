@@ -112,6 +112,21 @@ fn capped_merge_on_last_lane_before_flattening_history() -> GraphHistory {
     ]))
 }
 
+fn compressed_parent_pipe_history() -> GraphHistory {
+    GraphHistory::from(Vector::from(vec![Vector::from(vec![Chunk::commit(1, NONE, NONE), Chunk::commit(9, NONE, NONE).with_flattened(true).with_compressed_parents([42])])]))
+}
+
+fn compressed_parent_branch_up_history() -> GraphHistory {
+    GraphHistory::from(Vector::from(vec![Vector::from(vec![Chunk::commit(30, NONE, NONE).with_flattened(true).with_compressed_parents([4])]), Vector::from(vec![Chunk::dummy()])]))
+}
+
+fn compressed_parent_active_bridge_history() -> GraphHistory {
+    GraphHistory::from(Vector::from(vec![
+        Vector::from(vec![Chunk::commit(10, 100, NONE), Chunk::commit(40, 4, NONE), Chunk::dummy(), Chunk::commit(30, 99, NONE).with_flattened(true).with_compressed_parents([4, 5])]),
+        Vector::from(vec![Chunk::commit(10, 100, NONE), Chunk::commit(4, NONE, NONE), Chunk::dummy(), Chunk::commit(30, 99, NONE).with_flattened(true).with_compressed_parents([5])]),
+    ]))
+}
+
 #[test]
 fn sha_projection_uses_text_and_highlighted_text_colors() {
     let theme = Theme::classic();
@@ -441,6 +456,49 @@ fn graph_projection_keeps_nonflattened_pipe_symbols_solid() {
 
     assert_eq!(span_color(&pipe_lines[0], graph::VERTICAL), Some(ColorPicker::from_theme(&theme).get_lane(4)));
     assert_eq!(span_color(&pipe_lines[0], graph::VERTICAL_DOTTED), None);
+}
+
+#[test]
+fn graph_projection_draws_flattened_pipe_for_compressed_parent_scanline() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let row = graph_row_with_alias(0, 1);
+
+    let lines = render_graph_projection(&theme, &symbols, &[row], &compressed_parent_pipe_history(), NONE, 0, 1, true);
+    let text = line_text(&lines[0]);
+
+    assert!(text.contains(graph::VERTICAL_DOTTED), "{text:?}");
+    assert_eq!(span_color(&lines[0], graph::VERTICAL_DOTTED), Some(theme.COLOR_GREY_500));
+    assert!(!text.contains(graph::VERTICAL), "{text:?}");
+}
+
+#[test]
+fn graph_projection_closes_branch_up_from_compressed_parent_scanline() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let rows = vec![graph_row_with_alias(0, 30), graph_row_with_alias(1, 4)];
+
+    let lines = render_graph_projection(&theme, &symbols, &rows, &compressed_parent_branch_up_history(), NONE, 0, 2, true);
+    let text = line_text(&lines[1]);
+
+    assert!(text.contains(graph::BRANCH_UP), "{text:?}");
+    assert_eq!(span_color(&lines[1], graph::BRANCH_UP), Some(theme.COLOR_GREY_500));
+}
+
+#[test]
+fn graph_projection_bridges_consumed_compressed_parent_to_active_flattened_lane() {
+    let theme = Theme::classic();
+    let symbols = SymbolTheme::main();
+    let rows = vec![graph_row_with_alias(0, 40), graph_row_with_alias(1, 4)];
+
+    let lines = render_graph_projection(&theme, &symbols, &rows, &compressed_parent_active_bridge_history(), NONE, 0, 2, true);
+    let text = line_text(&lines[1]);
+    let expected_bridge = format!("{}{}{}{}{}", graph::COMMIT, graph::HORIZONTAL_DOTTED, graph::HORIZONTAL_DOTTED, graph::HORIZONTAL_DOTTED, graph::VERTICAL_DOTTED);
+
+    assert!(text.contains(&expected_bridge), "{text:?}");
+    assert!(!text.contains(graph::BRANCH_UP), "{text:?}");
+    assert_eq!(span_color(&lines[1], graph::HORIZONTAL_DOTTED), Some(theme.COLOR_GREY_500));
+    assert_eq!(span_color(&lines[1], graph::VERTICAL_DOTTED), Some(theme.COLOR_GREY_500));
 }
 
 #[test]

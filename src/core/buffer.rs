@@ -6,7 +6,7 @@ pub struct Delta {
     pub ops: Vec<DeltaOp>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeltaOp {
     Insert { index: usize, item: Chunk },
     Remove { index: usize },
@@ -62,7 +62,7 @@ impl Buffer {
         for lane_idx in transient_lanes {
             if lane_idx < self.curr.len() && !self.curr[lane_idx].is_dummy() {
                 self.curr[lane_idx] = Chunk::dummy();
-                self.delta.ops.push(DeltaOp::Replace { index: lane_idx, new: self.curr[lane_idx] });
+                self.delta.ops.push(DeltaOp::Replace { index: lane_idx, new: self.curr[lane_idx].clone() });
             }
         }
 
@@ -84,20 +84,22 @@ impl Buffer {
             let mut clone = self.curr[merger_idx].clone();
             clone.parent_a = clone.parent_b;
             clone.parent_b = NONE;
+            clone.compressed_parents.clear();
             self.curr[merger_idx].parent_b = NONE;
-            self.curr.push_back(clone);
+            self.curr.push_back(clone.clone());
 
-            self.delta.ops.push(DeltaOp::Replace { index: merger_idx, new: self.curr[merger_idx] });
+            self.delta.ops.push(DeltaOp::Replace { index: merger_idx, new: self.curr[merger_idx].clone() });
 
             self.delta.ops.push(DeltaOp::Insert { index: self.curr.len() - 1, item: clone });
         }
 
         // Prefer replacing the parent lane; append only when the commit starts a new lane.
-        if let Some(first_idx) = self.curr.iter().position(|inner| inner.parent_a == chunk.alias) {
+        if let Some(first_idx) = self.curr.iter().position(|inner| inner.parent_a == chunk.alias || inner.compressed_parents.contains(&chunk.alias)) {
             let old_alias = chunk.alias;
+            let replacement = self.replacement_chunk_for_lane(first_idx, chunk);
 
-            self.curr[first_idx] = chunk;
-            self.delta.ops.push(DeltaOp::Replace { index: first_idx, new: chunk });
+            self.curr[first_idx] = replacement.clone();
+            self.delta.ops.push(DeltaOp::Replace { index: first_idx, new: replacement });
 
             // Clear consumed parent pointers so inactive branch lanes collapse into dummies.
             for (i, inner) in self.curr.iter_mut().enumerate() {
@@ -105,31 +107,21 @@ impl Buffer {
                     continue;
                 }
 
-                let mut parents_changed = false;
-
-                if inner.parent_a == old_alias {
-                    inner.parent_a = NONE;
-                    parents_changed = true;
-                }
-
-                if inner.parent_b == old_alias {
-                    inner.parent_b = NONE;
-                    parents_changed = true;
-                }
+                let parents_changed = inner.remove_parent(old_alias);
 
                 if parents_changed {
-                    if inner.parent_a == NONE && inner.parent_b == NONE {
+                    if !inner.has_any_parent() {
                         *inner = Chunk::dummy();
                     }
 
-                    self.delta.ops.push(DeltaOp::Replace { index: i, new: *inner });
+                    self.delta.ops.push(DeltaOp::Replace { index: i, new: inner.clone() });
                 }
             }
 
             self.enforce_lane_limit(Some(first_idx));
             UpdateOutcome { lane: self.lane_ref_for_original_index(first_idx), started_lane: false }
         } else {
-            self.curr.push_back(chunk);
+            self.curr.push_back(chunk.clone());
             self.delta.ops.push(DeltaOp::Insert { index: self.curr.len() - 1, item: chunk });
             let lane_idx = self.curr.len() - 1;
             self.enforce_lane_limit(Some(lane_idx));
@@ -151,7 +143,7 @@ impl Buffer {
         let cap_idx = limit - 1;
         let replacement = self.flattened_representative(cap_idx, preferred_idx);
         if self.curr[cap_idx] != replacement {
-            self.curr[cap_idx] = replacement;
+            self.curr[cap_idx] = replacement.clone();
             self.delta.ops.push(DeltaOp::Replace { index: cap_idx, new: replacement });
         }
 
@@ -166,10 +158,29 @@ impl Buffer {
     }
 
     fn flattened_representative(&self, cap_idx: usize, preferred_idx: Option<usize>) -> Chunk {
-        let preferred = preferred_idx.and_then(|idx| (idx >= cap_idx).then(|| self.curr.get(idx)).flatten()).copied().filter(|chunk| !chunk.is_dummy());
+        let preferred = preferred_idx.and_then(|idx| (idx >= cap_idx).then(|| self.curr.get(idx)).flatten()).filter(|chunk| !chunk.is_dummy()).cloned();
 
-        let fallback = self.curr.iter().skip(cap_idx).find(|chunk| !chunk.is_dummy()).copied().unwrap_or_else(Chunk::dummy);
-        preferred.unwrap_or(fallback).with_flattened(true)
+        let fallback = self.curr.iter().skip(cap_idx).find(|chunk| !chunk.is_dummy()).cloned().unwrap_or_else(Chunk::dummy);
+        let mut representative = preferred.unwrap_or(fallback).with_flattened(true);
+        for parent in self.curr.iter().skip(cap_idx).filter(|chunk| !chunk.is_dummy()).flat_map(Chunk::parent_aliases) {
+            representative.add_compressed_parent(parent);
+        }
+        representative
+    }
+
+    fn replacement_chunk_for_lane(&self, lane_idx: usize, mut replacement: Chunk) -> Chunk {
+        let old = &self.curr[lane_idx];
+        if !old.is_flattened {
+            return replacement;
+        }
+
+        replacement = replacement.with_flattened(true);
+        for parent in old.parent_aliases() {
+            if parent != replacement.alias {
+                replacement.add_compressed_parent(parent);
+            }
+        }
+        replacement
     }
 
     fn lane_ref_for_original_index(&self, lane_idx: usize) -> LaneRef {
@@ -211,13 +222,13 @@ impl Buffer {
             for op in delta.ops.iter() {
                 match op {
                     DeltaOp::Insert { index, item } => {
-                        curr.insert(*index, *item);
+                        curr.insert(*index, item.clone());
                     },
                     DeltaOp::Remove { index } => {
                         curr.remove(*index);
                     },
                     DeltaOp::Replace { index, new } => {
-                        curr[*index] = *new;
+                        curr[*index] = new.clone();
                     },
                 }
             }
