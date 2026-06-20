@@ -269,7 +269,7 @@ fn empty_column_pruning_preserves_visible_spans_and_styles() {
     let visible_style = Style::default().fg(Color::Red);
     let symbols = SymbolTheme::main();
     let mut lines = vec![
-        Line::from(vec![Span::raw(graph::EMPTY), Span::raw(graph::HORIZONTAL), Span::styled(graph::VERTICAL, visible_style), Span::raw(graph::EMPTY)]),
+        Line::from(vec![Span::raw(graph::EMPTY), Span::raw(graph::HORIZONTAL_DOTTED), Span::styled(graph::VERTICAL, visible_style), Span::raw(graph::EMPTY)]),
         Line::from(vec![Span::raw(graph::HORIZONTAL), Span::raw(graph::EMPTY), Span::raw(graph::EMPTY), Span::raw(graph::EMPTY)]),
     ];
 

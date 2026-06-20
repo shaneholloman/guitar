@@ -504,7 +504,7 @@ pub fn remove_empty_columns(lines: &mut Vec<Line<'_>>, symbols: &SymbolTheme) {
         }
     }
 
-    // Missing entries are not empty; only observed all-empty/horizontal pairs are removed.
+    // Missing entries are not empty; only observed all-empty/horizontal/dotted-horizontal pairs are removed.
     for (idx, keep) in keep_pair.iter_mut().enumerate() {
         *keep = *keep || !seen_pair[idx];
     }
@@ -538,7 +538,9 @@ pub fn remove_empty_columns(lines: &mut Vec<Line<'_>>, symbols: &SymbolTheme) {
 }
 
 fn is_visible_lane_symbol(span: &Span<'_>, symbols: &SymbolTheme) -> bool {
-    span.content.as_ref() != symbols.graph.empty.as_str() && span.content.as_ref() != symbols.graph.horizontal.as_str()
+    span.content.as_ref() != symbols.graph.empty.as_str()
+        && span.content.as_ref() != symbols.graph.horizontal.as_str()
+        && span.content.as_ref() != symbols.graph.horizontal_dotted.as_str()
 }
 
 pub fn render_sha_projection(theme: &Theme, rows: &[GraphRow], selected: usize) -> Vec<Line<'static>> {
